@@ -1,0 +1,27 @@
+# Secrets and local configuration
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# Python and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Sensitive/large runtime content
+data/
+models/
+backups/
+logs/
+documents/
+*.dump
+*.sql.gz
+*.tar.gz
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
