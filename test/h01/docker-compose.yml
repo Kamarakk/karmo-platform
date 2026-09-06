@@ -7,7 +7,7 @@ name: karmo-h01-test
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: karmo-h01-test-postgres
     environment:
       POSTGRES_USER: karmo_h01_test

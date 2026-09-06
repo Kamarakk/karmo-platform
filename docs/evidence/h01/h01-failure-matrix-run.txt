@@ -1,4 +1,34 @@
-..................                                                       [100%]
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.3.3, pluggy-1.6.0 -- /Users/sdcity/KARMO-DEV/test/h01/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/sdcity/KARMO-DEV/test/h01
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.12.1
+collecting ... collected 21 items
+
+tests/test_h01_failure_matrix.py::test_h01_t01_evidence_continuity SKIPPED [  4%]
+tests/test_h01_failure_matrix.py::test_h01_t02_fail_after_user_insert PASSED [  9%]
+tests/test_h01_failure_matrix.py::test_h01_t03_fail_after_assistant_insert PASSED [ 14%]
+tests/test_h01_failure_matrix.py::test_h01_t04_fail_after_outbox_insert PASSED [ 19%]
+tests/test_h01_failure_matrix.py::test_h01_t05_successful_atomic_exchange PASSED [ 23%]
+tests/test_h01_failure_matrix.py::test_h01_t06_ollama_unavailable PASSED [ 28%]
+tests/test_h01_failure_matrix.py::test_h01_t07_qdrant_unavailable PASSED [ 33%]
+tests/test_h01_failure_matrix.py::test_h01_t08_crash_before_qdrant_write_reclaimed PASSED [ 38%]
+tests/test_h01_failure_matrix.py::test_h01_t09_crash_after_qdrant_write_before_delivered_update PASSED [ 42%]
+tests/test_h01_failure_matrix.py::test_h01_t10_triple_duplicate_delivery PASSED [ 47%]
+tests/test_h01_failure_matrix.py::test_h01_t11_claim_token_fencing PASSED [ 52%]
+tests/test_h01_failure_matrix.py::test_h01_t12_concurrent_workers_twenty_events PASSED [ 57%]
+tests/test_h01_failure_matrix.py::test_h01_t13_malformed_permanent_payload PASSED [ 61%]
+tests/test_h01_failure_matrix.py::test_h01_t14_restart_recovery_mixed_states PASSED [ 66%]
+tests/test_h01_failure_matrix.py::test_h01_t15_user_only_semantic_promotion PASSED [ 71%]
+tests/test_h01_failure_matrix.py::test_h01_t16_digest_mismatch_marks_dead PASSED [ 76%]
+tests/test_h01_failure_matrix.py::test_h01_t17_healthy_delivery_latency PASSED [ 80%]
+tests/test_h01_failure_matrix.py::test_h01_t18_baseline_and_rollback_drill SKIPPED [ 85%]
+tests/test_h01_failure_matrix.py::test_supplementary_migration_schema_applied PASSED [ 90%]
+tests/test_h01_failure_matrix.py::test_supplementary_delivery_key_unique_constraint PASSED [ 95%]
+tests/test_h01_failure_matrix.py::test_supplementary_conversation_fk_restrict PASSED [100%]
+
 =============================== warnings summary ===============================
 venv/lib/python3.9/site-packages/urllib3/__init__.py:35
   /Users/sdcity/KARMO-DEV/test/h01/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
@@ -6,4 +36,7 @@ venv/lib/python3.9/site-packages/urllib3/__init__.py:35
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 - generated xml file: /Users/sdcity/KARMO-DEV/docs/evidence/h01/h01-failure-matrix-junit.xml -
-18 passed, 1 warning in 1.10s
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_h01_failure_matrix.py:160: BLOCKED: local frozen-artifact continuity verified above. Reverifying the H0.0 baseline manifest and the H0.1 isolated-build manifest (MANIFEST-H0-FINAL.sha256, MANIFEST-H01-ISOLATED-BUILD.sha256) requires read-only access to the production host per the handoff doc and is not available in this repository. Per corrective instructions, this stops and requires Natalie's separate approval rather than silently accessing production.
+SKIPPED [1] tests/test_h01_failure_matrix.py:652: BLOCKED: non-destructive rollback drill verified on the isolated stack above. Reverifying the live production baseline (PostgreSQL conversation_memory=14/karmo_memory=1/no karmo_outbox; Qdrant karmo_semantic_memory=4/karmo_documents=8/karmo_h00_dense_baseline=8, per the handoff doc) requires separately approved, read-only access to the production host and is not performed here. Per corrective instructions, this stops and requires Natalie's approval rather than silently accessing production.
+=================== 19 passed, 2 skipped, 1 warning in 2.13s ===================

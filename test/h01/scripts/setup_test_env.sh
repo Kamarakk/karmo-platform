@@ -14,7 +14,7 @@ PG_DB="karmo_h01_test"
 PG_USER="karmo_h01_test"
 PG_PASSWORD="karmo_h01_test_synthetic_local_only"
 QDRANT_URL="http://127.0.0.1:56333"
-COLLECTION="karmo_semantic_memory"
+COLLECTION="karmo_h01_outbox_test"
 VECTOR_SIZE=768
 
 echo "== starting isolated docker compose stack =="

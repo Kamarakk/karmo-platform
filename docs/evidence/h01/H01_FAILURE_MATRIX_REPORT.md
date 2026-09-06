@@ -1,112 +1,211 @@
 # KARMO H0.1 isolated failure-matrix report — H01-T01 through H01-T18
 
-- Date: 2026-09-06
+- Date: 2026-09-06 (corrected; closeout decision recorded 2026-09-06)
 - Branch: `feat/h01-handoff-import`
 - Scope: isolated, local, Docker-based PostgreSQL + Qdrant test environment only. No production host, credential, database, Qdrant collection, or document was accessed.
 - Frozen design under test: `scripts/h01/h01_isolated_build_v2.sh` (verified H0.1 isolated build, per `docs/handoff/h01/KARMO_HANDOFF_2026-09-04_H01_BUILD_COMPLETE.md`).
 
-## What this covers
+## Closeout decision (Natalie, 2026-09-06)
 
-`docs/handoff/h01/KARMO_HANDOFF_2026-09-04_H01_BUILD_COMPLETE.md` names the next
-gate as "the isolated H01-T01 through H01-T18 failure matrix using a separate
-PostgreSQL test schema and a separate Qdrant test collection," but the specific
-18 test cases are not enumerated anywhere in this repository. The 18 tests
-below were derived directly from behavior the frozen artifacts already claim
-for themselves — the three `failure_stage` rollback hooks documented in
-`transactional_memory.remember_exchange`, every `CHECK`/`UNIQUE`/`FOREIGN KEY`
-constraint in `migrations/001_h01_karmo_outbox.sql`, and the claim/lease/
-fencing/retry semantics documented in `outbox.py` (`FOR UPDATE SKIP LOCKED`,
-`wait=True`, `claim_token` fencing, exponential backoff). No new requirement
-or behavior was invented, and no frozen file's logic was changed to make a
-test pass.
+Natalie has reviewed this corrected report and accepts the validation level
+achieved:
 
-## Environment
+- **H01-T02 through H01-T17: PASS.**
+- **H01-T01 and H01-T18 remain recorded as BLOCKED / NOT EXECUTED.** They are
+  *not* changed to PASS — production-read-only verification for these two was
+  intentionally not performed in this or any prior session.
+- Natalie accepts the residual verification risk this leaves (the live
+  production/host manifest and baseline reverification described below
+  remains outstanding) and has decided that H01-T01/H01-T18 will **not**
+  block moving to the next development phase.
+- **This decision is not authorization for production deployment or
+  cutover.** Production migration, live-code wiring, worker service
+  installation, and cutover remain separately gated per `AGENTS.md` and the
+  handoff doc, unaffected by this decision.
 
-Docker was not installed on this Mac. With the user's explicit approval,
-Colima + the Docker CLI + Compose plugin were installed via Homebrew
-(`brew install colima docker docker-compose`) and started locally
-(`colima start`). This is local developer tooling, not a production change.
+## Correction notice
 
-- `test/h01/docker-compose.yml` — isolated stack, non-default ports:
-  - `karmo-h01-test-postgres` (postgres:16-alpine) on `127.0.0.1:55432`, synthetic credentials, database `karmo_h01_test`.
-  - `karmo-h01-test-qdrant` (qdrant/qdrant:v1.9.7) on `127.0.0.1:56333`/`56334`.
-  - Named Docker volumes `karmo_h01_test_pg_data` / `karmo_h01_test_qdrant_data`, isolated from any other stack.
-- Qdrant test collection `karmo_semantic_memory` created with `size=768, distance=Cosine` (matching `DEFAULT_VECTOR_SIZE` in `outbox.py`).
+An independent review found the original version of this report and its
+18-test suite (`test/h01/tests/test_h01_failure_matrix.py`, commit
+`b38c851`) **did not match** the frozen matrix now present at
+`docs/handoff/h01/frozen-design/FAILURE-TEST-MATRIX-H01.md` and
+`docs/handoff/h01/frozen-design/acceptance-criteria-h01.json`. That earlier
+suite was derived from implementation behavior (migration constraints, the
+relay's internal claim/lease mechanics) rather than from the frozen matrix's
+18 named scenarios, so its test IDs, scenarios, and pass claims did not
+correspond to H01-T01–T18 as frozen. **The prior report's "18/18 PASS against
+the frozen matrix" claim was incorrect: it verified a different, self-authored
+matrix, not the frozen one.**
 
-## Files created
+This report supersedes it. The test suite has been replaced so each
+`test_h01_t<NN>_*` function corresponds exactly, by ID, scenario, injection,
+and required result, to the corresponding row of the frozen matrix. A few
+migration-constraint tests from the old suite that are still useful defect
+coverage, but are not rows in the frozen matrix, were kept and clearly
+relabeled `test_supplementary_*` so they cannot be mistaken for frozen-matrix
+results.
 
-- `test/h01/docker-compose.yml` — isolated Postgres + Qdrant stack.
-- `test/h01/app/migrations/001_h01_karmo_outbox.sql` — copied **verbatim** from the verified build script's heredoc. SHA-256 `d502699c07b4eed1ea225cbc21d0c3950099818e88afba232b6b1520dac033e8`.
-- `test/h01/app/transactional_memory.py` — copied **verbatim**. SHA-256 `33f464d8c71c14ae2d2635dd66dbaf50021e8a4bd283f3d8b8f89d1bcd364395`.
-- `test/h01/app/outbox.py` — copied **verbatim**. SHA-256 `55af1192dbae5b1a4ea2d30e36f544dddc290cc470bfba4074c8a846fce87a04`.
-  (Byte-for-byte diffed against the heredocs in `scripts/h01/h01_isolated_build_v2.sh`; only added header comments differ.)
-- `test/h01/app/migrations/000_synthetic_conversation_memory.sql` — **new**, synthetic-only. The frozen migration assumes `public.conversation_memory` already exists from the frozen v0.5 schema, which this repo does not contain and this agent is not authorized to inspect. This minimal table (id/role/content/created_at) exists only to give the FK a target using the columns `transactional_memory.py` actually reads/writes.
-- `test/h01/app/memory.py` — **new** test-only adapter providing `get_connection()` against the isolated Postgres container (env-var configured, synthetic credentials only). Not part of the frozen design; the frozen modules import `memory.get_connection` from the production karmo app, which is not present in this repository.
-- `test/h01/conftest.py` — pytest fixtures: per-test schema/collection reset, connection helpers, a deterministic fake embedding function (no real model call).
-- `test/h01/tests/test_h01_failure_matrix.py` — the 18 tests (see below).
-- `test/h01/requirements.txt`, `test/h01/pytest.ini` — test tooling pins.
-- `test/h01/scripts/setup_test_env.sh` — brings up the isolated stack, applies migrations, creates the Qdrant collection.
-- `test/h01/scripts/teardown_test_env.sh` — tears down only the `karmo-h01-test-*` containers/volumes.
-- `docs/evidence/h01/h01-failure-matrix-run.txt`, `docs/evidence/h01/h01-failure-matrix-junit.xml` — raw test-run evidence.
+## Isolated stack changes made in this correction
 
-No file outside `test/h01/`, `docs/evidence/h01/`, and this report was modified. `CURRENT_STATE.md`, `MASTER_BUILD_LOG.md`, and `KARMO_FOUNDATION_HARDENING_PLAN.md` are not present in this repository and were not touched.
+- PostgreSQL bumped from `postgres:16-alpine` to `postgres:17-alpine` in
+  `test/h01/docker-compose.yml`, to match the verified production major
+  version. Confirmed running: `server_version = 17.11`.
+- The isolated Qdrant collection was renamed from `karmo_semantic_memory`
+  (which collides with the real production collection name) to
+  **`karmo_h01_outbox_test`**, in `test/h01/conftest.py` and
+  `test/h01/scripts/setup_test_env.sh`. Every `OutboxRelay` construction in
+  the test suite now passes `collection_name="karmo_h01_outbox_test"`
+  explicitly (the frozen `outbox.py` itself is unmodified and still defaults
+  to `karmo_semantic_memory`, which is correct for production — only the test
+  call sites were changed to override it).
+- No file under `test/h01/app/` (the verbatim frozen artifacts) was edited.
+  SHA-256 of all three is unchanged from the original import:
+  - `migrations/001_h01_karmo_outbox.sql`: `d502699c07b4eed1ea225cbc21d0c3950099818e88afba232b6b1520dac033e8`
+  - `transactional_memory.py`: `33f464d8c71c14ae2d2635dd66dbaf50021e8a4bd283f3d8b8f89d1bcd364395`
+  - `outbox.py`: `55af1192dbae5b1a4ea2d30e36f544dddc290cc470bfba4074c8a846fce87a04`
+  No frozen test exposed a defect in the implementation, so per the
+  corrective instructions the implementation was preserved unchanged.
 
-## Results: H01-T01 through H01-T18 — 18/18 PASS
+## Frozen-test-ID mapping
 
-| Test | What it verifies | Result |
-|---|---|---|
-| T01 | Frozen migration applies cleanly to the isolated schema: `karmo_outbox` columns and both partial indexes exist. | PASS |
-| T02 | `remember_exchange` happy path: exactly 2 conversation rows + 1 `pending` outbox row, deterministic `event_id`. | PASS |
-| T03 | Atomic rollback at `failure_stage="after_user_insert"`: zero rows committed anywhere. | PASS |
-| T04 | Atomic rollback at `failure_stage="after_assistant_insert"`: zero rows committed anywhere. | PASS |
-| T05 | Atomic rollback at `failure_stage="after_outbox_insert"`: zero rows committed anywhere. | PASS |
-| T06 | `event_id_for_user_id` is deterministic (UUID5); `karmo_outbox_delivery_key` UNIQUE constraint rejects a duplicate `(event_type, aggregate_type, aggregate_id, destination)`. | PASS |
-| T07 | `karmo_outbox_status_check` rejects an invalid `status` value. | PASS |
-| T08 | `karmo_outbox_claim_state_check` rejects `processing` without claim fields, and non-`processing` with claim fields set. | PASS |
-| T09 | `karmo_outbox_processed_state_check` rejects `delivered` without `processed_at`, and non-`delivered` with `processed_at` set. | PASS |
-| T10 | `karmo_outbox_payload_object_check` rejects a non-object JSON payload. | PASS |
-| T11 | `karmo_outbox_nonempty_identity_check` rejects an empty `event_type`. | PASS |
-| T12 | `karmo_outbox_conversation_fk` rejects a dangling `aggregate_id`; `ON DELETE RESTRICT` blocks deleting a referenced conversation row. | PASS |
-| T13 | `claim_batch` concurrency: two workers claiming concurrently against the same 6 pending rows never claim the same `event_id` (`FOR UPDATE SKIP LOCKED`); stable across 3 repeated runs. | PASS |
-| T14 | A `processing` row past its `lease_seconds` is reclaimed by a second worker with a new `claim_token` and incremented `attempt_count`. | PASS |
-| T15 | `process_once` happy path: valid digest + embedding + `wait=True` Qdrant upsert → outbox row `delivered`, `processed_at` set, claim fields cleared, matching point present in the isolated Qdrant collection. | PASS |
-| T16 | Permanent failure path: authoritative content no longer matches the recorded `content_sha256` → `dead`, `last_error_code=content_digest_mismatch`, no Qdrant point written. | PASS |
-| T17 | Transient failure path: embedding call raises → `retry` with `attempt_count` incremented and `available_at` delayed per `retry_delay_seconds`; not reclaimable before `available_at`. | PASS |
-| T18 | Fencing: after a stale claim is reclaimed by a second worker (new `claim_token`), the first worker's late `_finish("delivered")` call is rejected (0 rows updated) and the row remains under the second worker's claim. | PASS |
+| Frozen ID | Frozen scenario | Test function | Local result |
+|---|---|---|---|
+| H01-T01 | Evidence continuity | `test_h01_t01_evidence_continuity` | **BLOCKED** (partial pass, see below) |
+| H01-T02 | Fail after user insert | `test_h01_t02_fail_after_user_insert` | PASS |
+| H01-T03 | Fail after assistant insert | `test_h01_t03_fail_after_assistant_insert` | PASS |
+| H01-T04 | Fail after outbox insert | `test_h01_t04_fail_after_outbox_insert` | PASS |
+| H01-T05 | Successful atomic exchange | `test_h01_t05_successful_atomic_exchange` | PASS |
+| H01-T06 | Ollama unavailable | `test_h01_t06_ollama_unavailable` | PASS |
+| H01-T07 | Qdrant unavailable | `test_h01_t07_qdrant_unavailable` | PASS |
+| H01-T08 | Crash before Qdrant write | `test_h01_t08_crash_before_qdrant_write_reclaimed` | PASS |
+| H01-T09 | Crash after Qdrant write | `test_h01_t09_crash_after_qdrant_write_before_delivered_update` | PASS |
+| H01-T10 | Duplicate delivery | `test_h01_t10_triple_duplicate_delivery` | PASS |
+| H01-T11 | Claim-token fencing | `test_h01_t11_claim_token_fencing` | PASS |
+| H01-T12 | Concurrent workers | `test_h01_t12_concurrent_workers_twenty_events` | PASS |
+| H01-T13 | Malformed permanent event | `test_h01_t13_malformed_permanent_payload` | PASS |
+| H01-T14 | Restart recovery | `test_h01_t14_restart_recovery_mixed_states` | PASS |
+| H01-T15 | Behavior preservation | `test_h01_t15_user_only_semantic_promotion` | PASS |
+| H01-T16 | Digest integrity | `test_h01_t16_digest_mismatch_marks_dead` | PASS |
+| H01-T17 | Healthy delivery latency | `test_h01_t17_healthy_delivery_latency` | PASS |
+| H01-T18 | Baseline and rollback drill | `test_h01_t18_baseline_and_rollback_drill` | **BLOCKED** (partial pass, see below) |
 
-Full raw output: `docs/evidence/h01/h01-failure-matrix-run.txt` and `docs/evidence/h01/h01-failure-matrix-junit.xml` (18 passed, 0 failed, 0 errors, 1 unrelated `urllib3`/`LibreSSL` deprecation warning).
+Raw evidence: `docs/evidence/h01/h01-failure-matrix-run.txt`,
+`docs/evidence/h01/h01-failure-matrix-junit.xml`
+(**19 passed, 2 skipped, 0 failed** — the 2 skips are H01-T01 and H01-T18's
+production-baseline components, described next).
+
+## H01-T01 and H01-T18 — why they are BLOCKED, not PASS
+
+Both frozen rows require reverifying **live production/host state**:
+
+- **H01-T01** ("Reverify H0.0 and every H0.1 manifest") needs
+  `MANIFEST-H0-FINAL.sha256` and `MANIFEST-H01-ISOLATED-BUILD.sha256`, which
+  live only on the production host (`karmo-ai01`) per
+  `docs/handoff/h01/KARMO_HANDOFF_2026-09-04_H01_BUILD_COMPLETE.md`. They are
+  not present in this repository.
+- **H01-T18** ("Reverify live counts/hashes ... rollback drill") needs the
+  production PostgreSQL baseline (`conversation_memory=14`, `karmo_memory=1`,
+  no `karmo_outbox`) and Qdrant baseline (`karmo_semantic_memory=4`,
+  `karmo_documents=8`, `karmo_h00_dense_baseline=8`) from the same handoff
+  doc, reverified live.
+
+Per this session's corrective instructions and `AGENTS.md` ("Never access or
+modify production KARMO from an AI session"), this session does not silently
+reach out to production to get that data. Each test asserts everything that
+**is** locally verifiable, then calls `pytest.skip(...)` with an explicit
+message, so the test suite records these as blocked rather than misreporting
+them as passed or silently omitting them:
+
+- `test_h01_t01_evidence_continuity` verifies locally: both frozen-design
+  documents are present, `acceptance-criteria-h01.json.required_test_ids`
+  exactly equals `H01-T01`..`H01-T18`, `status == "frozen_for_review"`,
+  `implementation_authorized == False`, and that the body of each of the 3
+  frozen artifacts under `test/h01/app/` is byte-identical to the
+  corresponding heredoc in `scripts/h01/h01_isolated_build_v2.sh` (i.e. no
+  local drift from the verified isolated build). It then skips with a message
+  stating the live-manifest component is blocked pending Natalie's approval.
+- `test_h01_t18_baseline_and_rollback_drill` verifies locally: the frozen
+  acceptance criteria still forbid automatic event deletion and legacy
+  backfill and still require rollback to preserve outbox evidence; the
+  teardown script only ever names `karmo-h01-test-*` resources and contains
+  no production hostname/address; and, as a non-destructive drill on the
+  isolated stack, that delivering one event and then separately dead-lettering
+  an unrelated malformed event leaves the first event's row and Qdrant point
+  completely untouched. It then skips with a message stating the live
+  production-baseline component is blocked pending Natalie's approval.
+
+**Recommended next action for T01/T18:** a separate, explicitly-approved,
+read-only session (Natalie) reverifies the production PostgreSQL/Qdrant
+baseline counts and the two manifest files against the values recorded in the
+handoff doc. Nothing in this session performed or attempted that access.
+
+## Files changed in this correction
+
+- `test/h01/docker-compose.yml` — Postgres 16 → 17.
+- `test/h01/conftest.py` — isolated collection renamed to
+  `karmo_h01_outbox_test`; added `unavailable_embedding_endpoint`,
+  `unavailable_qdrant_client`, and `drain` helpers for the new failure
+  scenarios.
+- `test/h01/scripts/setup_test_env.sh` — isolated collection renamed to
+  `karmo_h01_outbox_test`.
+- `test/h01/tests/test_h01_failure_matrix.py` — replaced; 18 tests re-mapped
+  one-to-one to the frozen matrix by ID, plus 3 clearly-labeled supplementary
+  regression tests for migration constraints not enumerated as their own
+  frozen rows.
+- `docs/evidence/h01/H01_FAILURE_MATRIX_REPORT.md` (this file),
+  `docs/evidence/h01/h01-failure-matrix-run.txt`,
+  `docs/evidence/h01/h01-failure-matrix-junit.xml` — regenerated.
+
+No file under `test/h01/app/` (the frozen artifacts) was modified. No file
+outside `test/h01/`, `docs/evidence/h01/`, and this report was modified.
+`CURRENT_STATE.md`, `MASTER_BUILD_LOG.md`, and
+`KARMO_FOUNDATION_HARDENING_PLAN.md` are not present in this repository and
+were not touched. `docs/handoff/h01/frozen-design/` was read only, never
+written.
 
 ## Security checks
 
-- `grep` for production hostnames/paths (`karmo-ai01`, `lofason`, `192.168.1.235`, `kve01`/`02`/`03`, `/home/lofason`) across `test/`: no matches.
+- `grep` for production hostnames/paths (`karmo-ai01`, `lofason`,
+  `192.168.1.235`, `kve01`/`02`/`03`, `/home/lofason`) across `test/`: no
+  matches.
 - No SSH session was opened to any host during this work.
-- Only two Docker containers were running at any point: `karmo-h01-test-postgres`, `karmo-h01-test-qdrant`. No production container was referenced, started, stopped, or restarted.
-- All credentials used are synthetic, hardcoded test-only values scoped to the isolated stack (`karmo_h01_test` / `karmo_h01_test_synthetic_local_only`), not secrets, and not committed anywhere sensitive-looking (`.gitignore` already excludes `.env`, `*.key`, `secrets/`, etc.; none of those patterns matched any new file).
-- `py_compile` passed cleanly on every new/copied Python file.
-- The 3 frozen artifacts under test were confirmed byte-identical (body diff, excluding added header comments) to the heredocs in the already-verified `scripts/h01/h01_isolated_build_v2.sh` — this test run validates the actual frozen design, not a rewritten copy of it.
-- `test/h01/venv/` and `test/h01/.pytest_cache/` are excluded from git (root `.gitignore`'s `venv/` pattern, and pytest's own nested `.pytest_cache/.gitignore`).
-- Production database writes / schema changes / Qdrant writes / live application changes / container restarts / service installations: all `0`, as required by `AGENTS.md` and the H0.1 scope note.
-
-## Blockers
-
-None. All H01-T01 through H01-T18 acceptance tests pass.
+- Only two Docker containers were running at any point:
+  `karmo-h01-test-postgres` (now `postgres:17-alpine`),
+  `karmo-h01-test-qdrant`. No production container was referenced, started,
+  stopped, or restarted.
+- All credentials used are synthetic, hardcoded test-only values scoped to
+  the isolated stack (`karmo_h01_test` / `karmo_h01_test_synthetic_local_only`).
+- The isolated Qdrant collection used for all writable test activity is
+  `karmo_h01_outbox_test`; `karmo_semantic_memory`, `karmo_documents`, and
+  `karmo_h00_dense_baseline` were never targeted for writes.
+- Production database writes / schema changes / Qdrant writes / live
+  application changes / container restarts / service installations: all `0`.
+- No commit, push, merge, deploy, or edit to any authoritative KARMO project
+  document was made in this session, per the corrective instructions.
 
 ## How to reproduce
 
 ```
 cd test/h01
-./scripts/setup_test_env.sh     # brings up isolated stack, applies migrations, creates Qdrant collection
-venv/bin/python -m pytest -v    # runs H01-T01..T18
-./scripts/teardown_test_env.sh  # removes only the karmo-h01-test-* containers/volumes
+./scripts/teardown_test_env.sh   # if an older (postgres:16) stack is running
+./scripts/setup_test_env.sh      # brings up isolated stack (postgres:17), applies migrations, creates karmo_h01_outbox_test
+venv/bin/python -m pytest -v     # runs H01-T01..T18 (T01/T18 show as SKIPPED — blocked, not failed)
+./scripts/teardown_test_env.sh   # removes only the karmo-h01-test-* containers/volumes
 ```
 
 ## Recommended next action
 
-H0.1's isolated failure-matrix gate (H01-T01–T18) is satisfied in this local,
-non-production environment. Per `AGENTS.md` and this session's scope, the next
-step — production migration, live-code wiring, worker service installation,
-or any cutover — remains unauthorized here and requires a separate,
-explicitly approved cutover decision (Natalie) plus Codex's independent
-design/security/evidence review. This report and its raw evidence should be
-attached to the pull request for that review; nothing in this session should
-be merged or deployed automatically.
+16 of 18 frozen tests (H01-T02–T17) pass locally against the isolated,
+Postgres-17-backed stack with no defects found in the preserved
+implementation. H01-T01 and H01-T18 remain BLOCKED / NOT EXECUTED on their
+production-read-only components. Per the closeout decision above, Natalie has
+accepted this residual risk and cleared H0.1 to proceed to the next
+development phase on that basis; the outstanding production-read-only
+reverification for T01/T18 is not required to gate that move but has not
+been performed and is not waived as a future requirement.
+
+This closeout is **not** authorization for production migration, live-code
+wiring, worker service installation, or cutover — those remain unauthorized
+and separately gated per `AGENTS.md` and the handoff doc. This report and its
+evidence should be attached to the pull request for the next independent
+review.
