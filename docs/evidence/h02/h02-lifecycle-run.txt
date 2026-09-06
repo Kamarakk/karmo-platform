@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.3.3, pluggy-1.6.0 -- /Users/sdcity/KARMO-DEV/test/h02/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/sdcity/KARMO-DEV/test/h02
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.12.1
+collecting ... collected 3 items
+
+tests/test_h02_lifecycle.py::test_sha256_identity_preserved PASSED       [ 33%]
+tests/test_h02_lifecycle.py::test_v1_lifecycle_fields_present PASSED     [ 66%]
+tests/test_h02_lifecycle.py::test_v1_to_v2_supersession_audit_and_retrieval PASSED [100%]
+
+=============================== warnings summary ===============================
+venv/lib/python3.9/site-packages/urllib3/__init__.py:35
+  /Users/sdcity/KARMO-DEV/test/h02/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+========================= 3 passed, 1 warning in 0.01s =========================
