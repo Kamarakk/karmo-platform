@@ -1,0 +1,3 @@
+psycopg[binary]==3.2.10
+qdrant-client==1.9.1
+pytest==8.3.3

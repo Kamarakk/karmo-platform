@@ -1,0 +1,46 @@
+name: karmo-h01-test
+
+# Isolated, local-only H0.1 failure-matrix test stack.
+# Non-default ports and container names to make collision with any
+# production or other local service structurally obvious.
+# Synthetic credentials only. No production data, secrets, or backups.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: karmo-h01-test-postgres
+    environment:
+      POSTGRES_USER: karmo_h01_test
+      POSTGRES_PASSWORD: karmo_h01_test_synthetic_local_only
+      POSTGRES_DB: karmo_h01_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - karmo_h01_test_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U karmo_h01_test -d karmo_h01_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.7
+    container_name: karmo-h01-test-qdrant
+    ports:
+      - "127.0.0.1:56333:6333"
+      - "127.0.0.1:56334:6334"
+    volumes:
+      - karmo_h01_test_qdrant_data:/qdrant/storage
+    healthcheck:
+      # The qdrant image has no wget/curl; use bash's /dev/tcp for a
+      # dependency-free readiness probe instead.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  karmo_h01_test_pg_data:
+    name: karmo_h01_test_pg_data
+  karmo_h01_test_qdrant_data:
+    name: karmo_h01_test_qdrant_data
