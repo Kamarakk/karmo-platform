@@ -1,5 +1,11 @@
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
+from qdrant_client.models import (
+    Filter,
+    FieldCondition,
+    MatchValue,
+    IsEmptyCondition,
+    PayloadField,
+)
 from semantic_memory import get_embedding
 
 QDRANT_URL = "http://127.0.0.1:6333"
@@ -11,9 +17,12 @@ client = QdrantClient(url=QDRANT_URL)
 def search_documents(query, limit=3):
     """Normal retrieval.
 
-    H0.2: scoped to is_active=True so a superseded document version is
-    never returned here, without deleting the underlying historical points
-    -- see get_document_history for the audit path.
+    H0.2: scoped to active knowledge only. Production karmo_documents holds
+    pre-H0.2 vectors with no is_active field at all -- those are legacy
+    active knowledge and must keep surfacing here, so the filter treats
+    is_active=True and a missing is_active field as active, and excludes
+    only is_active=False (explicitly superseded). Superseded points are
+    never deleted -- see get_document_history for the audit path.
     """
     vector = get_embedding(query)
 
@@ -21,7 +30,11 @@ def search_documents(query, limit=3):
         collection_name=COLLECTION_NAME,
         query=vector,
         query_filter=Filter(
-            must=[FieldCondition(key="is_active", match=MatchValue(value=True))]
+            should=[
+                FieldCondition(key="is_active", match=MatchValue(value=True)),
+                IsEmptyCondition(is_empty=PayloadField(key="is_active")),
+            ],
+            must_not=[FieldCondition(key="is_active", match=MatchValue(value=False))],
         ),
         limit=limit,
     ).points
