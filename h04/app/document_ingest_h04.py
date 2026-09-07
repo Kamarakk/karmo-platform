@@ -53,6 +53,20 @@ that chain is ever undone if a later step fails:
   together via ``_commit_registry_lifecycle``, or neither does -- see that
   function for detail.
 
+Inheritance & forward compatibility correction: ``active_points_for_document``
+inherited H0.2's fixed ``limit=10000`` Qdrant scroll ceiling with the offset
+discarded -- the same class of bug already fixed in
+``reconciliation.py``'s ``_scroll_all`` before H0.4 was accepted. A logical
+document with more than 10000 active chunks would have had only the first
+10000 superseded, silently leaving the rest ``is_active=True`` in Qdrant.
+Replaced with a local ``_scroll_all`` that follows ``next_page_offset``
+until exhausted, mirroring ``reconciliation._scroll_all``'s shape without
+importing it (the ingest pipeline stays independent of the audit module).
+No other production-path H0.4 file (``bootstrap_legacy_registry.py``,
+``run_auditor.py``, ``reconciliation.py``, ``registry_db.py``,
+``auditor.py``) has an equivalent fixed-ceiling gap -- see PR #6 for the
+review.
+
 This module never automatically deletes a Qdrant vector, moves an archived
 file back out of PROCESSED, or retries/repairs a registry gap on its own.
 """
@@ -156,25 +170,57 @@ def document_exists(document_hash):
     return bool(points)
 
 
+DEFAULT_SCROLL_PAGE_SIZE = 1000
+
+
+def _scroll_all(scroll_filter, *, page_size=DEFAULT_SCROLL_PAGE_SIZE):
+    """Read every point matching scroll_filter, following Qdrant's
+    next_page_offset until it is None -- never a single bounded call. Same
+    "loop until exhausted" shape as reconciliation._scroll_all (kept local
+    rather than imported so the ingest pipeline has no dependency on the
+    audit module); page_size bounds one round-trip's response size only,
+    never the total number of points read.
+    """
+    points = []
+    offset = None
+
+    while True:
+        batch, next_offset = client.scroll(
+            collection_name=COLLECTION_NAME,
+            scroll_filter=scroll_filter,
+            limit=page_size,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        points.extend(batch)
+
+        if next_offset is None:
+            break
+
+        offset = next_offset
+
+    return points
+
+
 def active_points_for_document(document_id):
     """All currently-active points for a logical document (H0.2 lifecycle).
 
     Used only to find the prior version to supersede; normal retrieval
-    filtering lives in document_memory.search_documents.
+    filtering lives in document_memory.search_documents. Paginates through
+    the full result set -- a document version with more active chunks than
+    one page must still be superseded in full, not silently truncated at a
+    fixed ceiling (see AGENTS.md/CLAUDE.md inheritance & forward
+    compatibility rule).
     """
-    points, _ = client.scroll(
-        collection_name=COLLECTION_NAME,
-        scroll_filter=Filter(
+    return _scroll_all(
+        Filter(
             must=[
                 FieldCondition(key="document_id", match=MatchValue(value=document_id)),
                 FieldCondition(key="is_active", match=MatchValue(value=True)),
             ]
-        ),
-        limit=10000,
-        with_payload=True,
-        with_vectors=False,
+        )
     )
-    return points
 
 
 def ingest_document(file_path, archive_path=None):
