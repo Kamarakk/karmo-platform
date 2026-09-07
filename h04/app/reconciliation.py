@@ -12,6 +12,14 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 PROVENANCE_FIELDS = ("pipeline_version", "embedding_model", "chunker_version")
 
+# Explicit, clearly-labeled provenance value bootstrap_legacy_registry.py
+# writes to a document_registry row when the pre-H0.2 Qdrant points it
+# verified never carried a given provenance field at all (see that script's
+# module docstring). Defined here, the module that owns provenance-mismatch
+# semantics, and imported by bootstrap_legacy_registry.py, so there is one
+# source of truth for the exact string both sides compare against.
+LEGACY_PROVENANCE_LABEL = "legacy-unknown-pre-h0.2"
+
 # Page size for each individual scroll call. This bounds one round-trip's
 # response size only -- it is not a cap on how many points reconciliation
 # examines. _scroll_all below follows next_page_offset until Qdrant reports
@@ -107,22 +115,52 @@ def check_chunk_counts(row, points):
 
 
 def check_provenance(row, points):
+    """Compare registry provenance against each point's actual payload.
+
+    One deliberate exception to a straight equality check: when the
+    registry explicitly recorded ``LEGACY_PROVENANCE_LABEL`` for a field
+    (bootstrap_legacy_registry.py's honest label for "this pre-H0.2 vector
+    never had this field") and the Qdrant point genuinely has no value for
+    that field either (``None`` -- absent, not merely different), that is
+    the expected, known-legacy state, not a real disagreement. It is
+    reported as ``LEGACY_PROVENANCE_UNVERIFIED`` -- still surfaced, never
+    silently dropped -- so the auditor and its callers can treat it as an
+    informational/known-legacy condition rather than a true integrity
+    failure. Any other disagreement, including a legacy-labeled row against
+    a point that DOES carry some other concrete value, is still a genuine
+    ``PROVENANCE_MISMATCH``.
+    """
     findings = []
 
     for point in points:
         for field in PROVENANCE_FIELDS:
             actual_value = point.payload.get(field)
             expected_value = row[field]
-            if actual_value != expected_value:
+
+            if actual_value == expected_value:
+                continue
+
+            if expected_value == LEGACY_PROVENANCE_LABEL and actual_value is None:
                 findings.append(
                     {
-                        "type": "PROVENANCE_MISMATCH",
+                        "type": "LEGACY_PROVENANCE_UNVERIFIED",
                         "point_id": str(point.id),
                         "field": field,
                         "expected": expected_value,
                         "actual": actual_value,
                     }
                 )
+                continue
+
+            findings.append(
+                {
+                    "type": "PROVENANCE_MISMATCH",
+                    "point_id": str(point.id),
+                    "field": field,
+                    "expected": expected_value,
+                    "actual": actual_value,
+                }
+            )
 
     return findings
 
