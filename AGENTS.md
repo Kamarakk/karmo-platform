@@ -28,18 +28,11 @@ Every change must state: purpose, files changed, tests run, results, risk, verif
 - H0.1 work stays isolated until H01-T01 through H01-T18 pass.
 - No legacy backfill, automatic deletion, document outbox work, worker service installation, or production migration in H0.1.
 
-## Inheritance & forward compatibility (every phase, permanent)
+## KARMO Engineering Invariants (every phase, permanent)
 
-Before any phase is deployment-ready, review every component it inherits
-from prior phases for: legacy-data compatibility, pagination/scale
-ceilings, schema evolution, lifecycle/version compatibility,
-identity/provenance preservation, transaction boundaries, failure
-behavior, runtime/service dependencies, API/dependency compatibility,
-upgrade/migration behavior, 10x/100x/1000x scale assumptions, and silent
-backward incompatibilities.
-
-- An "all records" operation must paginate until exhausted (e.g. follow
-  Qdrant's `next_page_offset`) -- never a fixed retrieval ceiling such as
-  `limit=10000`, unless a documented architectural reason says otherwise.
-- A new phase must preserve data and behavior created by prior phases
-  unless an explicit, approved migration changes it.
+`docs/governance/KARMO_ENGINEERING_INVARIANTS.md` (I-01 through I-09) is
+the single source of truth for KARMO's permanent engineering invariants
+and is not duplicated here. Compliance is mandatory for every phase,
+feature, service, migration, agent, integration, and deployment, and its
+Mandatory Phase Invariant Impact Review must be completed **before
+substantial implementation begins**, not retrofitted afterward.
