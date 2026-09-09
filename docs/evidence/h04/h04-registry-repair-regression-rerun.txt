@@ -1,0 +1,27 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.3.3, pluggy-1.6.0 -- /Users/sdcity/KARMO-DEV/h04/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/sdcity/KARMO-DEV/h04
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 11 items
+
+tests/test_h04_integrity_reconciliation.py::test_healthy_consistent_document_has_no_findings PASSED [  9%]
+tests/test_h04_integrity_reconciliation.py::test_missing_archived_file_detected PASSED [ 18%]
+tests/test_h04_integrity_reconciliation.py::test_archived_file_hash_mismatch_detected PASSED [ 27%]
+tests/test_h04_integrity_reconciliation.py::test_missing_qdrant_vector_detected PASSED [ 36%]
+tests/test_h04_integrity_reconciliation.py::test_orphan_qdrant_vector_detected PASSED [ 45%]
+tests/test_h04_integrity_reconciliation.py::test_incorrect_expected_chunk_count_detected PASSED [ 54%]
+tests/test_h04_integrity_reconciliation.py::test_multiple_active_versions_detected PASSED [ 63%]
+tests/test_h04_integrity_reconciliation.py::test_provenance_version_mismatch_detected PASSED [ 72%]
+tests/test_h04_integrity_reconciliation.py::test_auditor_is_report_only PASSED [ 81%]
+tests/test_h04_integrity_reconciliation.py::test_backup_snapshot_corruption_restore_integrity_workflow PASSED [ 90%]
+tests/test_h04_pagination.py::test_reconciliation_paginates_across_multiple_scroll_pages PASSED [100%]
+
+=============================== warnings summary ===============================
+venv/lib/python3.9/site-packages/urllib3/__init__.py:35
+  /Users/sdcity/KARMO-DEV/h04/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 11 passed, 1 warning in 1.29s =========================
