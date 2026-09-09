@@ -134,8 +134,11 @@ copies of the same definitions.
 
 ### Measurable Outcomes
 
-- **SC-001**: 100% of this program's prototype tests pass (154/154, as of
-  this specification's creation — see `docs/evidence/core-v2/`).
+- **SC-001**: 100% of this program's prototype tests pass (160/160 — 154
+  at initial creation, plus 6 more from an independent adversarial review
+  that found and fixed 4 real defects, see
+  `docs/evidence/core-v2/ADVERSARIAL_REVIEW_FIXES.md` — see
+  `docs/evidence/core-v2/`).
 - **SC-002**: Zero production access, zero merges, zero governance
   modification occurred in producing this specification (see the
   program's own final report).

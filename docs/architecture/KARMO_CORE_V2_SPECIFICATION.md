@@ -33,7 +33,10 @@ this section changed as a result of this program.**
 | Security/threat model | `docs/architecture/KARMO_CORE_V2_SECURITY_THREAT_MODEL.md` | N/A (analysis document) | Complete |
 | Test strategy | `docs/architecture/KARMO_CORE_V2_TEST_STRATEGY.md` | N/A (governs the above) | Complete |
 
-**154 prototype tests pass across the six code components** — see
+**160 prototype tests pass across the six code components** (154 at this
+specification's original creation; 6 more added when an independent
+adversarial review — `docs/evidence/core-v2/ADVERSARIAL_REVIEW_FIXES.md`
+— found and fixed 4 real defects in the prototypes) — see
 `docs/evidence/core-v2/` for raw output and JUnit XML. **None of these
 prototypes are wired into any production KARMO path.** Adopting any of
 them into a real implementation is a separate, future, explicitly-approved
