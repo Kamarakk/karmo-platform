@@ -194,3 +194,39 @@ MASTER_INDEX.md for status-tag definitions.
 - **KARMO FOUNDATION v1: not declared complete this pass** — see
   `docs/project-state/CURRENT_STATE.md` for the exact remaining blocker
   (Workload 2's resolution) and the three paths offered to close it.
+
+## Governance correction: Mandatory Production Access Authorization Gate (2026-09-08)
+
+- **VERIFIED** — Natalie explicitly approved resolving the conflict the
+  Workload 2 attempt surfaced: `CLAUDE.md` item 4 and `AGENTS.md`'s
+  "Authority and boundaries" section both stated an unconditional,
+  no-exception production-access prohibition, with no path for Natalie's
+  own explicit, task-specific authorizations to apply.
+- Added the Mandatory Production Access Authorization Gate to
+  `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`: production access
+  prohibited by default; lifted only by an explicit, task-specific,
+  narrowly-bounded authorization (target system, purpose, permitted
+  operations, read-only vs. write, applicable commands); read-only never
+  implies write; higher-impact actions (writes, deployment, destructive
+  actions, migrations, restarts, config changes, data repair, deletion)
+  each need their own separate grant; single-task scope, auto-expires;
+  defined mandatory STOP conditions; secrets never exposed or persisted;
+  does not override any other invariant/gate; narrower rule always wins; a
+  general workload approval never substitutes. Includes an
+  authorization-record shape for durable tracking.
+- `CLAUDE.md` item 4 and `AGENTS.md`'s equivalent bullet rewritten to
+  reference the gate rather than restate an unconditional prohibition
+  (`AGENTS.md` was not named in the request but carried the identical
+  conflict in an even more absolute form, so was updated too — otherwise
+  the conflict would only be partially resolved).
+  `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md` cross-referenced
+  to the same gate, not restated.
+- Invariant Impact Review performed before the change:
+  `docs/evidence/governance/PRODUCTION_ACCESS_AUTHORIZATION_GATE_INVARIANT_IMPACT_REVIEW.md`.
+- No production accessed; no Production Access Authorization issued or
+  acted on by this task, per explicit instruction. Branch
+  `governance/production-access-authorization-gate`, PR opened, **not
+  merged**.
+- Does not retroactively require re-justifying the already-accepted
+  H0.1/H0.2/H0.4 production cutover history — governs future production
+  access only.

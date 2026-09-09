@@ -1,11 +1,14 @@
 # KARMO Next Steps
 
 See MASTER_INDEX.md for status-tag definitions. As of the 2026-09-08
-Foundation Closeout Program pass, the primary next action is **Natalie
-resolving the Workload 2 blocker** (see below) and deciding how PRs #8/#9
-merging relates to declaring KARMO FOUNDATION v1 complete — see
-`docs/project-state/CURRENT_STATE.md`'s "Foundation Closeout Program"
-section for full detail.
+governance-correction pass, the primary next action is **Natalie either
+issuing an actual Production Access Authorization for the Workload 2
+commands under the newly-adopted Mandatory Production Access Authorization
+Gate, or explicitly accepting Workload 2 as deferred** (see item 3 below),
+and deciding how PRs #8/#9/#10/the governance PR merging relates to
+declaring KARMO FOUNDATION v1 complete — see
+`docs/project-state/CURRENT_STATE.md`'s "Foundation Closeout Program" and
+"Production Access Authorization Gate adopted" sections for full detail.
 
 ## 1. Keep the two ambiguous legacy hashes unresolved (no action required, active constraint)
 
@@ -30,23 +33,26 @@ Session Persistence extension) added to
 `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. Complete — no further
 action.
 
-## 3. Foundation Completion Workload 2 — Production verification closeout: BLOCKED, needs Natalie's decision
+## 3. Foundation Completion Workload 2 — Production verification closeout: governance blocker resolved, still needs an actual authorization
 
 Natalie approved and pre-authorized this workload as part of the Foundation
 Closeout Program (2026-09-08), but the read-only production connection was
-**not attempted** — `CLAUDE.md` item 4's unconditional prohibition on
-production database/Qdrant access governs this session and was not
-overridden by the chat-level pre-authorization (see
-`docs/project-state/CURRENT_STATE.md`, "Foundation Closeout Program"
-section, for the full reasoning). **Natalie must choose one:**
+**not attempted** — `CLAUDE.md` item 4's then-unconditional prohibition on
+production database/Qdrant access governed that session and was not
+overridden by the chat-level pre-authorization. Natalie subsequently
+approved a governance correction (2026-09-08, same day): the **Mandatory
+Production Access Authorization Gate** (`docs/governance/KARMO_ENGINEERING_INVARIANTS.md`)
+now defines exactly how a narrow, explicit, task-specific authorization can
+lift the default production-access prohibition. **Natalie must still
+choose one:**
 
-- Run the two prepared read-only commands
-  (`docs/project-state/COMMAND_LOG.md`, H01-T01/H01-T18) herself or via an
-  operator, and provide the results for reconciliation into
-  `docs/evidence/h01/H01_FAILURE_MATRIX_REPORT.md` and `CURRENT_STATE.md`; or
-- Explicitly amend `CLAUDE.md` to narrow item 4 for a defined class of
-  read-only verification (a governance change requiring her own explicit,
-  separate approval — not something any session should decide for itself); or
+- Issue an actual Production Access Authorization (per the gate's required
+  shape) for the two prepared read-only commands
+  (`docs/project-state/COMMAND_LOG.md`, H01-T01/H01-T18) — read-only,
+  target system `karmo-ai01`, purpose H0.1 closeout reverification — so a
+  future session can execute them and reconcile the results into
+  `docs/evidence/h01/H01_FAILURE_MATRIX_REPORT.md` and `CURRENT_STATE.md`;
+  or
 - Explicitly accept Workload 2 as permanently deferred, non-blocking
   closeout — consistent with how the residual risk it reverifies was
   already accepted on 2026-09-06.
@@ -98,5 +104,9 @@ rather than a separate session.
 - The two ambiguous H0.4 legacy hashes were not resolved (see #1).
 - H0.3 remains NO-PROMOTION (unaffected by its evidence now being
   committed — see CURRENT_STATE.md).
-- No PR was merged by this pass (PRs #8 and #9 opened, not merged; PR #7
-  was already merged before this pass began).
+- No PR was merged by this pass (PRs #8, #9, #10, and the governance
+  correction PR opened, not merged; PR #7 was already merged before this
+  pass began).
+- No production was accessed and no Production Access Authorization was
+  issued or acted on during the governance-correction pass itself, per
+  explicit instruction — that pass only defined the gate.
