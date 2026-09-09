@@ -113,6 +113,38 @@ records were never re-run with a guessed ordering and remain unresolved — do
 not construct or run a command that forces their registration without an
 explicit human decision recorded in CURRENT_STATE.md first.
 
+## H0.4 registry repair tool — isolated reproduction (VERIFIED, repo-evidenced,
+2026-09-08, Foundation Closeout Program Workload 3)
+
+```
+cd h04
+./scripts/setup_test_env.sh
+venv/bin/python -m pytest -v tests/test_h04_registry_repair.py
+venv/bin/python -m pytest -v tests/test_h04_integrity_reconciliation.py tests/test_h04_pagination.py
+./scripts/teardown_test_env.sh
+```
+
+Result: registry-repair suite 4/4 PASS; targeted existing-suite re-run
+11/11 PASS. See `docs/evidence/h04/H04_REGISTRY_REPAIR_REPORT.md`.
+
+Report-only dry run (no writes, ever, without `--apply`):
+
+```
+python3 h04/app/registry_repair.py \
+  --qdrant-url <qdrant-url> \
+  --collection karmo_documents
+```
+
+Apply run (writes only verified groups; **not run against production by
+this workload** — a separate, future, explicitly-authorized action):
+
+```
+python3 h04/app/registry_repair.py \
+  --qdrant-url <qdrant-url> \
+  --collection karmo_documents \
+  --apply
+```
+
 ## Spec Kit — inspection only (VERIFIED, this session; no command executed
 against this repository)
 
