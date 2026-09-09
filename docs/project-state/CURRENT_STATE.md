@@ -13,7 +13,7 @@ repository-only, zero production access, zero merges): a full
 architecture map of Foundation v1, a Tool/Capability Registry + Approval
 Engine + Job/Event model + configuration single-sourcing + failure-
 injection framework + autonomous-run evidence validator — all designed
-and prototyped in isolation (154/154 tests passing) — a security threat
+and prototyped in isolation (160/160 tests passing) — a security threat
 model, a Core v2 test strategy, and readiness specs for BloomBoss,
 Voice/Media, and Finance/Trading, consolidated into a proposed KARMO Core
 v2 specification. **No Core v2 component is implemented in production; no
@@ -365,7 +365,7 @@ instruction (max 4):
   outbox relay's pattern), a configuration single-sourcing proof of
   concept, a failure-injection framework covering all 12 named
   categories applied against the other prototypes, and the run-evidence
-  schema/validator prototype. **154/154 tests pass** — see
+  schema/validator prototype. **160/160 tests pass** — see
   `docs/evidence/core-v2/core-v2-prototypes-run.txt` and
   `-junit.xml`. Nothing here is wired into any KARMO production path.
 - **PR #20** — BloomBoss readiness spec (Workstream 9: 14-entity model,

@@ -285,8 +285,11 @@ MASTER_INDEX.md for status-tag definitions.
   threat model, test strategy designs; run-verification system design),
   **PR #19** (isolated prototypes — Tool/Capability Registry, Approval
   Engine, Job/Event model, configuration single-sourcing POC,
-  failure-injection framework, run-evidence validator; **154/154 tests
-  pass**, nothing wired into production), **PR #20** (BloomBoss,
+  failure-injection framework, run-evidence validator; **160/160 tests
+  pass** — updated from 154 after the KARMO Large Autonomous Review
+  found and fixed 4 real defects, see
+  `docs/evidence/core-v2/ADVERSARIAL_REVIEW_FIXES.md` —
+  nothing wired into production), **PR #20** (BloomBoss,
   Voice/Media, and Finance/Trading readiness specs; implementation
   dependency graph with 6 candidate batches; consolidated Core v2
   specification separating EXISTING/PROPOSED/FUTURE), **PR #21** (this

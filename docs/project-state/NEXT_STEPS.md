@@ -27,7 +27,7 @@ urgent response.
    — design/documentation only.
 6. Merge/reject PR #19 (Core v2 prototypes: Tool Registry, Approval
    Engine, Job/Event model, config POC, failure injection, run-evidence
-   validator) — 154/154 tests pass, nothing wired into production.
+   validator) — 160/160 tests pass, nothing wired into production.
 7. Merge/reject PR #20 (BloomBoss/Voice-Media/Finance readiness specs,
    implementation dependency graph, consolidated Core v2 spec) —
    design/planning only.
