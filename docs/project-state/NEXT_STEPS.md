@@ -1,10 +1,11 @@
 # KARMO Next Steps
 
 See MASTER_INDEX.md for status-tag definitions. As of the 2026-09-08
-foundation-acceleration pass, the primary next action is **Natalie choosing
-which workload(s) in `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md` to
-approve next** — the items below map onto that plan's 5 workloads plus one
-standing constraint that isn't a workload at all.
+Foundation Closeout Program pass, the primary next action is **Natalie
+resolving the Workload 2 blocker** (see below) and deciding how PRs #8/#9
+merging relates to declaring KARMO FOUNDATION v1 complete — see
+`docs/project-state/CURRENT_STATE.md`'s "Foundation Closeout Program"
+section for full detail.
 
 ## 1. Keep the two ambiguous legacy hashes unresolved (no action required, active constraint)
 
@@ -18,72 +19,84 @@ will not and should not guess. Do not mark these resolved in CURRENT_STATE.md
 without that explicit decision recorded. Not part of any workload; this is a
 standing constraint until Natalie decides.
 
-## 2. Foundation Completion Workload 1 — Repository hygiene & evidence durability (APPROVED, in progress)
+## 2. Foundation Completion Workload 1 — Repository hygiene & evidence durability (MERGED)
 
-Natalie approved this workload on 2026-09-08. Scope now also includes the
-Mandatory Project Save Completion Rule added to
-`docs/governance/KARMO_ENGINEERING_INVARIANTS.md` (and referenced from
-`AGENTS.md`/`CLAUDE.md`) immediately before starting, per explicit
-instruction, so the rule becomes durable together with the first
-project-state-driven workload. Full scope: commit `h03/`,
+Approved and merged 2026-09-08 (PR #7, `db4ff2f`): `h03/`,
 `docs/evidence/h03/` (including `H03_EVALUATION_STATUS.md`),
-`docs/handoff/h01/frozen-design/` byte-for-byte as they exist, the
-already-made comment correction in
-`h04/app/migrations/001_h04_document_registry.sql`, the governance rule
-addition, and the `docs/project-state/` updates recording it. Full detail:
-`docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`, Workload 1.
+`docs/handoff/h01/frozen-design/` committed byte-for-byte; the
+`h04/app/migrations/001_h04_document_registry.sql` comment correction
+committed; the Mandatory Project Save Completion Rule (and its ChatGPT
+Session Persistence extension) added to
+`docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. Complete — no further
+action.
 
-## 3. Approve Foundation Completion Workload 2 — Production verification closeout (H01-T01/T18)
+## 3. Foundation Completion Workload 2 — Production verification closeout: BLOCKED, needs Natalie's decision
 
-Natalie accepted this residual risk on 2026-09-06 as not blocking further
-phases, but the reverification itself (H0.0 final manifest, H01-implementation-build
-manifest, and live PostgreSQL/Qdrant baseline counts) has still not been
-performed. Requires Natalie's **separate, explicit authorization for
-read-only production access** — workload approval alone does not clear
-this. Full detail: `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`,
-Workload 2.
+Natalie approved and pre-authorized this workload as part of the Foundation
+Closeout Program (2026-09-08), but the read-only production connection was
+**not attempted** — `CLAUDE.md` item 4's unconditional prohibition on
+production database/Qdrant access governs this session and was not
+overridden by the chat-level pre-authorization (see
+`docs/project-state/CURRENT_STATE.md`, "Foundation Closeout Program"
+section, for the full reasoning). **Natalie must choose one:**
 
-## 4. Approve Foundation Completion Workload 3 — Registry integrity repair tool (I-04 follow-up)
+- Run the two prepared read-only commands
+  (`docs/project-state/COMMAND_LOG.md`, H01-T01/H01-T18) herself or via an
+  operator, and provide the results for reconciliation into
+  `docs/evidence/h01/H01_FAILURE_MATRIX_REPORT.md` and `CURRENT_STATE.md`; or
+- Explicitly amend `CLAUDE.md` to narrow item 4 for a defined class of
+  read-only verification (a governance change requiring her own explicit,
+  separate approval — not something any session should decide for itself); or
+- Explicitly accept Workload 2 as permanently deferred, non-blocking
+  closeout — consistent with how the residual risk it reverifies was
+  already accepted on 2026-09-06.
 
-Per `docs/evidence/h04/H04_INVARIANT_IMPACT_REVIEW.md`: if a document's
-registry write fails after the Qdrant write succeeds, there is no automatic
-repair tool yet (the gap is not silent — `run_auditor.py` already reports it
-as `ORPHAN_VECTOR`). Explicitly deferred, separately authorized future work;
-now scoped as Workload 3 in the foundation completion plan, fully isolated
-until a later, separate approval for any production run.
+## 4. Foundation Completion Workload 3 — Registry integrity repair tool (COMPLETE, PR OPEN)
 
-## 5. Approve Foundation Completion Workload 4 — Spec Kit brownfield adoption
+Complete in isolation, 2026-09-08: `h04/app/registry_repair.py` + 4/4 new
+suite PASS + 11/11 targeted regression re-run PASS + Invariant Impact
+Review, per `docs/evidence/h04/H04_REGISTRY_REPAIR_REPORT.md`. PR #8
+(`feat/h04-registry-repair`) open, awaiting Natalie's merge decision. No
+production execution performed or authorized — a separate, future,
+explicitly-authorized action if ever pursued.
 
-Inspection is complete and the plan is formalized
-(`docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md`). **Do not run `specify init` or
-install the `specify` CLI until Natalie explicitly approves this specific
-action** — workload approval covers preparation; running `specify init`
-itself is called out as its own stop point even within an approved
-workload.
+## 5. Foundation Completion Workload 4 — Spec Kit brownfield adoption (COMPLETE, PR OPEN)
 
-## 6. Foundation Completion Workload 5 — H0.5 scope definition & kickoff (blocked on Workload 4 + Natalie's scope choice)
+Complete 2026-09-08: `specify init --here --force --integration claude`
+(v1.0.4) run on Natalie's explicit pre-authorization; diff confirmed
+additive-only (`.claude/skills/`, `.specify/`); constitution filled in,
+subordinated to `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. PR #9
+(`feat/h05-spec-kit-adoption`) open, awaiting Natalie's merge decision.
+
+## 6. Foundation Completion Workload 5 — H0.5 scope definition & kickoff (blocked on Workload 4 merge + Natalie's scope choice)
 
 Per the recorded workflow decision: KARMO Invariant Impact Review →
-Spec Kit `/speckit.constitution` → `/speckit.specify` → `/speckit.plan` →
-`/speckit.tasks` → `/speckit.implement` → validation ladder → phase
-acceptance → deployment. H0.5's specific scope is **NEEDS VERIFICATION** —
-not defined as of this reconciliation, and this plan does not invent one.
+`/speckit-specify` → `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`
+→ validation ladder → phase acceptance → deployment. H0.5's specific scope
+remains **NEEDS VERIFICATION** — not defined, and explicitly not invented by
+this or any prior pass. The Foundation Closeout consolidation review's
+extensibility-review-derived observation (a tool/capability registry as a
+strong first candidate, since every planned domain depends on it) is a
+suggestion for Natalie to weigh, not a decision made on her behalf.
 
 ## 7. Confirm current live data counts (routine, low urgency, folds into Workload 2)
 
-SOFTWARE_INVENTORY.md and NETWORK_INVENTORY.md both flag several current
+`SOFTWARE_INVENTORY.md` and `NETWORK_INVENTORY.md` both flag several current
 counts (`conversation_memory`, `karmo_memory`, `karmo_semantic_memory`,
 `karmo_documents`, `public.document_registry` row count) as **NEEDS
-VERIFICATION** — known only as of their last-recorded checkpoint. Fold into
-Workload 2's authorized production-facing check rather than a separate
-session.
+VERIFICATION** — known only as of their last-recorded checkpoint. Folds into
+Workload 2's authorized production-facing check once that is unblocked,
+rather than a separate session.
 
 ## Not next steps (explicitly out of scope until separately authorized)
 
 - No production access, SSH, deploy, database/Qdrant modification, or
-  runtime-service change was performed or is proposed by this pass.
-- Spec Kit initialization (see #5) — not performed.
-- Workload 1 is approved and in progress (see #2); Workloads 2–5 remain
-  unapproved and not started.
+  runtime-service change was performed by this pass — including the
+  Workload 2 read-only checks, per item 3 above.
+- No H0.5 spec/plan/tasks were written — Workload 5 remains blocked on
+  Natalie's scope choice (see #6).
 - The two ambiguous H0.4 legacy hashes were not resolved (see #1).
-- H0.3 was not promoted and remains NO-PROMOTION (see CURRENT_STATE.md).
+- H0.3 remains NO-PROMOTION (unaffected by its evidence now being
+  committed — see CURRENT_STATE.md).
+- No PR was merged by this pass (PRs #8 and #9 opened, not merged; PR #7
+  was already merged before this pass began).

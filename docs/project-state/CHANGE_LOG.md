@@ -147,3 +147,50 @@ MASTER_INDEX.md for status-tag definitions.
   `chore/repo-hygiene-and-project-save-rule` branch, updating PR #7 rather
   than opening a new one, per instruction not to redo Workload 1. PR #7
   remains unmerged.
+
+## Workload 1 merged (2026-09-08)
+
+- **VERIFIED** — PR #7 (`chore/repo-hygiene-and-project-save-rule`) merged
+  as `db4ff2f`. `h03/`, `docs/evidence/h03/`, `docs/handoff/h01/frozen-design/`
+  committed byte-for-byte; H0.4 migration comment correction committed; the
+  Mandatory Project Save Completion Rule and its ChatGPT extension are now
+  durable in `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`.
+
+## Foundation Closeout Program (2026-09-08)
+
+- **VERIFIED** — a consolidation review (requested by Natalie) analyzed
+  whether Workloads 2–5 of `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`
+  could be run as one autonomous program. Natalie approved and
+  pre-authorized running Workloads 2, 3, and 4 together in one session,
+  including the two standing-gate actions each carried (read-only
+  production access for Workload 2; `specify init` for Workload 4).
+- **Workload 2 (production verification closeout): NOT EXECUTED, blocked.**
+  `CLAUDE.md` item 4's unconditional prohibition on production database/
+  Qdrant/SSH access was treated as controlling over the chat-level
+  pre-authorization, since it carries no approval-override clause (unlike
+  item 5) and the file's own preamble marks it as overriding session
+  instructions. No connection to `karmo-ai01` was attempted, though the
+  host was confirmed network-reachable. Full reasoning and the three
+  resolution paths offered to Natalie: `docs/project-state/CURRENT_STATE.md`,
+  "Foundation Closeout Program" section.
+- **Workload 3 (registry integrity repair tool): complete in isolation.**
+  `h04/app/registry_repair.py`, isolated report/apply CLI constructing a
+  missing `document_registry` row for an `ORPHAN_VECTOR` finding strictly
+  from Qdrant payload metadata, refusing on any ambiguity — mirrors
+  `bootstrap_legacy_registry.py`'s verify-don't-guess pattern for full
+  H0.4-lifecycle orphan points rather than legacy points. New suite 4/4
+  PASS; targeted existing-suite re-run 11/11 PASS, unchanged; `auditor.py`
+  diff confirmed empty. Evidence: `docs/evidence/h04/H04_REGISTRY_REPAIR_REPORT.md`.
+  PR #8 (`feat/h04-registry-repair`), opened, not merged.
+- **Workload 4 (Spec Kit brownfield adoption): complete.** `specify-cli`
+  v1.0.4 installed; `specify init --here --force --integration claude` run
+  on `feat/h05-spec-kit-adoption`; diff confirmed additive-only
+  (`.claude/skills/`, `.specify/`); constitution filled in per
+  `docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md`'s content plan, subordinated to
+  `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. PR #9, opened, not
+  merged.
+- **Workload 5: not started**, per explicit instruction not to invent
+  H0.5's scope. Remains blocked on Natalie's choice.
+- **KARMO FOUNDATION v1: not declared complete this pass** — see
+  `docs/project-state/CURRENT_STATE.md` for the exact remaining blocker
+  (Workload 2's resolution) and the three paths offered to close it.
