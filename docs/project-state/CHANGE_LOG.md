@@ -271,3 +271,45 @@ MASTER_INDEX.md for status-tag definitions.
 - H0.5/Workload 5 correctly not started — first post-foundation capability
   phase, Natalie's scope choice, not invented.
 - **KARMO FOUNDATION v1 — COMPLETE.**
+
+## KARMO Large Autonomous Review of PR #14–#21 (2026-09-09, same day)
+
+- **VERIFIED** — Natalie authorized an independent merge-readiness and
+  cross-compatibility review of all 8 open PRs from the two prior
+  programs, explicitly prohibiting production access, merges, and new
+  capability implementation.
+- Every test claim reproduced fresh (not trusted from stored output),
+  including the H0.4 fix's full 17-test suite against a freshly-created
+  isolated stack and the Core v2 prototype suite from a freshly-rebuilt
+  virtualenv.
+- Adversarial re-review of the Core v2 prototypes found and fixed **4
+  real defects** in PR #19 (154 → 160 tests): the run-evidence verifier
+  never actually checked `evidence`/`test_results` at all; the Trust
+  Score's placeholder components let obviously-fabricated evidence score
+  ~0.58 instead of low; the Approval Engine had no executor-identity
+  binding at all (a stolen/leaked `approval_id` could be used by anyone);
+  the Tool Registry silently accepted unknown manifest fields. Full
+  detail: `docs/evidence/core-v2/ADVERSARIAL_REVIEW_FIXES.md`.
+- Cross-PR conflict analysis (real `git merge` simulation, not
+  prediction) found PR #17 and PR #21 conflict on the same 3
+  `docs/project-state/` files — both independently rewrote overlapping
+  narrative sections from the same pre-#17 base. No other conflict found
+  among any of the 8 PRs. Recommended merge order and resolution
+  guidance: `docs/evidence/autonomous-review/MERGE_SEQUENCE.md`.
+- Spec/prototype conformance table produced — 23 requirements checked;
+  the most significant PARTIAL finding: the Tool Registry and Approval
+  Engine prototypes were never actually exercised together end to end
+  (every test hardcodes `authority_class` rather than deriving it from a
+  real registry lookup).
+- Stale "154" test-count references found and fixed in PR #20 and #21
+  (existing PRs updated in place, no new PR created for these fixes).
+- One new PR created (`review/pr14-21-merge-readiness`, per explicit
+  permission to create at most one, for the review's own cross-cutting
+  evidence that does not belong to any single existing branch):
+  `docs/evidence/autonomous-review/` — the merge-readiness packet, merge
+  sequence, spec/prototype conformance table, deduplicated findings
+  triage, and capability decision matrix (Tool Registry vs. Voice vs.
+  BloomBoss first, plus a hybrid option) — **does not choose Natalie's
+  first capability**.
+- **Production access: zero. Merges: zero.** No PR marked merged. No
+  capability marked implemented.

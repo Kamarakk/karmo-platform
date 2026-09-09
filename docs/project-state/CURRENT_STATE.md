@@ -1,12 +1,23 @@
 # KARMO Current State
 
-Last reconciled: 2026-09-09 (Foundation v1 closeout pass). See
-MASTER_INDEX.md for status-tag definitions.
+Last reconciled: 2026-09-09 (KARMO Large Autonomous Review of PR #14–#21).
+See MASTER_INDEX.md for status-tag definitions.
 
 **KARMO FOUNDATION v1: DECLARED COMPLETE, 2026-09-09.** See
 `docs/evidence/foundation-v1/FOUNDATION_V1_CLOSEOUT_REPORT.md` for the full
 closeout report and `docs/evidence/foundation-v1/` for the complete
 independent-verification evidence package.
+
+**Independent merge-readiness review of PRs #14–#21 completed 2026-09-09**
+(same day, repository-only, zero production access, zero merges): fresh
+reproduction of every test claim, a real cross-PR conflict found and
+documented (PR #17 vs. #21, both editing the same `docs/project-state/`
+files), and an adversarial security re-review of the Core v2 prototypes
+that found and fixed **4 real defects** in PR #19 (154 → 160 tests) plus
+2 stale test-count references in PR #20/#21 — all fixed **in the existing
+PRs**, no new PR created for fixes. Full detail:
+`docs/evidence/autonomous-review/KARMO_PR14_21_MERGE_READINESS.md`. **No
+PR was merged. No capability was implemented or chosen.**
 
 ## Top-line
 

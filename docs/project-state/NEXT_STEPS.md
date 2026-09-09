@@ -3,9 +3,25 @@
 See MASTER_INDEX.md for status-tag definitions. **KARMO FOUNDATION v1 was
 declared COMPLETE on 2026-09-09** — see
 `docs/evidence/foundation-v1/FOUNDATION_V1_CLOSEOUT_REPORT.md` for the full
-closeout report. The primary next action is now **Natalie choosing the
-first post-foundation capability phase** (see item 6 below) — there is no
-outstanding foundation-blocking work.
+closeout report.
+
+**An independent merge-readiness review of PRs #14–#21 completed
+2026-09-09** — see
+`docs/evidence/autonomous-review/KARMO_PR14_21_MERGE_READINESS.md` for
+full PR-by-PR status and `docs/evidence/autonomous-review/MERGE_SEQUENCE.md`
+for the recommended merge order (#14, #15, #16, #17, #18, #19, #20, #21 —
+#17 before #21 specifically, to resolve a real, documented conflict
+between the two PROJECT SAVE PRs). PR #19 was updated in place with 4
+adversarial-review fixes (154 → 160 tests); PR #20 and #21 were updated
+in place to correct the resulting stale test-count references. No new PR
+was created for these fixes — existing PRs were updated directly.
+
+The primary next action is now **Natalie choosing the first
+post-foundation capability phase** — see
+`docs/evidence/autonomous-review/CAPABILITY_DECISION_MATRIX.md` for a
+fresh A/B/C comparison (Tool/Capability Registry first, Voice first,
+BloomBoss first, plus a hybrid option) — there is no outstanding
+foundation-blocking work.
 
 ## 1. Keep the two ambiguous legacy hashes unresolved (no action required, active constraint)
 
