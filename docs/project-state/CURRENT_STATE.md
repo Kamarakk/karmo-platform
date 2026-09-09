@@ -20,23 +20,25 @@ MASTER_INDEX.md for status-tag definitions.
   phases.
 - Legacy registry bootstrap: **VERIFIED** partially applied; 2 records
   intentionally left unresolved (see "Legacy registry bootstrap" below).
-- Spec Kit: **VERIFIED** approved for evaluation/integration preparation;
-  inspection completed; a formal brownfield plan is written
-  (`docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md`); **still not initialized** — no
-  `specify init` command has been run. Initialization requires Natalie's
-  separate, explicit approval.
-- Foundation acceleration: **VERIFIED** (this session) — a product vision
-  (`docs/vision/KARMO_PRODUCT_VISION.md`), an extensibility review
-  (`docs/architecture/KARMO_EXTENSIBILITY_REVIEW.md`), a 5-workload
-  foundation completion plan (`docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`),
-  a reusable validation ladder (`docs/governance/KARMO_VALIDATION_LADDER.md`),
-  and an autonomous workload execution contract
-  (`docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`) were created.
-  **None of the 5 workloads has been approved or started** as of this
-  reconciliation — see NEXT_STEPS.md.
+- Spec Kit: **VERIFIED** — brownfield initialization completed 2026-09-08
+  (`specify init --here --force --integration claude`, v1.0.4) on branch
+  `feat/h05-spec-kit-adoption`, PR #9, **open, not yet merged**. See
+  "Spec Kit decision" below.
+- Foundation acceleration / Foundation Closeout Program: **VERIFIED**
+  (2026-09-08) — a consolidation review determined Workloads 2, 3, and 4 of
+  `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md` could run as one
+  autonomous program; Natalie approved and pre-authorized it the same day.
+  Outcome: **Workload 1 merged** (PR #7, `db4ff2f`). **Workload 2 blocked,
+  not executed** — see "Foundation Closeout Program" section below for the
+  exact reason. **Workload 3 complete in isolation**, PR #8, open, not yet
+  merged. **Workload 4 complete**, PR #9, open, not yet merged. **Workload
+  5 remains blocked** on Natalie choosing H0.5's scope — not started, per
+  explicit instruction not to invent one.
 - Active/next phase: **NEEDS VERIFICATION** — H0.5's scope is still
   undefined; Workload 5 in the foundation completion plan is explicitly
-  blocked on Natalie choosing it. See NEXT_STEPS.md.
+  blocked on Natalie choosing it. **KARMO FOUNDATION v1 is NOT YET
+  declared COMPLETE** — see "Foundation Closeout Program" section below for
+  the exact remaining blocker. See also NEXT_STEPS.md.
 - Project Save Completion Rule: **VERIFIED** adopted (2026-09-08) — appended
   to `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`, referenced from
   `AGENTS.md` and `CLAUDE.md`. Applies to this and every future session,
@@ -105,20 +107,18 @@ MASTER_INDEX.md for status-tag definitions.
   is retained as evaluated/retained evidence only and is **not** part of the
   active production retrieval architecture.
 
-**Conflict/gap found during the 2026-09-08 reconciliation, addressed but not
-resolved:** the H0.3 implementation (`h03/app/hybrid_ingest.py`,
+**Conflict/gap found during the 2026-09-08 reconciliation, resolved the same
+day:** the H0.3 implementation (`h03/app/hybrid_ingest.py`,
 `hybrid_memory.py`, `sparse_bm25.py`) and its benchmark evidence
-(`docs/evidence/h03/*`) still exist only as **untracked working-tree
-files** — not committed to `main` or to `feat/h03-hybrid-retrieval` (that
-branch's tip is identical to `main`). A fresh clone of this repository today
-would still not have the H0.3 prototype or its evidence. This does not
-change, and must not be read as changing, the NO-PROMOTION decision — H0.3
-remains explicitly not promoted to production. `docs/evidence/h03/H03_EVALUATION_STATUS.md`
-was added this session to state the NO-PROMOTION status at the evidence
-location itself and enumerate exactly which files belong in the eventual
-commit. Committing them is now Workload 1 in
-`docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md` — not yet approved or
-executed.
+(`docs/evidence/h03/*`, including `H03_EVALUATION_STATUS.md`) previously
+existed only as untracked working-tree files. This was Workload 1 in
+`docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`, approved and merged
+2026-09-08 (PR #7, `db4ff2f`) — the files are now committed to `main`,
+byte-for-byte identical to their pre-commit working-tree content (verified
+empty diff at commit time, per Workload 1's own acceptance criteria). This
+does not change, and must not be read as changing, the NO-PROMOTION
+decision — H0.3 remains explicitly not promoted to production; only its
+evidence durability gap is closed.
 
 ## H0.4 — Integrity, Reconciliation & Production Integration
 
@@ -150,16 +150,15 @@ executed.
   `py_compile`-validated (operator-attested); `document_registry` existence
   verified in production (operator-attested).
 
-**Conflict found during the 2026-09-08 reconciliation, corrected the same
-day:** the migration file `h04/app/migrations/001_h04_document_registry.sql`
-carried a stale header comment ("Isolated build artifact only. Not applied
-to any production database.") contradicted by the verified H0.4 cutover.
-The comment was corrected in the working tree during the foundation-
-acceleration pass to state that the migration was applied to production as
-part of H0.4 cutover, pointing back to this record. **This edit has not
-been committed** — it is staged in the working tree only, pending Workload 1
-in `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`. No other content in
-that migration file was changed.
+**Conflict found during the 2026-09-08 reconciliation, corrected and
+committed the same day:** the migration file
+`h04/app/migrations/001_h04_document_registry.sql` carried a stale header
+comment ("Isolated build artifact only. Not applied to any production
+database.") contradicted by the verified H0.4 cutover. The comment was
+corrected to state that the migration was applied to production as part of
+the H0.4 cutover, pointing back to this record. This was part of Workload 1
+in `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`, merged 2026-09-08
+(PR #7, `db4ff2f`). No other content in that migration file was changed.
 
 ## Legacy registry bootstrap — current stopping point
 
@@ -207,6 +206,63 @@ that migration file was changed.
   explicit approval** before any `specify init` command is run. This
   foundation-acceleration pass prepared the plan only — it did not run the
   command, per explicit instruction.
+
+## Foundation Closeout Program (2026-09-08)
+
+**VERIFIED** — Natalie approved a consolidation review's recommendation to
+run Workloads 2, 3, and 4 of `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`
+as one autonomous program, with pre-authorization for the two standing-gate
+actions each carried (read-only production access for Workload 2;
+`specify init` for Workload 4).
+
+- **Workload 2 (production verification closeout): BLOCKED, NOT EXECUTED.**
+  `CLAUDE.md` item 4 states, unconditionally: "Never use production SSH,
+  Docker sockets, production databases, Qdrant, secrets, real documents, or
+  customer data." `CLAUDE.md`'s own preamble marks its instructions as
+  overriding any default behavior and to be followed exactly as written;
+  unlike item 5 (autonomous schedules), item 4 carries no
+  approval-override clause. This session's chat-level pre-authorization for
+  read-only production access was therefore **not acted on** — no
+  connection to `karmo-ai01` was attempted, even though the host was
+  confirmed network-reachable from this environment. The H01-T01/H01-T18
+  reverification commands remain exactly as already prepared in
+  `docs/project-state/COMMAND_LOG.md`; nothing about them changed. **This is
+  the exact remaining blocker to closing Workload 2** and requires one of:
+  (a) Natalie or an operator runs the two prepared read-only commands
+  directly and provides the results for reconciliation into this record;
+  (b) Natalie makes an explicit governance change to `CLAUDE.md` narrowing
+  item 4's scope for a defined class of read-only verification (itself a
+  standing-gate action — "any change to KARMO governance" — requiring her
+  explicit approval, not something this session decided unilaterally); or
+  (c) Natalie explicitly accepts Workload 2 as permanently deferred,
+  non-blocking closeout (consistent with how the residual risk it
+  reverifies was already accepted on 2026-09-06).
+- **Workload 3 (registry integrity repair tool): complete in isolation.**
+  `h04/app/registry_repair.py` + `h04/tests/test_h04_registry_repair.py`
+  (4/4 PASS) + targeted regression re-run (11/11 PASS, existing suite
+  unchanged) + Invariant Impact Review, all per
+  `docs/evidence/h04/H04_REGISTRY_REPAIR_REPORT.md`. Branch
+  `feat/h04-registry-repair`, PR #8, **open, not yet merged**. No production
+  execution performed or authorized.
+- **Workload 4 (Spec Kit brownfield adoption): complete.** See "Spec Kit
+  decision" above. Branch `feat/h05-spec-kit-adoption`, PR #9, **open, not
+  yet merged**.
+- **Workload 5 (H0.5 scope definition): not started**, per explicit
+  instruction not to invent H0.5's scope. Remains blocked on Natalie's
+  choice.
+
+### KARMO FOUNDATION v1 status: **NOT YET DECLARED COMPLETE**
+
+Per the consolidation review's own criterion (Foundation Complete =
+Workload 1 merged + an explicit Natalie decision on Workloads 2/3): Workload
+1 is merged, but Workload 2 hit a new, previously-undocumented blocker (the
+`CLAUDE.md` conflict above) rather than reaching a deferred-or-run decision,
+so that decision is still outstanding. Once Natalie resolves Workload 2 by
+one of the three paths above, and confirms whether PRs #8/#9 merging is a
+precondition or can trail the declaration, Foundation v1 can be formally
+declared complete without needing Workload 5 / H0.5 to start first — H0.5
+is the first post-foundation capability phase, not a required foundation
+increment (see the consolidation review for the full reasoning).
 
 ## Confirmed data-state baselines (for reference, HISTORICAL unless restated)
 
