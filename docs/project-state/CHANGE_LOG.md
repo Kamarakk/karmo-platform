@@ -271,3 +271,38 @@ MASTER_INDEX.md for status-tag definitions.
 - H0.5/Workload 5 correctly not started — first post-foundation capability
   phase, Natalie's scope choice, not invented.
 - **KARMO FOUNDATION v1 — COMPLETE.**
+
+## Core v2 Engineering Blueprint Program (2026-09-09, same day)
+
+- **VERIFIED** — Natalie authorized one large, repository-only autonomous
+  planning/prototyping/validation program, explicitly prohibiting all
+  production access and any merge, to prepare KARMO Core so future
+  post-foundation capability implementation can proceed in large batches.
+  Did not merge or duplicate the prior Post-Foundation Overnight
+  Readiness Program's PRs (#14–#17).
+- 15 workstreams, grouped into 4 PRs per explicit PR-discipline
+  instruction: **PR #18** (architecture map; observability, security
+  threat model, test strategy designs; run-verification system design),
+  **PR #19** (isolated prototypes — Tool/Capability Registry, Approval
+  Engine, Job/Event model, configuration single-sourcing POC,
+  failure-injection framework, run-evidence validator; **154/154 tests
+  pass**, nothing wired into production), **PR #20** (BloomBoss,
+  Voice/Media, and Finance/Trading readiness specs; implementation
+  dependency graph with 6 candidate batches; consolidated Core v2
+  specification separating EXISTING/PROPOSED/FUTURE), **PR #21** (this
+  PROJECT SAVE).
+- Core guarantee proven by the Tool Registry + Approval Engine
+  prototypes together: a tool's required human-approval level is
+  computed, never independently declarable, and `financial_action`/
+  `destructive_action` can only raise it, never lower it — verified
+  across every `capability_class` × flag combination, and specifically
+  for trade execution (Workstream 11), which is structurally forced to
+  `EXPLICIT_PER_CALL` with exact-parameter binding, making a generic
+  "trade for me today" approval unrepresentable under the design.
+  Voice's wake/listen and streaming needs were identified as genuinely
+  new Core abstractions not yet covered by any prototype built.
+- Two candidate governance additions proposed (configuration
+  single-sourcing, carried from the prior program; tool-registration
+  review, new this program) — **neither adopted**, governance unchanged.
+- **Production access: zero. Merges: zero.** No capability chosen or
+  started.
