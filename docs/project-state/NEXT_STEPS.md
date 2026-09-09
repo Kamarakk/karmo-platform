@@ -1,112 +1,87 @@
 # KARMO Next Steps
 
-See MASTER_INDEX.md for status-tag definitions. As of the 2026-09-08
-governance-correction pass, the primary next action is **Natalie either
-issuing an actual Production Access Authorization for the Workload 2
-commands under the newly-adopted Mandatory Production Access Authorization
-Gate, or explicitly accepting Workload 2 as deferred** (see item 3 below),
-and deciding how PRs #8/#9/#10/the governance PR merging relates to
-declaring KARMO FOUNDATION v1 complete — see
-`docs/project-state/CURRENT_STATE.md`'s "Foundation Closeout Program" and
-"Production Access Authorization Gate adopted" sections for full detail.
+See MASTER_INDEX.md for status-tag definitions. **KARMO FOUNDATION v1 was
+declared COMPLETE on 2026-09-09** — see
+`docs/evidence/foundation-v1/FOUNDATION_V1_CLOSEOUT_REPORT.md` for the full
+closeout report. The primary next action is now **Natalie choosing the
+first post-foundation capability phase** (see item 6 below) — there is no
+outstanding foundation-blocking work.
 
 ## 1. Keep the two ambiguous legacy hashes unresolved (no action required, active constraint)
 
 `karmo-v05-new.html` hashes
 `23646203eed7e187ce2fe0de12c82d5cf83d0a97893a6bdcd2ed30ae3855af9c` and
 `5f98126d41381a8a0a4c5034b3402b9a4b763fa043bcfa63f27bdefeb7414c78` remain
-**intentionally unresolved** (`AMBIGUOUS_MULTIPLE_HASHES_FOR_SOURCE_FILE`).
-Resolution requires a human decision on which hash is the correct
-`document_version` ordering for that source file — `bootstrap_legacy_registry.py`
-will not and should not guess. Do not mark these resolved in CURRENT_STATE.md
-without that explicit decision recorded. Not part of any workload; this is a
-standing constraint until Natalie decides.
+**intentionally unresolved** (`AMBIGUOUS_MULTIPLE_HASHES_FOR_SOURCE_FILE`),
+reconfirmed present as `ORPHAN_VECTOR` in the 2026-09-09 production audit —
+exactly as expected, not touched. Resolution requires a human decision on
+which hash is the correct `document_version` ordering for that source file
+— `bootstrap_legacy_registry.py` will not and should not guess. Do not mark
+these resolved without that explicit decision recorded. Standing
+constraint until Natalie decides; does not block Foundation v1 or any
+future phase.
 
-## 2. Foundation Completion Workload 1 — Repository hygiene & evidence durability (MERGED)
+## 2. Foundation Completion Workload 1 — Repository hygiene & evidence durability (MERGED, COMPLETE)
 
-Approved and merged 2026-09-08 (PR #7, `db4ff2f`): `h03/`,
-`docs/evidence/h03/` (including `H03_EVALUATION_STATUS.md`),
-`docs/handoff/h01/frozen-design/` committed byte-for-byte; the
-`h04/app/migrations/001_h04_document_registry.sql` comment correction
-committed; the Mandatory Project Save Completion Rule (and its ChatGPT
-Session Persistence extension) added to
-`docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. Complete — no further
-action.
+Merged 2026-09-08 (PR #7, `db4ff2f`). No further action.
 
-## 3. Foundation Completion Workload 2 — Production verification closeout: governance blocker resolved, still needs an actual authorization
+## 3. Foundation Completion Workload 2 — Production verification closeout (COMPLETE, PASS)
 
-Natalie approved and pre-authorized this workload as part of the Foundation
-Closeout Program (2026-09-08), but the read-only production connection was
-**not attempted** — `CLAUDE.md` item 4's then-unconditional prohibition on
-production database/Qdrant access governed that session and was not
-overridden by the chat-level pre-authorization. Natalie subsequently
-approved a governance correction (2026-09-08, same day): the **Mandatory
-Production Access Authorization Gate** (`docs/governance/KARMO_ENGINEERING_INVARIANTS.md`)
-now defines exactly how a narrow, explicit, task-specific authorization can
-lift the default production-access prohibition. **Natalie must still
-choose one:**
+Executed 2026-09-09 under Natalie's temporary, session-scoped, task-specific
+Production Access Authorization, per the Mandatory Production Access
+Authorization Gate. Both defined checks passed: H01-T01 (manifest
+presence/hash) and H01-T18 (baseline counts, every value either an exact
+match or a fully-explained delta from an already-recorded event). Full
+detail: `docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`.
+No further action required for Foundation v1.
 
-- Issue an actual Production Access Authorization (per the gate's required
-  shape) for the two prepared read-only commands
-  (`docs/project-state/COMMAND_LOG.md`, H01-T01/H01-T18) — read-only,
-  target system `karmo-ai01`, purpose H0.1 closeout reverification — so a
-  future session can execute them and reconcile the results into
-  `docs/evidence/h01/H01_FAILURE_MATRIX_REPORT.md` and `CURRENT_STATE.md`;
-  or
-- Explicitly accept Workload 2 as permanently deferred, non-blocking
-  closeout — consistent with how the residual risk it reverifies was
-  already accepted on 2026-09-06.
+## 4. Foundation Completion Workload 3 — Registry integrity repair tool (MERGED, COMPLETE)
 
-## 4. Foundation Completion Workload 3 — Registry integrity repair tool (COMPLETE, PR OPEN)
+Merged 2026-09-09 (PR #8, `06ab726`). Still isolated-only — no production
+execution performed or authorized; a separate, future, explicitly-authorized
+action if ever pursued (not currently planned).
 
-Complete in isolation, 2026-09-08: `h04/app/registry_repair.py` + 4/4 new
-suite PASS + 11/11 targeted regression re-run PASS + Invariant Impact
-Review, per `docs/evidence/h04/H04_REGISTRY_REPAIR_REPORT.md`. PR #8
-(`feat/h04-registry-repair`) open, awaiting Natalie's merge decision. No
-production execution performed or authorized — a separate, future,
-explicitly-authorized action if ever pursued.
+## 5. Foundation Completion Workload 4 — Spec Kit brownfield adoption (MERGED, COMPLETE)
 
-## 5. Foundation Completion Workload 4 — Spec Kit brownfield adoption (COMPLETE, PR OPEN)
+Merged 2026-09-09 (PR #9, `cd72938`).
 
-Complete 2026-09-08: `specify init --here --force --integration claude`
-(v1.0.4) run on Natalie's explicit pre-authorization; diff confirmed
-additive-only (`.claude/skills/`, `.specify/`); constitution filled in,
-subordinated to `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. PR #9
-(`feat/h05-spec-kit-adoption`) open, awaiting Natalie's merge decision.
+## 6. Choose the first post-foundation capability phase (the actual next action)
 
-## 6. Foundation Completion Workload 5 — H0.5 scope definition & kickoff (blocked on Workload 4 merge + Natalie's scope choice)
+H0.5's specific scope remains **NEEDS VERIFICATION** — not defined, and
+explicitly not invented by this or any prior pass. The Foundation Closeout
+consolidation review's extensibility-review-derived observation (a
+tool/capability registry as a strong first candidate, since every planned
+domain depends on it) is a suggestion for Natalie to weigh, not a decision
+made on her behalf. This is the primary open item now that Foundation v1
+is complete.
 
-Per the recorded workflow decision: KARMO Invariant Impact Review →
-`/speckit-specify` → `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`
-→ validation ladder → phase acceptance → deployment. H0.5's specific scope
-remains **NEEDS VERIFICATION** — not defined, and explicitly not invented by
-this or any prior pass. The Foundation Closeout consolidation review's
-extensibility-review-derived observation (a tool/capability registry as a
-strong first candidate, since every planned domain depends on it) is a
-suggestion for Natalie to weigh, not a decision made on her behalf.
+## 7. Recommended (non-blocking) follow-up: H0.4 auditor legacy-active-state gap
 
-## 7. Confirm current live data counts (routine, low urgency, folds into Workload 2)
+Discovered during the 2026-09-09 closeout's production audit:
+`reconciliation.check_active_version_state` has no legacy-aware carve-out
+for a legacy-bootstrapped registry row (unlike `check_provenance`'s
+existing `LEGACY_PROVENANCE_UNVERIFIED` handling), so it permanently
+reports `ACTIVE_STATE_MISMATCH` for the 3 documents
+`bootstrap_legacy_registry.py` already registered — correct data, an
+auditor blind spot, not a data-integrity problem. Full detail:
+`docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`. Worth a
+small, separately-scoped fix at some point; does not block anything.
 
-`SOFTWARE_INVENTORY.md` and `NETWORK_INVENTORY.md` both flag several current
-counts (`conversation_memory`, `karmo_memory`, `karmo_semantic_memory`,
-`karmo_documents`, `public.document_registry` row count) as **NEEDS
-VERIFICATION** — known only as of their last-recorded checkpoint. Folds into
-Workload 2's authorized production-facing check once that is unblocked,
-rather than a separate session.
+## 8. Confirm current live data counts (routine, low urgency — now closed out)
 
-## Not next steps (explicitly out of scope until separately authorized)
+`SOFTWARE_INVENTORY.md` and `NETWORK_INVENTORY.md` flagged several current
+counts as **NEEDS VERIFICATION**; all were reconfirmed during the
+2026-09-09 Workload 2 closeout — see
+`docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`. Those
+two inventory files can be updated from that evidence in a future pass if
+desired (routine, not blocking).
 
-- No production access, SSH, deploy, database/Qdrant modification, or
-  runtime-service change was performed by this pass — including the
-  Workload 2 read-only checks, per item 3 above.
-- No H0.5 spec/plan/tasks were written — Workload 5 remains blocked on
-  Natalie's scope choice (see #6).
+## Not next steps (explicitly out of scope, unchanged)
+
+- H0.3 remains NO-PROMOTION — not promoted, not touched.
 - The two ambiguous H0.4 legacy hashes were not resolved (see #1).
-- H0.3 remains NO-PROMOTION (unaffected by its evidence now being
-  committed — see CURRENT_STATE.md).
-- No PR was merged by this pass (PRs #8, #9, #10, and the governance
-  correction PR opened, not merged; PR #7 was already merged before this
-  pass began).
-- No production was accessed and no Production Access Authorization was
-  issued or acted on during the governance-correction pass itself, per
-  explicit instruction — that pass only defined the gate.
+- No H0.5 spec/plan/tasks were written — Workload 5 remains Natalie's
+  scope choice (see #6).
+- No production write, restart, deployment, or configuration change was
+  ever performed — all production actions across the Foundation Closeout
+  Program were read-only, per every authorization granted.

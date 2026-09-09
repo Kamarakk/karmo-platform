@@ -230,3 +230,44 @@ MASTER_INDEX.md for status-tag definitions.
 - Does not retroactively require re-justifying the already-accepted
   H0.1/H0.2/H0.4 production cutover history — governs future production
   access only.
+
+## KARMO Foundation v1 closeout — DECLARED COMPLETE (2026-09-09)
+
+- **VERIFIED** — Natalie granted a temporary, session-scoped, task-specific
+  Production Access Authorization (target: `karmo-ai01`; read-only;
+  purpose: Foundation v1 closeout) under the newly-adopted Mandatory
+  Production Access Authorization Gate, and directed a full PR review/merge
+  + Workload 2 execution + Foundation-completeness determination pass.
+- PR #8 (Workload 3) merged: `06ab726`. PR #9 (Workload 4 / Spec Kit)
+  merged: `cd72938`. PR #10 (PROJECT SAVE) merged: `87fd9cd`. PR #11
+  (governance gate) auto-closed when its base branch (PR #10's) was
+  deleted on merge; superseded by PR #12, identical content rebased onto
+  `main`, merged: `e3443e8`.
+- Workload 2 executed: H01-T01 (manifest presence/hash) PASS; H01-T18
+  (baseline counts) PASS, every value either an exact match to the
+  recorded pre-H0.1 baseline or a fully-explained delta traceable to an
+  already-recorded event. No production write, restart, deployment, or
+  configuration change was performed. Full detail:
+  `docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`.
+- Additional read-only check (beyond Workload 2's own defined scope, run
+  as directly-relevant supporting evidence): the H0.4 report-only
+  production auditor returned `INTEGRITY_FINDINGS_PRESENT` — 2
+  `ORPHAN_VECTOR` (matching the already-documented ambiguous legacy
+  hashes exactly, not new) and 3 `ACTIVE_STATE_MISMATCH` (a newly
+  identified, non-blocking auditor-design gap in
+  `reconciliation.check_active_version_state` for legacy-bootstrapped
+  documents — underlying data correct and already fully accounted for by
+  the existing legacy-bootstrap record). Recorded as a recommended future
+  follow-up, not a new Foundation-completion criterion, per explicit
+  instruction not to invent criteria after seeing results.
+- Applying the Foundation Complete criterion already established
+  2026-09-08 (Workload 1 merged + explicit Natalie decision on Workloads
+  2/3), unmodified: **all criteria met.** Full closeout report and
+  independent-verification evidence package committed at
+  `docs/evidence/foundation-v1/` (`FOUNDATION_V1_CLOSEOUT_REPORT.md`,
+  `PRODUCTION_READONLY_VERIFICATION.md`, `GIT_AND_PR_VERIFICATION.md`,
+  `POST_CLOSEOUT_HEALTH.md`, `VERIFICATION_CHECKLIST.md`,
+  `RUN_SUMMARY.json`, `MANIFEST.sha256`).
+- H0.5/Workload 5 correctly not started — first post-foundation capability
+  phase, Natalie's scope choice, not invented.
+- **KARMO FOUNDATION v1 — COMPLETE.**
