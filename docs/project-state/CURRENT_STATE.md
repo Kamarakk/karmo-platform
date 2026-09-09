@@ -203,10 +203,21 @@ that migration file was changed.
   `docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md`, including the exact
   `specify init` command, the constitution content plan, and the KARMO
   governance-hierarchy diagram Spec Kit must operate beneath.
-- **Initialization has still NOT occurred and requires Natalie's separate,
-  explicit approval** before any `specify init` command is run. This
-  foundation-acceleration pass prepared the plan only — it did not run the
-  command, per explicit instruction.
+- **Initialization completed 2026-09-08** (Foundation Closeout Program,
+  Workload 4), on Natalie's explicit pre-authorization to run the exact
+  command already prepared in `docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md`:
+  `uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.0.4`
+  then `specify init --here --force --integration claude`, on branch
+  `feat/h05-spec-kit-adoption`. Diff inspected immediately after: only
+  `.claude/skills/speckit-*/` and `.specify/` appeared, exactly as the
+  brownfield plan's own acceptance criterion required — no other file was
+  touched. `.specify/memory/constitution.md` was filled in (replacing the
+  placeholder template) with content subordinating it to
+  `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`, per the brownfield
+  plan's constitution content plan, plus principles drawn from the
+  repository's own existing conventions (isolated-before-production,
+  report-only-by-default for audit/repair tools, no overlapping test
+  suites). Not yet merged to `main` — see the accompanying PR.
 
 ## Confirmed data-state baselines (for reference, HISTORICAL unless restated)
 
