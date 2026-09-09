@@ -145,13 +145,31 @@ python3 h04/app/registry_repair.py \
   --apply
 ```
 
-## Spec Kit — inspection only (VERIFIED, this session; no command executed
-against this repository)
-
-Commands identified but **not run** (initialization requires Natalie's
-approval):
+## Spec Kit — brownfield initialization (VERIFIED, executed 2026-09-08,
+Foundation Closeout Program Workload 4, PR #9 merged 2026-09-09)
 
 ```
 uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.0.4
 specify init --here --force --integration claude
 ```
+Result: diff confirmed additive-only (`.claude/skills/`, `.specify/`);
+constitution filled in per `docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md`'s
+content plan.
+
+## H0.1 production verification closeout — H01-T01/H01-T18 (VERIFIED,
+executed 2026-09-09, Foundation v1 closeout, read-only, under Natalie's
+temporary Production Access Authorization; exact command text with host
+paths not transcribed beyond what is already recorded, per SECURITY.md/
+`AGENTS.md` — no secret values were requested or displayed)
+
+- H01-T01: located and `sha256sum -c`'d both `MANIFEST-H0-FINAL.sha256`
+  and `MANIFEST-H01-ISOLATED-BUILD.sha256` on `karmo-ai01` — all files
+  `OK`.
+- H01-T18: `docker exec` read-only `psql -c "SELECT count(*) FROM ..."` /
+  `\dt` queries against `karmo-postgres`; read-only `curl` against the
+  Qdrant collection-info endpoint for `karmo_semantic_memory`,
+  `karmo_documents`, `karmo_h00_dense_baseline`.
+- Full exact commands, timestamps, and observed values:
+  `docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`.
+- Result: both PASS. No write, restart, deployment, or configuration
+  change was performed.

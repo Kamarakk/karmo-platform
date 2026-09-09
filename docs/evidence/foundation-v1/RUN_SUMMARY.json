@@ -1,0 +1,53 @@
+{
+  "session": "KARMO Foundation v1 closeout + verification (temporary tonight-only authorization)",
+  "start_time_utc": "2026-09-09T06:07:13Z",
+  "end_time_utc": "2026-09-09T06:26:21Z",
+  "duration_approx": "0h19m (production verification + PR review/merge + evidence package phase; total session including prior-turn work not separately tracked)",
+  "branches_touched": [
+    "feat/h04-registry-repair (PR #8, merged, deleted)",
+    "feat/h05-spec-kit-adoption (PR #9, merged, deleted)",
+    "docs/foundation-closeout-program-save (PR #10, merged, deleted)",
+    "governance/production-access-authorization-gate (PR #11 closed/superseded, then PR #12, merged, deleted)",
+    "docs/foundation-v1-closeout (this closeout PR, branch retained until merge)"
+  ],
+  "prs_reviewed": [8, 9, 10, 11, 12],
+  "prs_merged": [
+    {"number": 8, "merge_sha": "06ab726cb9ea8481685876fea0e2f55ff4ffa974"},
+    {"number": 9, "merge_sha": "cd7293842ee198d8a06cd6cd950dc547526e476b"},
+    {"number": 10, "merge_sha": "87fd9cde8f3c7b42bf38dcc593647b496faa0e8b"},
+    {"number": 12, "merge_sha": "e3443e8"}
+  ],
+  "prs_closed_unmerged": [
+    {"number": 11, "reason": "base branch deleted when PR #10 merged; superseded by PR #12 with identical content"}
+  ],
+  "commits_created_this_session": [
+    "docs(governance): add Mandatory Production Access Authorization Gate (rebased as 1b05a7b)",
+    "docs(foundation-v1): closeout evidence package (this branch, see below)"
+  ],
+  "production_readonly_commands_count": 19,
+  "production_writes": 0,
+  "production_restarts": 0,
+  "production_config_changes": 0,
+  "production_deployments": 0,
+  "destructive_actions": 0,
+  "secrets_displayed_or_persisted": 0,
+  "workload_2_status": "PASS",
+  "workload_2_checks": {
+    "H01-T01_manifest_verification": "PASS",
+    "H01-T18_baseline_counts": "PASS"
+  },
+  "additional_readonly_findings": {
+    "h04_production_audit_status": "INTEGRITY_FINDINGS_PRESENT",
+    "orphan_vector_count": 2,
+    "orphan_vector_explanation": "matches already-documented ambiguous legacy hashes exactly, not new",
+    "active_state_mismatch_count": 3,
+    "active_state_mismatch_explanation": "auditor design gap for legacy-bootstrapped documents, newly identified this session; underlying data correct and matches already-recorded legacy bootstrap apply run; non-blocking; recommended as future follow-up, not a new completion criterion"
+  },
+  "foundation_v1_status": "COMPLETE",
+  "unresolved_items": [
+    "two ambiguous karmo-v05-new.html legacy hashes (intentionally unresolved, unchanged)",
+    "H0.3 remains NO-PROMOTION (unchanged)",
+    "H0.5 scope not chosen (not required for Foundation Complete; first post-foundation phase)",
+    "recommended future fix: reconciliation.check_active_version_state legacy-aware carve-out (non-blocking)"
+  ]
+}
