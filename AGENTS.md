@@ -36,3 +36,11 @@ and is not duplicated here. Compliance is mandatory for every phase,
 feature, service, migration, agent, integration, and deployment, and its
 Mandatory Phase Invariant Impact Review must be completed **before
 substantial implementation begins**, not retrofitted afterward.
+
+## Project Save Completion (every major session/workload, permanent)
+
+`docs/governance/KARMO_ENGINEERING_INVARIANTS.md`'s Mandatory Project Save
+Completion Rule is not duplicated here. No major work session, phase,
+workload, deployment, configuration session, or infrastructure change is
+complete until PROJECT SAVE has been performed and reported, per that
+rule.

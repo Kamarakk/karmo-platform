@@ -290,3 +290,131 @@ Rollback implications:
 
 The review should be concise. Its purpose is to catch design problems
 before implementation, not create paperwork.
+
+---
+
+## Mandatory Project Save Completion Rule
+
+No major KARMO work session, phase, workload, deployment, configuration
+session, or infrastructure change is considered complete until **PROJECT
+SAVE** has been performed. This applies to all future KARMO phases and
+workloads, including work performed through Spec Kit.
+
+PROJECT SAVE requires:
+
+1. Read the existing `docs/project-state/` records first.
+
+2. Update the applicable persistent records, including as appropriate:
+   `MASTER_INDEX.md`, `CURRENT_STATE.md`, `CHANGE_LOG.md`,
+   `SOFTWARE_INVENTORY.md`, `NETWORK_INVENTORY.md`, `DASHBOARD_INVENTORY.md`,
+   `COMMAND_LOG.md`, `ROLLBACK_AND_REMOVAL.md`, `NEXT_STEPS.md`.
+
+3. Record consequential installations, configuration changes, commands
+   actually executed, verified results, failures and fixes, architecture
+   decisions, services/containers/tools, network changes, dependencies,
+   rollback/removal procedures, unresolved issues, the stopping point, and
+   the next action.
+
+4. Use the three-tier status vocabulary already established for
+   `docs/project-state/`: `VERIFIED`, `HISTORICAL`, `NEEDS VERIFICATION`.
+
+5. Never silently replace conflicting verified information. Flag conflicts
+   instead.
+
+6. Never store passwords, API keys, tokens, or secret values. Record only
+   the location/mechanism used to obtain credentials, per I-09's
+   least-privilege and credential-scope discipline.
+
+7. Run appropriate consistency and repository validation after updating the
+   records (at minimum, the checks already established in
+   `docs/governance/KARMO_VALIDATION_LADDER.md` for a documentation-only
+   change: `git diff --check`, `git status`, and a scan for contradictions,
+   duplicate governance, secrets, and accidental resolution of historical
+   unknowns).
+
+8. The applicable `docs/project-state/` updates must be committed to the
+   repository with the work they document, or in an immediately following
+   documentation commit, before the session/workload is considered CLOSED.
+
+9. If work intentionally stops before a commit/PR boundary, the session
+   must be marked **PROJECT SAVE PENDING**, and the fact that the project
+   record is not yet durably committed must be explicitly reported.
+
+10. Before declaring a workload/session COMPLETE, report:
+
+    ```
+    PROJECT SAVE: COMPLETE
+    Persistent records updated: <files>
+    Durable Git commit: <commit hash>
+    Current stopping point: <state>
+    Next action: <action>
+    ```
+
+This rule does not create a new approval gate on its own — committing the
+resulting documentation still follows whatever merge/approval boundary the
+work itself already required (see
+`docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`). It requires that
+the record-keeping happen and be durable, not that every session ends in a
+merge.
+
+### Extension: ChatGPT Session Persistence
+
+KARMO architectural decisions, approvals, requirements, constraints, future
+goals, project-state changes, and other consequential information created
+during Natalie's ChatGPT planning sessions are **not** considered durably
+recorded merely because they exist in ChatGPT conversation history.
+**ChatGPT conversation history is not the authoritative KARMO project
+record.** The Git repository, including `docs/project-state/`, is the
+authoritative persistent project record.
+
+When Natalie invokes **PROJECT SAVE** for a ChatGPT KARMO session, the same
+PROJECT SAVE rule above applies, entered through this specific path:
+
+1. ChatGPT prepares a handoff containing the consequential decisions,
+   approvals, requirements, discoveries, architecture decisions,
+   constraints, unresolved items, stopping point, and next action from that
+   session.
+
+2. The handoff is provided to a repository-capable KARMO development agent
+   (Claude Code or a future equivalent).
+
+3. That agent MUST read and reconcile the existing `docs/project-state/`
+   records before writing the handoff into the repository — per rule 1
+   above, not a separate step.
+
+4. Existing `VERIFIED` information must never be silently overwritten;
+   conflicts between the handoff and the existing record must be explicitly
+   reported — per rule 5 above.
+
+5. The applicable `docs/project-state/` files must be updated — per rule 2
+   above.
+
+6. Secret values must never be copied from ChatGPT into project records.
+   Credential locations/mechanisms may be recorded; passwords, API keys,
+   tokens, private keys, and other secret values may not be stored — per
+   rule 6 above.
+
+7. The resulting project-state update must be committed to Git before the
+   ChatGPT planning session is considered durably CLOSED — per rule 8
+   above.
+
+8. If the handoff has been created but not yet committed, report **PROJECT
+   SAVE: PENDING** — the ChatGPT-session equivalent of rule 9's PROJECT SAVE
+   PENDING state.
+
+9. Once committed, report completion in the same format as rule 10 above:
+
+   ```
+   PROJECT SAVE: COMPLETE
+   Persistent records updated: <files>
+   Durable Git commit: <hash>
+   Current stopping point: <state>
+   Next action: <action>
+   ```
+
+This extension applies regardless of which repository-capable agent
+performs the persistence step, including Claude Code or future KARMO
+development agents. It does not create a second PROJECT SAVE rule — a
+ChatGPT planning session is simply another source of consequential KARMO
+information that must flow through the one rule above before it counts as
+recorded.

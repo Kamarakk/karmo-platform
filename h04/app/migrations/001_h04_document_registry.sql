@@ -6,7 +6,10 @@
 -- against actual Qdrant vector state and archived-file state; the auditor
 -- built on top of this table is report-only (see app/auditor.py).
 --
--- Isolated build artifact only. Not applied to any production database.
+-- Authored and isolated-acceptance-tested as an isolated build artifact.
+-- Applied to the production database as part of the H0.4 production
+-- cutover (see docs/project-state/CURRENT_STATE.md, H0.4 section, and
+-- docs/project-state/COMMAND_LOG.md for the cutover backup taken first).
 
 CREATE TABLE public.document_registry (
     id BIGSERIAL PRIMARY KEY,

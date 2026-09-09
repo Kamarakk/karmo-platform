@@ -1,0 +1,42 @@
+{
+  "non_authoritative": true,
+  "note": "Synthetic H0.3 benchmark corpus; no frozen H0.0 known-answer corpus was found in this repository. Dense embedding is a deterministic bag-of-words stand-in (see tests/conftest.py) because no live Ollama/EmbeddingGemma endpoint is reachable in this isolated environment. Latency is in-process, in-memory qdrant-client local-mode latency, not networked production Qdrant latency.",
+  "corpus_documents": 10,
+  "chunks_ingested": 20,
+  "ingest_duration_seconds": 0.005346375000000014,
+  "avg_sparse_nonzero_indices_per_chunk": 15.3,
+  "dense_vector_dim": 64,
+  "queries": 20,
+  "k": 3,
+  "latency_repeats_per_query": 20,
+  "dense_only": {
+    "recall_at_k": 0.8,
+    "mrr": 0.5166666666666666,
+    "correct_source_rate": 0.3,
+    "per_category_recall_at_k": {
+      "exact_identifier": 1.0,
+      "filename": 0.75,
+      "ip_address": 1.0,
+      "technical_terminology": 0.75,
+      "semantic_paraphrase": 0.5
+    },
+    "latency_ms_p50": 0.09712500000003121,
+    "latency_ms_p95": 0.14416600000000113,
+    "latency_samples": 400
+  },
+  "hybrid_rrf": {
+    "recall_at_k": 1.0,
+    "mrr": 0.9083333333333333,
+    "correct_source_rate": 0.85,
+    "per_category_recall_at_k": {
+      "exact_identifier": 1.0,
+      "filename": 1.0,
+      "ip_address": 1.0,
+      "technical_terminology": 1.0,
+      "semantic_paraphrase": 1.0
+    },
+    "latency_ms_p50": 0.44166600000006273,
+    "latency_ms_p95": 0.5762080000000225,
+    "latency_samples": 400
+  }
+}
