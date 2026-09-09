@@ -63,7 +63,7 @@ def test_valid_approval_executes_successfully(engine):
         tool_id=TOOL_ID,
         tool_version=TOOL_VERSION,
         arguments=ARGS,
-        executor=lambda: calls.append(1) or "synthetic-order-ack",
+        executor_identity="natalie", action=lambda: calls.append(1) or "synthetic-order-ack",
     )
 
     assert result == "synthetic-order-ack"
@@ -86,7 +86,7 @@ def test_denied_approval_cannot_execute(engine):
             tool_id=TOOL_ID,
             tool_version=TOOL_VERSION,
             arguments=ARGS,
-            executor=lambda: pytest.fail("must never be called"),
+            executor_identity="natalie", action=lambda: pytest.fail("must never be called"),
         )
 
 
@@ -103,7 +103,7 @@ def test_expired_approval_cannot_execute(engine, clock):
             tool_id=TOOL_ID,
             tool_version=TOOL_VERSION,
             arguments=ARGS,
-            executor=lambda: pytest.fail("must never be called"),
+            executor_identity="natalie", action=lambda: pytest.fail("must never be called"),
         )
 
     assert engine.get(record.approval_id).state == ApprovalState.EXPIRED
@@ -124,7 +124,7 @@ def test_replay_after_successful_execution_is_refused(engine):
     record = _request(engine)
     engine.approve(record.approval_id, approver="natalie")
     engine.execute(
-        record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION, arguments=ARGS, executor=lambda: "ok"
+        record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION, arguments=ARGS, executor_identity="natalie", action=lambda: "ok"
     )
 
     with pytest.raises(ApprovalStateError, match="must be APPROVED"):
@@ -133,7 +133,7 @@ def test_replay_after_successful_execution_is_refused(engine):
             tool_id=TOOL_ID,
             tool_version=TOOL_VERSION,
             arguments=ARGS,
-            executor=lambda: pytest.fail("must never be called on replay"),
+            executor_identity="natalie", action=lambda: pytest.fail("must never be called on replay"),
         )
 
 
@@ -150,7 +150,7 @@ def test_changed_arguments_invalidates_the_approval(engine):
             tool_id=TOOL_ID,
             tool_version=TOOL_VERSION,
             arguments=tampered_args,
-            executor=lambda: pytest.fail("must never be called with tampered arguments"),
+            executor_identity="natalie", action=lambda: pytest.fail("must never be called with tampered arguments"),
         )
 
     # The approval is now consumed/invalidated -- not merely refused this
@@ -163,7 +163,7 @@ def test_changed_arguments_invalidates_the_approval(engine):
             tool_id=TOOL_ID,
             tool_version=TOOL_VERSION,
             arguments=ARGS,
-            executor=lambda: pytest.fail("must never be called -- approval already invalidated"),
+            executor_identity="natalie", action=lambda: pytest.fail("must never be called -- approval already invalidated"),
         )
 
 
@@ -178,7 +178,7 @@ def test_changed_tool_id_is_refused_approval_for_a_does_not_authorize_b(engine):
             tool_id="finance.trading.cancel_order",  # a DIFFERENT tool
             tool_version=TOOL_VERSION,
             arguments=ARGS,
-            executor=lambda: pytest.fail("must never be called for a different tool"),
+            executor_identity="natalie", action=lambda: pytest.fail("must never be called for a different tool"),
         )
 
     assert engine.get(record.approval_id).state == ApprovalState.FAILED
@@ -203,30 +203,57 @@ def test_approve_by_different_actor_than_requester_is_allowed_but_recorded(engin
 
 
 def test_changed_requester_identity_does_not_let_a_second_party_reuse_the_approval(engine):
-    """The approval is bound to the approval_id, not to a session -- but
-    changing WHO is claiming to execute it does not change WHAT it
-    authorizes (still exact tool+version+arguments). This test proves
-    the engine does not need requester/executor identity to match at
-    execution time -- authority is proven by the digest, not by asking
-    "who are you," which is a deliberate design choice worth making
-    explicit and testing rather than assuming."""
+    """Found by this program's own adversarial review: a stolen or
+    leaked approval_id must not be usable by anyone other than who it
+    was actually authorized for. An unrelated party presenting the
+    right approval_id, the right tool, the right version, and the right
+    arguments -- everything except the right identity -- must still be
+    refused, and the approval must be invalidated by the attempt, not
+    left sitting there for a further guess."""
     record = _request(engine, requester="agent-session-1")
-    engine.approve(record.approval_id, approver="natalie")
+    engine.approve(record.approval_id, approver="natalie")  # authorized_executor defaults to "agent-session-1"
 
-    # A different "actor" (e.g. a different session) presenting the same
-    # approval_id with the SAME tool+version+arguments still executes --
-    # the approval_id itself is the credential; whoever holds a valid,
-    # matching approval_id can trigger the one execution it authorizes.
-    # This is documented, not silently assumed: a real implementation
-    # binding approval_id to a specific session/actor at issuance time is
-    # a valid tightening a future domain can add on top of this
-    # prototype's baseline guarantee (exact-argument binding).
+    with pytest.raises(ApprovalStateError, match="executor identity"):
+        engine.execute(
+            record.approval_id,
+            tool_id=TOOL_ID,
+            tool_version=TOOL_VERSION,
+            arguments=ARGS,
+            executor_identity="a-different-unrelated-session",
+            action=lambda: pytest.fail("must never be called for the wrong executor identity"),
+        )
+
+    assert engine.get(record.approval_id).state == ApprovalState.FAILED
+
+    # Invalidated, not merely refused once -- a second attempt, even
+    # with the CORRECT identity this time, must also fail.
+    with pytest.raises(ApprovalStateError):
+        engine.execute(
+            record.approval_id,
+            tool_id=TOOL_ID,
+            tool_version=TOOL_VERSION,
+            arguments=ARGS,
+            executor_identity="agent-session-1",
+            action=lambda: pytest.fail("must never be called -- approval already invalidated"),
+        )
+
+
+def test_authorized_executor_can_differ_from_requester_when_explicitly_granted(engine):
+    """A legitimate use case this design must still support: Natalie
+    requests and approves on behalf of a system/service account she
+    explicitly names as the executor -- not the same as the security
+    hole above, because it is an explicit grant at approval time, not an
+    unauthenticated free-for-all."""
+    record = _request(engine, requester="natalie")
+    engine.approve(record.approval_id, approver="natalie", authorized_executor="karmo-dispatcher-service")
+
     result = engine.execute(
         record.approval_id,
         tool_id=TOOL_ID,
         tool_version=TOOL_VERSION,
         arguments=ARGS,
-        executor=lambda: "ok",
+        executor_identity="karmo-dispatcher-service",
+        action=lambda: "ok",
     )
     assert result == "ok"
 
@@ -241,7 +268,7 @@ def test_double_execution_is_refused_even_if_first_attempt_failed(engine):
 
     with pytest.raises(RuntimeError, match="synthetic tool failure"):
         engine.execute(
-            record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION, arguments=ARGS, executor=_boom
+            record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION, arguments=ARGS, executor_identity="natalie", action=_boom
         )
 
     assert engine.get(record.approval_id).state == ApprovalState.FAILED
@@ -254,7 +281,7 @@ def test_double_execution_is_refused_even_if_first_attempt_failed(engine):
             tool_id=TOOL_ID,
             tool_version=TOOL_VERSION,
             arguments=ARGS,
-            executor=lambda: pytest.fail("must never be called -- already terminal"),
+            executor_identity="natalie", action=lambda: pytest.fail("must never be called -- already terminal"),
         )
 
 
@@ -300,7 +327,7 @@ def test_audit_trail_captures_every_transition(engine):
     record = _request(engine)
     engine.approve(record.approval_id, approver="natalie")
     engine.execute(
-        record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION, arguments=ARGS, executor=lambda: "ok"
+        record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION, arguments=ARGS, executor_identity="natalie", action=lambda: "ok"
     )
 
     final = engine.get(record.approval_id)

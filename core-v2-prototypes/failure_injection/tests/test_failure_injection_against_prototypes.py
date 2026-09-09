@@ -54,7 +54,7 @@ def test_postgres_unavailable_during_execution_lands_in_failed(approval_engine):
     with pytest.raises(PostgresUnavailable):
         approval_engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor=_executor,
+            arguments=ARGS, executor_identity="natalie", action=_executor,
         )
 
     assert approval_engine.get(record.approval_id).state == ApprovalState.FAILED
@@ -102,7 +102,7 @@ def test_tool_timeout_during_execution_lands_in_failed(approval_engine):
     with pytest.raises(ToolTimeout):
         approval_engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor=_executor,
+            arguments=ARGS, executor_identity="natalie", action=_executor,
         )
     assert approval_engine.get(record.approval_id).state == ApprovalState.FAILED
 
@@ -131,7 +131,7 @@ def test_malformed_result_from_a_tool_executor_propagates_as_failure(approval_en
     with pytest.raises(MalformedResult):
         approval_engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor=_executor,
+            arguments=ARGS, executor_identity="natalie", action=_executor,
         )
     assert approval_engine.get(record.approval_id).state == ApprovalState.FAILED
 
@@ -207,7 +207,7 @@ def test_approval_expired_category_matches_engine_behavior():
     with pytest.raises(ApprovalStateError):
         engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor=lambda: pytest.fail("must never be called"),
+            arguments=ARGS, executor_identity="natalie", action=lambda: pytest.fail("must never be called"),
         )
 
 
@@ -233,7 +233,7 @@ def test_permission_denial_is_a_distinct_failure_from_approval_denial(approval_e
     with pytest.raises(PermissionDenied):
         approval_engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor=_executor,
+            arguments=ARGS, executor_identity="natalie", action=_executor,
         )
     assert approval_engine.get(record.approval_id).state == ApprovalState.FAILED
 

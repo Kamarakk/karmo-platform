@@ -146,6 +146,15 @@ class ToolRegistry:
             if field_name not in manifest:
                 raise ManifestValidationError(f"missing required field: '{field_name}'")
 
+        unknown_fields = set(manifest) - set(REQUIRED_MANIFEST_FIELDS)
+        if unknown_fields:
+            raise ManifestValidationError(
+                f"unknown field(s) not part of the manifest schema: {sorted(unknown_fields)} -- "
+                "found by this program's own adversarial review: an unrecognized field "
+                "(e.g. a misnamed override attempt) used to be silently accepted and stored "
+                "rather than refused; the manifest schema is now closed, not merely additive"
+            )
+
         capability_class = manifest["capability_class"]
         if not isinstance(capability_class, CapabilityClass):
             raise ManifestValidationError(

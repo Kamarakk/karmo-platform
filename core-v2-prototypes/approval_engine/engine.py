@@ -77,6 +77,7 @@ class ApprovalRecord:
     expires_at: datetime
     state: ApprovalState = ApprovalState.REQUESTED
     approver: str = None
+    authorized_executor: str = None  # who may present this approval at execute() time; set at approve()
     execution_binding: str = None  # deterministic invocation id, set only on EXECUTED
     audit_trail: list = field(default_factory=list)
 
@@ -148,13 +149,21 @@ class ApprovalEngine:
         self._approvals[record.approval_id] = record
         return record
 
-    def approve(self, approval_id, *, approver):
+    def approve(self, approval_id, *, approver, authorized_executor=None):
+        """`authorized_executor` binds WHO may present this approval at
+        execution time -- defaults to the original requester if not
+        given explicitly. Found missing by this program's own
+        adversarial review: without this, any holder of a valid
+        approval_id could execute it regardless of identity, a stolen/
+        leaked-credential and confused-deputy risk named in
+        docs/architecture/KARMO_CORE_V2_SECURITY_THREAT_MODEL.md."""
         record = self._get_or_raise(approval_id)
         if record.state != ApprovalState.REQUESTED:
             raise ApprovalStateError(
                 f"cannot approve from state {record.state.value} (must be REQUESTED)"
             )
         record.approver = approver
+        record.authorized_executor = authorized_executor or record.requester
         record._record(ApprovalState.REQUESTED, ApprovalState.APPROVED, approver, "approved", self._now())
         return record
 
@@ -176,11 +185,19 @@ class ApprovalEngine:
         record._record(record.state, ApprovalState.CANCELLED, actor, reason or "cancelled", self._now())
         return record
 
-    def execute(self, approval_id, *, tool_id, tool_version, arguments, executor):
-        """executor: a zero-argument callable performing the (synthetic,
+    def execute(self, approval_id, *, tool_id, tool_version, arguments, executor_identity, action):
+        """action: a zero-argument callable performing the (synthetic,
         in this prototype) action. Its return value becomes the result;
         an exception it raises transitions the approval to FAILED and is
         re-raised.
+
+        executor_identity: who is presenting this approval right now.
+        Required, not optional -- found missing entirely by this
+        program's own adversarial review (previously anyone holding a
+        valid approval_id could execute it, regardless of identity).
+        Checked against the identity bound at approve() time
+        (authorized_executor); any mismatch invalidates the approval,
+        the same treatment as a tool/argument mismatch.
 
         Single-use, by construction: this function only ever transitions
         a record OUT of APPROVED, exactly once. Any second call against
@@ -193,6 +210,20 @@ class ApprovalEngine:
                 f"cannot execute from state {record.state.value} (must be APPROVED) -- "
                 "either not yet approved, already used, or the approval was denied/"
                 "expired/cancelled"
+            )
+
+        if executor_identity != record.authorized_executor:
+            record._record(
+                ApprovalState.APPROVED,
+                ApprovalState.FAILED,
+                "system",
+                f"executor identity mismatch ({executor_identity!r} != authorized "
+                f"{record.authorized_executor!r}) -- approval invalidated, not merely refused",
+                self._now(),
+            )
+            raise ApprovalStateError(
+                "executor identity does not match who this approval authorizes -- "
+                "approval has been invalidated"
             )
 
         # Approval for action A must not authorize action B: recompute
@@ -217,7 +248,7 @@ class ApprovalEngine:
         invocation_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"approval:{approval_id}"))
 
         try:
-            result = executor()
+            result = action()
         except Exception as error:
             record._record(
                 ApprovalState.APPROVED,

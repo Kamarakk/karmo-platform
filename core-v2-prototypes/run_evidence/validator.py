@@ -84,6 +84,47 @@ class IndependentVerifier:
             )
         return CheckResult("production_access_authorized", True, f"count={count}, authorization consistent")
 
+    def check_evidence_and_test_results(self, record):
+        """Item 4 of the design doc's own checklist -- previously absent
+        from this prototype entirely, found by this program's own
+        adversarial review: a record could claim any test result
+        (e.g. "9999/0 passed") backed by a nonexistent evidence file and
+        every other check would still pass, because nothing checked
+        `evidence` or `test_results` at all. Fixed here: every claimed
+        evidence path must exist at end_sha, and every claimed test
+        suite must have a corresponding, non-empty test_results entry."""
+        missing_evidence = [
+            path for path in record["evidence"]
+            if not self._file_exists_at_sha(record["end_sha"], path)
+        ]
+        if missing_evidence:
+            return CheckResult(
+                "evidence_and_test_results", False,
+                f"claimed evidence file(s) not found at end_sha: {missing_evidence}",
+            )
+
+        if record["tests"] and not record["test_results"]:
+            return CheckResult(
+                "evidence_and_test_results", False,
+                "test suites claimed but test_results is empty -- no corroborating counts",
+            )
+
+        unaccounted = [
+            suite for suite in record["tests"]
+            if not any(suite in key or key in suite for key in record["test_results"])
+        ]
+        if unaccounted:
+            return CheckResult(
+                "evidence_and_test_results", False,
+                f"claimed test suite(s) with no corresponding test_results entry: {unaccounted}",
+            )
+
+        return CheckResult(
+            "evidence_and_test_results", True,
+            f"{len(record['evidence'])} evidence file(s) and {len(record['test_results'])} "
+            "test_results entry/entries confirmed present",
+        )
+
     def run_all(self, record, *, was_production_authorized=True):
         validate_schema(record)
         return [
@@ -91,22 +132,52 @@ class IndependentVerifier:
             self.check_files_changed_exist(record),
             self.check_pr_states_match(record),
             self.check_manifest(record),
+            self.check_evidence_and_test_results(record),
             self.check_production_access_authorized(record, was_authorized=was_production_authorized),
         ]
 
 
-def compute_trust_score(check_results, *, self_report_accuracy_history=1.0):
+def compute_trust_score(check_results, record=None, *, self_report_accuracy_history=1.0):
     """Simple, transparent, component-based -- per the design doc. NEVER
     used to grant permissions; this function's return value has no
     caller anywhere in this codebase that changes what any agent is
-    authorized to do. It is purely descriptive."""
+    authorized to do. It is purely descriptive.
+
+    `record` is optional for backward compatibility, but every component
+    below that can be computed from real data now is -- this program's
+    own adversarial review found the original version hardcoded
+    evidence_completeness and test_reliability to 1.0 regardless of
+    input, and derived scope_compliance from the same check_results
+    independent_verification_agreement already uses, so an obviously
+    fabricated record (all checks failing) still scored ~0.58, not
+    anywhere near 0. Fixed: nothing here is a constant anymore except
+    self_report_accuracy_history, which is deliberately an external,
+    caller-supplied historical input, not something this record can
+    fabricate about itself.
+    """
     if not check_results:
         return 0.0
 
     independent_verification_agreement = sum(1 for c in check_results if c.passed) / len(check_results)
-    evidence_completeness = 1.0  # schema already validated by run_all before this is called
-    scope_compliance = 1.0 if all(c.passed for c in check_results if c.name != "manifest_verified") else 0.5
-    test_reliability = 1.0  # placeholder: a real implementation inspects test_results for skips/flakes
+
+    evidence_check = next((c for c in check_results if c.name == "evidence_and_test_results"), None)
+    evidence_completeness = 1.0 if (evidence_check is not None and evidence_check.passed) else 0.0
+
+    test_reliability = 1.0
+    if record is not None and record.get("test_results"):
+        test_reliability = 1.0 if all(
+            suite.get("failed", 0) == 0 for suite in record["test_results"].values()
+        ) else 0.0
+
+    scope_compliance = 1.0
+    if record is not None:
+        scope_compliance = 1.0 if (
+            record.get("production_writes", 0) == 0
+            and record.get("restarts", 0) == 0
+            and record.get("external_actions", 0) == 0
+            and record.get("governance_changes", 0) == 0
+        ) else 0.0
+
     security_compliance = next(
         (1.0 if c.passed else 0.0 for c in check_results if c.name == "production_access_authorized"), 1.0
     )

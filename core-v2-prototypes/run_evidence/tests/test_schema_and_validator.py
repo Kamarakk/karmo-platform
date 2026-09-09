@@ -171,3 +171,84 @@ def test_trust_score_drops_when_independent_checks_disagree_with_self_report():
     bad_score = compute_trust_score(bad_results)
 
     assert bad_score < honest_score
+
+
+# --- Regression tests for the adversarial-review fixes (Core v2 large
+# autonomous review program) -----------------------------------------
+
+def test_catches_fabricated_test_results_backed_by_nonexistent_evidence():
+    """The exact gap this program's adversarial review found: a record
+    claiming an enormous, fabricated pass count with a nonexistent
+    evidence file used to pass every check. Must now fail."""
+    record = _valid_record(
+        tests=["totally/fake/suite"],
+        test_results={"totally/fake/suite": {"passed": 9999, "failed": 0, "skipped": 0}},
+        evidence=["docs/evidence/nonexistent-file.md"],
+    )
+    verifier = IndependentVerifier(
+        commits_between=lambda s, e: [],
+        file_exists_at_sha=lambda sha, path: False,
+        pr_state=lambda n: None,
+        manifest_verifies=lambda p: True,
+    )
+
+    results = verifier.run_all(record)
+
+    assert not all(r.passed for r in results)
+    evidence_result = next(r for r in results if r.name == "evidence_and_test_results")
+    assert evidence_result.passed is False
+    assert "nonexistent-file.md" in evidence_result.detail
+
+
+def test_catches_a_claimed_test_suite_with_no_corresponding_results_entry():
+    record = _valid_record(
+        tests=["suite/a", "suite/b"],
+        test_results={"suite/a": {"passed": 1, "failed": 0, "skipped": 0}},  # suite/b missing
+    )
+    verifier = _honest_verifier()
+
+    result = verifier.check_evidence_and_test_results(record)
+
+    assert result.passed is False
+    assert "suite/b" in result.detail
+
+
+def test_trust_score_stays_low_for_obviously_fabricated_evidence_even_with_record():
+    """Before this program's fix, evidence_completeness and
+    test_reliability were hardcoded to 1.0 regardless of input, so even
+    a maximally-fabricated record (every check failing) scored ~0.58 --
+    not low enough to read as 'obviously false'. Must now score low.
+
+    Every checkable claim in this record is false, including
+    production_access (unauthorized writes claimed) -- the one
+    remaining component this score can't drive to zero,
+    self_report_accuracy_history, is an external, caller-supplied
+    historical input (not something a single record controls), so it is
+    deliberately left at its neutral default here rather than faked.
+    """
+    record = _valid_record(
+        tests=["fake"], test_results={"fake": {"passed": 1, "failed": 5, "skipped": 0}},
+        evidence=["does/not/exist.md"],
+        production_writes=3,
+        production_access={"count": 5, "commands": ["fabricated"]},
+    )
+    verifier = IndependentVerifier(
+        commits_between=lambda s, e: [],
+        file_exists_at_sha=lambda sha, path: False,
+        pr_state=lambda n: "closed",
+        manifest_verifies=lambda p: False,
+    )
+
+    results = verifier.run_all(record, was_production_authorized=False)
+    score = compute_trust_score(results, record)
+
+    assert score < 0.3, f"expected an obviously-fabricated record to score low, got {score}"
+
+
+def test_trust_score_stays_high_for_a_genuinely_honest_record():
+    record = _valid_record()
+    results = _honest_verifier().run_all(record)
+
+    score = compute_trust_score(results, record)
+
+    assert score > 0.9, f"expected a fully-honest, fully-corroborated record to score high, got {score}"

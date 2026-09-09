@@ -35,6 +35,18 @@ def test_refuses_duplicate_tool_id_and_version(registry):
         registry.register(manifest)
 
 
+def test_refuses_unknown_fields_not_part_of_the_schema(registry):
+    """Found by this program's own adversarial review: an unrecognized
+    field (e.g. a misnamed override attempt like
+    'required_approval_override') used to be silently accepted and
+    stored rather than refused."""
+    manifest = example_a_harmless_read_only()
+    manifest["totally_made_up_field"] = "sneaky"
+
+    with pytest.raises(ManifestValidationError, match="totally_made_up_field"):
+        registry.register(manifest)
+
+
 def test_registering_a_new_version_of_same_tool_id_succeeds(registry):
     manifest_v1 = example_a_harmless_read_only()
     registry.register(manifest_v1)
