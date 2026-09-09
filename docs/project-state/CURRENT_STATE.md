@@ -230,13 +230,13 @@ actions each carried (read-only production access for Workload 2;
   the exact remaining blocker to closing Workload 2** and requires one of:
   (a) Natalie or an operator runs the two prepared read-only commands
   directly and provides the results for reconciliation into this record;
-  (b) Natalie makes an explicit governance change to `CLAUDE.md` narrowing
-  item 4's scope for a defined class of read-only verification (itself a
-  standing-gate action — "any change to KARMO governance" — requiring her
-  explicit approval, not something this session decided unilaterally); or
-  (c) Natalie explicitly accepts Workload 2 as permanently deferred,
-  non-blocking closeout (consistent with how the residual risk it
-  reverifies was already accepted on 2026-09-06).
+  (b) Natalie makes an explicit governance change resolving the conflict —
+  **done, 2026-09-08, see "Production Access Authorization Gate adopted"
+  below; Workload 2 can now proceed once Natalie issues an actual
+  Production Access Authorization under that gate for the specific H01-T01/
+  H01-T18 commands**; or (c) Natalie explicitly accepts Workload 2 as
+  permanently deferred, non-blocking closeout (consistent with how the
+  residual risk it reverifies was already accepted on 2026-09-06).
 - **Workload 3 (registry integrity repair tool): complete in isolation.**
   `h04/app/registry_repair.py` + `h04/tests/test_h04_registry_repair.py`
   (4/4 PASS) + targeted regression re-run (11/11 PASS, existing suite
@@ -255,14 +255,60 @@ actions each carried (read-only production access for Workload 2;
 
 Per the consolidation review's own criterion (Foundation Complete =
 Workload 1 merged + an explicit Natalie decision on Workloads 2/3): Workload
-1 is merged, but Workload 2 hit a new, previously-undocumented blocker (the
-`CLAUDE.md` conflict above) rather than reaching a deferred-or-run decision,
-so that decision is still outstanding. Once Natalie resolves Workload 2 by
-one of the three paths above, and confirms whether PRs #8/#9 merging is a
-precondition or can trail the declaration, Foundation v1 can be formally
-declared complete without needing Workload 5 / H0.5 to start first — H0.5
-is the first post-foundation capability phase, not a required foundation
-increment (see the consolidation review for the full reasoning).
+1 is merged. Workload 2's governance blocker is now resolved in principle
+(see below), but Workload 2 itself still has not run — an actual Production
+Access Authorization for the H01-T01/H01-T18 commands has not yet been
+issued or acted on. Once Natalie either issues that authorization (and it
+is acted on) or explicitly accepts Workload 2 as deferred, and confirms
+whether PRs #8/#9/#10/this governance PR merging is a precondition or can
+trail the declaration, Foundation v1 can be formally declared complete
+without needing Workload 5 / H0.5 to start first — H0.5 is the first
+post-foundation capability phase, not a required foundation increment (see
+the consolidation review for the full reasoning).
+
+## Production Access Authorization Gate adopted (2026-09-08, governance correction)
+
+**VERIFIED** — Natalie explicitly approved resolving the conflict this
+session's Workload 2 attempt surfaced: `CLAUDE.md` item 4 and `AGENTS.md`'s
+"Authority and boundaries" section both stated an unconditional,
+no-exception prohibition on any production access, leaving no path for
+Natalie's own explicit, task-specific authorizations (the same kind that
+already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
+
+- Added the **Mandatory Production Access Authorization Gate** to
+  `docs/governance/KARMO_ENGINEERING_INVARIANTS.md` (new section, between
+  the existing Mandatory Phase Invariant Impact Review and Mandatory
+  Project Save Completion Rule sections — same non-duplicating pattern as
+  both) — the single canonical rule: production access prohibited by
+  default; lifted only by an explicit, task-specific authorization defining
+  target system, purpose, permitted operations, read-only vs. write
+  authority, and applicable commands; read-only never implies write;
+  writes/deployment/destructive actions/migrations/restarts/config
+  changes/data repair/deletion each need their own separate grant;
+  single-task scope, auto-expires on completion; defined STOP conditions
+  (unexpected state, scope ambiguity, contradictory evidence, insufficient
+  granted authority); secrets never exposed/printed/persisted; does not
+  override any other invariant, review, validation, or approval gate; the
+  narrower rule always wins; a general workload approval never substitutes.
+  Includes a copy-pasteable authorization-record shape.
+- `CLAUDE.md` item 4 and `AGENTS.md`'s equivalent bullet both rewritten to
+  reference this gate rather than stating an unconditional, no-exception
+  prohibition (`AGENTS.md` was not named in Natalie's request but carried
+  the identical unresolved conflict in an even more absolute form — leaving
+  it as-is would have left the conflict only partially resolved).
+  `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`'s existing
+  "access production when not explicitly authorized" bullet cross-referenced
+  to the same gate, not restated.
+- Invariant Impact Review performed before this change:
+  `docs/evidence/governance/PRODUCTION_ACCESS_AUTHORIZATION_GATE_INVARIANT_IMPACT_REVIEW.md`.
+- No production was accessed and no Production Access Authorization was
+  issued or acted on by this task — a purely canonical-governance
+  documentation change. Branch `governance/production-access-authorization-gate`,
+  PR pending, **not merged**.
+- This does **not** retroactively require re-justifying the already-accepted
+  H0.1/H0.2/H0.4 production cutover history (I-01: those predate this gate
+  and remain VERIFIED as recorded); it governs future production access
+  only.
 
 ## Confirmed data-state baselines (for reference, HISTORICAL unless restated)
 
