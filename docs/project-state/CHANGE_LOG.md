@@ -126,3 +126,24 @@ MASTER_INDEX.md for status-tag definitions.
 - Per instruction, not committed separately — staged to be included in the
   Workload 1 commit/PR alongside the repository-hygiene fixes, so the rule
   and the first project-state-driven workload become durable together.
+- This entry's Workload 1 commit landed as `fd1d724` on branch
+  `chore/repo-hygiene-and-project-save-rule` (PR #7, opened, not merged).
+
+## ChatGPT Session Persistence adopted (2026-09-08, follow-up to Workload 1, before PR #7 merge)
+
+- **VERIFIED** (this session) — Natalie requested an extension to the
+  Mandatory Project Save Completion Rule (not a new rule) covering
+  consequential KARMO information produced in her ChatGPT planning
+  sessions: ChatGPT conversation history is explicitly not the
+  authoritative KARMO project record; the Git repository, including
+  `docs/project-state/`, is. Added as an "Extension: ChatGPT Session
+  Persistence" subsection directly under the existing Mandatory Project
+  Save Completion Rule in
+  `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`.
+- `AGENTS.md`/`CLAUDE.md` were not modified — both already reference the
+  rule as a whole rather than restating its sub-parts, so their existing
+  references already cover this extension.
+- Committed as a follow-up to the existing
+  `chore/repo-hygiene-and-project-save-rule` branch, updating PR #7 rather
+  than opening a new one, per instruction not to redo Workload 1. PR #7
+  remains unmerged.

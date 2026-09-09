@@ -41,7 +41,11 @@ the files listed here.
   a separate file) — no major session/phase/workload is complete until
   `docs/project-state/` is updated and durably committed (or explicitly
   marked PROJECT SAVE PENDING). Referenced, not duplicated, from `AGENTS.md`
-  and `CLAUDE.md`.
+  and `CLAUDE.md`. Extended the same day with a **ChatGPT Session
+  Persistence** subsection (same rule, not a second rule): a ChatGPT
+  planning-session handoff only counts as recorded once a repository-capable
+  agent reconciles it against `docs/project-state/` and commits the result —
+  ChatGPT conversation history itself is not the authoritative record.
 
 ## Vision, architecture, and plans (not duplicated here)
 

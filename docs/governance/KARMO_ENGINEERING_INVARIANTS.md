@@ -356,3 +356,65 @@ work itself already required (see
 `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`). It requires that
 the record-keeping happen and be durable, not that every session ends in a
 merge.
+
+### Extension: ChatGPT Session Persistence
+
+KARMO architectural decisions, approvals, requirements, constraints, future
+goals, project-state changes, and other consequential information created
+during Natalie's ChatGPT planning sessions are **not** considered durably
+recorded merely because they exist in ChatGPT conversation history.
+**ChatGPT conversation history is not the authoritative KARMO project
+record.** The Git repository, including `docs/project-state/`, is the
+authoritative persistent project record.
+
+When Natalie invokes **PROJECT SAVE** for a ChatGPT KARMO session, the same
+PROJECT SAVE rule above applies, entered through this specific path:
+
+1. ChatGPT prepares a handoff containing the consequential decisions,
+   approvals, requirements, discoveries, architecture decisions,
+   constraints, unresolved items, stopping point, and next action from that
+   session.
+
+2. The handoff is provided to a repository-capable KARMO development agent
+   (Claude Code or a future equivalent).
+
+3. That agent MUST read and reconcile the existing `docs/project-state/`
+   records before writing the handoff into the repository — per rule 1
+   above, not a separate step.
+
+4. Existing `VERIFIED` information must never be silently overwritten;
+   conflicts between the handoff and the existing record must be explicitly
+   reported — per rule 5 above.
+
+5. The applicable `docs/project-state/` files must be updated — per rule 2
+   above.
+
+6. Secret values must never be copied from ChatGPT into project records.
+   Credential locations/mechanisms may be recorded; passwords, API keys,
+   tokens, private keys, and other secret values may not be stored — per
+   rule 6 above.
+
+7. The resulting project-state update must be committed to Git before the
+   ChatGPT planning session is considered durably CLOSED — per rule 8
+   above.
+
+8. If the handoff has been created but not yet committed, report **PROJECT
+   SAVE: PENDING** — the ChatGPT-session equivalent of rule 9's PROJECT SAVE
+   PENDING state.
+
+9. Once committed, report completion in the same format as rule 10 above:
+
+   ```
+   PROJECT SAVE: COMPLETE
+   Persistent records updated: <files>
+   Durable Git commit: <hash>
+   Current stopping point: <state>
+   Next action: <action>
+   ```
+
+This extension applies regardless of which repository-capable agent
+performs the persistence step, including Claude Code or future KARMO
+development agents. It does not create a second PROJECT SAVE rule — a
+ChatGPT planning session is simply another source of consequential KARMO
+information that must flow through the one rule above before it counts as
+recorded.

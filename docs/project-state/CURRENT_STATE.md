@@ -43,6 +43,16 @@ MASTER_INDEX.md for status-tag definitions.
   phase, and workload, including Spec Kit work. This reconciliation itself
   is being closed under that rule — see the PROJECT SAVE report accompanying
   this update.
+- ChatGPT Session Persistence: **VERIFIED** adopted (2026-09-08, same day) —
+  extends the Project Save Completion Rule (same section, not a separate
+  rule) to cover Natalie's ChatGPT KARMO planning sessions: ChatGPT
+  conversation history is explicitly **not** the authoritative KARMO project
+  record; a ChatGPT session's consequential decisions/approvals/requirements
+  only count as durably recorded once a repository-capable agent reconciles
+  the session's handoff against `docs/project-state/` and commits the
+  result, per the same PROJECT SAVE steps already in force. No AGENTS.md or
+  CLAUDE.md change was needed — both already reference the rule as a whole
+  rather than enumerating its sub-parts.
 
 ## H0.1 — Transactional Outbox
 
