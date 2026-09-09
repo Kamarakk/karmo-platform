@@ -290,3 +290,69 @@ Rollback implications:
 
 The review should be concise. Its purpose is to catch design problems
 before implementation, not create paperwork.
+
+---
+
+## Mandatory Project Save Completion Rule
+
+No major KARMO work session, phase, workload, deployment, configuration
+session, or infrastructure change is considered complete until **PROJECT
+SAVE** has been performed. This applies to all future KARMO phases and
+workloads, including work performed through Spec Kit.
+
+PROJECT SAVE requires:
+
+1. Read the existing `docs/project-state/` records first.
+
+2. Update the applicable persistent records, including as appropriate:
+   `MASTER_INDEX.md`, `CURRENT_STATE.md`, `CHANGE_LOG.md`,
+   `SOFTWARE_INVENTORY.md`, `NETWORK_INVENTORY.md`, `DASHBOARD_INVENTORY.md`,
+   `COMMAND_LOG.md`, `ROLLBACK_AND_REMOVAL.md`, `NEXT_STEPS.md`.
+
+3. Record consequential installations, configuration changes, commands
+   actually executed, verified results, failures and fixes, architecture
+   decisions, services/containers/tools, network changes, dependencies,
+   rollback/removal procedures, unresolved issues, the stopping point, and
+   the next action.
+
+4. Use the three-tier status vocabulary already established for
+   `docs/project-state/`: `VERIFIED`, `HISTORICAL`, `NEEDS VERIFICATION`.
+
+5. Never silently replace conflicting verified information. Flag conflicts
+   instead.
+
+6. Never store passwords, API keys, tokens, or secret values. Record only
+   the location/mechanism used to obtain credentials, per I-09's
+   least-privilege and credential-scope discipline.
+
+7. Run appropriate consistency and repository validation after updating the
+   records (at minimum, the checks already established in
+   `docs/governance/KARMO_VALIDATION_LADDER.md` for a documentation-only
+   change: `git diff --check`, `git status`, and a scan for contradictions,
+   duplicate governance, secrets, and accidental resolution of historical
+   unknowns).
+
+8. The applicable `docs/project-state/` updates must be committed to the
+   repository with the work they document, or in an immediately following
+   documentation commit, before the session/workload is considered CLOSED.
+
+9. If work intentionally stops before a commit/PR boundary, the session
+   must be marked **PROJECT SAVE PENDING**, and the fact that the project
+   record is not yet durably committed must be explicitly reported.
+
+10. Before declaring a workload/session COMPLETE, report:
+
+    ```
+    PROJECT SAVE: COMPLETE
+    Persistent records updated: <files>
+    Durable Git commit: <commit hash>
+    Current stopping point: <state>
+    Next action: <action>
+    ```
+
+This rule does not create a new approval gate on its own — committing the
+resulting documentation still follows whatever merge/approval boundary the
+work itself already required (see
+`docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`). It requires that
+the record-keeping happen and be durable, not that every session ends in a
+merge.
