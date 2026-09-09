@@ -49,7 +49,7 @@ Stopping is for the boundaries below, not for ordinary defect-fixing.
 Regardless of workload approval, Claude must not:
 
 - deploy to production;
-- access production when not explicitly authorized for that specific access;
+- access production when not explicitly authorized for that specific access — "explicitly authorized" means a valid Production Access Authorization under `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`'s Mandatory Production Access Authorization Gate specifically, never this contract's general workload approval;
 - perform a destructive operation (deleting data, force-pushing, dropping a
   table, `git reset --hard` on shared history, etc.);
 - weaken, reinterpret, or bypass any of I-01 through I-09;

@@ -293,6 +293,130 @@ before implementation, not create paperwork.
 
 ---
 
+## Mandatory Production Access Authorization Gate
+
+Production access — any production SSH, Docker socket, production
+database, Qdrant, secret, real document, or customer-data access — is
+**prohibited by default** for every KARMO agent, including within an
+already-approved autonomous workload. This gate is the single canonical
+resolution of that default prohibition: it defines the only way past it,
+so that no other document, approval, or instruction needs to (or may)
+restate, narrow, or widen it independently. Where any other document
+appears to grant production access on different terms, this section
+governs, per this document's own precedence statement above.
+
+### What lifts the default prohibition
+
+Only Natalie's **explicit, task-specific Production Access Authorization**
+lifts the default prohibition, and only to the exact extent that
+authorization defines. A general workload approval, an approval under
+`docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`, or an
+authorization already granted for a different task, NEVER substitutes for
+this. Per I-09's least-privilege principle and this document's own
+precedence rule: **the narrower rule always wins.** An agent that is
+unsure whether a given approval counts as a valid Production Access
+Authorization for the task at hand must treat it as not counting, and
+STOP.
+
+A valid Production Access Authorization must define or clearly bound:
+
+1. **Target system/environment** — the exact host, database, Qdrant
+   collection, or service covered. Not "production" in general.
+2. **Purpose** — why this access is needed, traceable to an approved
+   workload or an explicit one-off request.
+3. **Permitted operations** — the specific action(s) authorized, not an
+   open-ended capability.
+4. **Read-only vs. write authority** — stated explicitly. **A read-only
+   authorization never implies write authorization, under any
+   circumstance.** Any write requires its own separate grant (see below).
+5. **Applicable commands or command class**, when known — the exact
+   command(s), or a clearly bounded class of command, the authorization
+   covers.
+
+An authorization missing any of the above for the task actually at hand is
+incomplete; treat it the same as no authorization and STOP to ask for the
+missing element, rather than filling the gap with an assumption.
+
+### Scope and expiry
+
+Authorization is **single-task, single-session scope**. It expires
+automatically the moment the authorized task completes — successfully,
+unsuccessfully, or abandoned — and does not carry forward to a later
+session, a later task, or a superficially similar task, even within the
+same workload. A new task requires a new authorization.
+
+### Writes and higher-impact actions require their own grant
+
+A Production Access Authorization for read-only verification never
+authorizes, and must never be treated as implicitly extending to, a
+production write, deployment, a destructive action, a migration, a service
+restart, a configuration change, a data repair, a deletion, or any other
+irreversible action. Each requires its own explicit authorization, stated
+with the same specificity as above — matching I-09's capability
+classification (a write is at minimum REVERSIBLE WRITE; most of the listed
+actions are EXTERNAL ACTION or DESTRUCTIVE/HIGH-IMPACT) and the standing
+gates already in `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`.
+
+### Mandatory STOP conditions
+
+Even under a valid, in-scope authorization, an agent must STOP
+immediately — before taking or completing any modifying action — and
+report rather than proceed, when any of the following occurs:
+
+- production state is unexpected or does not match the authoritative
+  record (an "evidence contradicts an authoritative record" condition,
+  per the autonomous execution contract);
+- the task's scope is ambiguous in a way that could expand what is
+  actually touched;
+- evidence encountered during the task is contradictory;
+- completing the task, or responding to what is found, would require
+  greater authority than the authorization actually grants (e.g. a
+  read-only grant reveals a problem that can only be fixed with a write).
+
+### Secrets
+
+Never expose, print, log, commit, or otherwise persist a secret value
+(password, API key, token, credential) encountered or used under a
+Production Access Authorization. An existing, already-approved
+secret-loading mechanism (e.g. an environment variable an application
+already reads) may be used without ever displaying, echoing, or writing
+out the value itself. This is consistent with, not an exception to,
+`AGENTS.md`'s "do not use or request secrets": that rule means never ask
+Natalie for a secret value or type one into a session; invoking an
+existing, already-wired loading mechanism without ever seeing or
+disclosing the value is not "using or requesting a secret" in that sense.
+
+### Relationship to other invariants and gates
+
+This gate narrows, and never widens, what an agent may do. A Production
+Access Authorization does not override, relax, or substitute for any other
+invariant (I-01 through I-09), the Mandatory Phase Invariant Impact
+Review, `docs/governance/KARMO_VALIDATION_LADDER.md`'s validation
+requirements, any rollback requirement, or any other approval gate in
+`docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`. Where this gate
+and any other rule could be read as being in tension, the narrower reading
+governs.
+
+### Authorization record (use this shape)
+
+Record every Production Access Authorization actually acted on — in the
+task's PR description or evidence, and in
+`docs/project-state/CURRENT_STATE.md` once acted on:
+
+```
+PRODUCTION ACCESS AUTHORIZATION
+Task: <specific task/workload>
+Target system/environment: <exact host/db/collection/service>
+Purpose: <why>
+Permitted operations: <exact action(s)>
+Authority: READ-ONLY | READ-ONLY + WRITE (state exactly which writes)
+Commands/command class: <exact command(s) or bounded class>
+Granted: <date, by Natalie>
+Expires: automatically on task completion
+```
+
+---
+
 ## Mandatory Project Save Completion Rule
 
 No major KARMO work session, phase, workload, deployment, configuration

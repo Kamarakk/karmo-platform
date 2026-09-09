@@ -12,7 +12,7 @@ Do not repeat full logs in chat. Put evidence in the pull request or `docs/evide
 
 ## Authority and boundaries
 
-- Never access or modify production KARMO from an AI session.
+- Do not access or modify production KARMO except under an explicit, task-specific Production Access Authorization from Natalie — see "Production Access Authorization" below. Production access is prohibited by default; a general workload or session approval never substitutes for this.
 - Work only on a feature branch in the approved non-production workspace.
 - Do not use or request secrets. Do not inspect private documents, database dumps, or real conversation data.
 - Do not change the H0 phase order or frozen acceptance criteria without a documented decision approved by Natalie.
@@ -36,6 +36,19 @@ and is not duplicated here. Compliance is mandatory for every phase,
 feature, service, migration, agent, integration, and deployment, and its
 Mandatory Phase Invariant Impact Review must be completed **before
 substantial implementation begins**, not retrofitted afterward.
+
+## Production Access Authorization (permanent)
+
+`docs/governance/KARMO_ENGINEERING_INVARIANTS.md`'s Mandatory Production
+Access Authorization Gate is not duplicated here. Production access
+remains prohibited by default; it may be granted only exactly as that gate
+describes — explicit, task-specific, narrowly bounded (target system,
+purpose, permitted operations, read-only vs. write, applicable commands),
+single-task scope, expiring automatically on task completion, and never
+implied by a general workload or session approval. A read-only grant never
+implies write authority; writes, deployment, destructive actions,
+migrations, restarts, configuration changes, data repair, or deletion each
+require their own separate grant.
 
 ## Project Save Completion (every major session/workload, permanent)
 
