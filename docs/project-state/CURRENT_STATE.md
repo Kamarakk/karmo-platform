@@ -1,8 +1,9 @@
 # KARMO Current State
 
-Last reconciled: 2026-09-09 (Core v2 Engineering Blueprint Program pass,
-following the Post-Foundation Overnight Readiness Program pass earlier
-the same day). See MASTER_INDEX.md for status-tag definitions.
+Last reconciled: 2026-09-09 (KARMO Large Autonomous Review of PR #14–#21,
+following the Post-Foundation Overnight Readiness Program and Core v2
+Engineering Blueprint Program passes earlier the same day). See
+MASTER_INDEX.md for status-tag definitions.
 
 **KARMO FOUNDATION v1: DECLARED COMPLETE, 2026-09-09.** See
 `docs/evidence/foundation-v1/FOUNDATION_V1_CLOSEOUT_REPORT.md` for the full
@@ -29,6 +30,23 @@ Voice/Media, and Finance/Trading, consolidated into a proposed KARMO Core
 v2 specification. **No Core v2 component is implemented in production; no
 domain capability is chosen or started.** See "Core v2 Engineering
 Blueprint Program" section below and PRs #18, #19, #20, #21.
+
+**Independent merge-readiness review of PRs #14–#21 completed 2026-09-09**
+(same day, repository-only, zero production access): fresh reproduction
+of every test claim, a real cross-PR conflict found and documented (PR
+#17 vs. #21, both editing the same `docs/project-state/` files), and an
+adversarial security re-review of the Core v2 prototypes that found and
+fixed **4 real defects** in PR #19 (154 → 160 tests) plus 2 stale
+test-count references in PR #20/#21 — all fixed **in the existing PRs**,
+no new PR created for fixes (`review/pr14-21-merge-readiness` was opened
+only for the review's own cross-cutting evidence). Full detail:
+`docs/evidence/autonomous-review/KARMO_PR14_21_MERGE_READINESS.md`, plus
+`MERGE_SEQUENCE.md`, `OPEN_FINDINGS_TRIAGE.md`,
+`SPEC_PROTOTYPE_CONFORMANCE.md`, and `CAPABILITY_DECISION_MATRIX.md` in
+the same directory. **PRs #14–#21 have since been merged into `main` by a
+separate, later approved merge sequence** — the findings above reflect
+the review's own conclusions as they stood at review time, before that
+merge sequence ran.
 
 ## Top-line
 

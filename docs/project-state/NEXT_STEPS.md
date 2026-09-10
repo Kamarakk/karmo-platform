@@ -4,10 +4,22 @@ See MASTER_INDEX.md for status-tag definitions. **KARMO FOUNDATION v1 was
 declared COMPLETE on 2026-09-09.** Two further repository-only,
 zero-production-access programs ran the same day: the Post-Foundation
 Overnight Readiness Program (PRs #14–#17) and the Core v2 Engineering
-Blueprint Program (PRs #18–#21). The primary next action is now
-**Natalie's set of decisions listed below** — there is no outstanding
-foundation-blocking work, and nothing in either program requires an
-urgent response.
+Blueprint Program (PRs #18–#21).
+
+**An independent merge-readiness review of PRs #14–#21 completed
+2026-09-09** — see
+`docs/evidence/autonomous-review/KARMO_PR14_21_MERGE_READINESS.md` for
+full PR-by-PR status and `docs/evidence/autonomous-review/MERGE_SEQUENCE.md`
+for the recommended merge order (#14, #15, #16, #17, #18, #19, #20, #21 —
+#17 before #21 specifically, to resolve a real, documented conflict
+between the two PROJECT SAVE PRs). PR #19 was updated in place with 4
+adversarial-review fixes (154 → 160 tests); PR #20 and #21 were updated
+in place to correct the resulting stale test-count references. No new PR
+was created for these fixes — existing PRs were updated directly.
+
+The primary next action is now **Natalie's set of decisions listed
+below** — there is no outstanding foundation-blocking work, and nothing
+in either program requires an urgent response.
 
 ## Items requiring Natalie's decision
 
