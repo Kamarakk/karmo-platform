@@ -446,3 +446,56 @@ MASTER_INDEX.md for status-tag definitions.
 - **Blockers: None** — but only as of this second fix round; the finding
   above was a genuine blocker until fixed and re-tested. PRs #23–#25
   remain open and unmerged, awaiting a third round of re-verification.
+
+## KARMO Worker Runtime v0.1 — third independent-verification fix, narrow (2026-09-10, before any merge)
+
+- **VERIFIED (repo)** — a third independent (ChatGPT) verification pass
+  of PRs #23–#25 found one narrow remaining blocker in round 2's
+  pending-approval fix: `job_protocol.WorkerJobQueue.resume()`'s
+  "terminal approval outcome ends the job safely" guard only
+  transitioned the job to `FAILED` if it was still
+  `WAITING_FOR_APPROVAL`. If `approve()` had already run (moving the job
+  to `RUNNING`) and the approval *then* expired before `try_resume()`
+  ever consumed it, the job was left stuck `RUNNING` and its assigned
+  worker stuck `BUSY` forever — nothing ever noticed or released it.
+  Natalie directed that PRs #23–#25 not be merged until this was fixed
+  and re-verified; work was confined to the existing Worker Runtime
+  branches and the synthetic/local KARMO-DEV01 environment — no
+  production access, no network changes, no new PRs.
+- **Fix** — widened `resume()`'s guard to transition the job to `FAILED`
+  from either `WAITING_FOR_APPROVAL` or `RUNNING`. `RUNNING → FAILED` is
+  already a legal transition in the reused `job_model` state machine
+  (`VALID_TRANSITIONS`), so no change to `core-v2-prototypes/job_model/jobs.py`
+  was needed this time, and `ApprovalEngine` logic is still not
+  duplicated anywhere in this fix.
+- One targeted test via the real `WorkerClient`/transport path
+  (`test_worker_client_approval_expires_after_being_approved_ends_safely`)
+  proves all 7 required points: job parks for approval; approval is
+  granted for the assigned worker (job moves to `RUNNING`); approval
+  expires before execution; `try_resume()` executes no action (proven
+  via a call-counting handler, not just an absent result); job ends
+  `FAILED`; the worker returns `AVAILABLE`; a second resume attempt is
+  also cleanly refused with no duplicate execution. Verified the test
+  actually catches the bug by temporarily reverting the fix (`git
+  stash`) and confirming the test failed first (job stuck `RUNNING`)
+  before re-applying it.
+- **Worker Runtime suite now 68/68 passing** (was 67/67, originally
+  44/44); core-v2-prototypes regression reconfirmed 161/161, unaffected.
+  Both runs fresh, not merely re-read from prior output.
+- Documentation updated to match, narrowly (only what materially needed
+  the corrected result): `SECURITY_REVIEW.md` threat #23's row (its
+  "denial/expiry both end safely" claim was incomplete before this fix;
+  corrected and the new test added to its evidence list).
+  `WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md` and
+  `KARMO_WORKER_RUNTIME_NETWORK_PLAN.md` did not need changes for this
+  narrow fix (no new invariant implications, no network-transport
+  implications) and were left untouched. `WORKER_RUNTIME_REPORT.md`,
+  `RUN_SUMMARY.json`, `TEST_RESULTS.txt`, `VERIFICATION_CHECKLIST.md`
+  (new command 13), `MANIFEST.sha256` all updated;
+  `BENCHMARK_RESULTS.json` unaffected by this fix, not re-run.
+- PR #23 updated at commit `a2a1619`. PR #24 updated at commit `b3bac0c`.
+  PR #25 updated at this entry's accompanying commit (see this file's own
+  commit hash). **No new PRs opened. No merge.**
+- **Blockers: None** — but only as of this third fix round; the finding
+  above was a genuine blocker until fixed and re-tested. PRs #23–#25
+  remain open and unmerged, awaiting a fourth round of re-verification.

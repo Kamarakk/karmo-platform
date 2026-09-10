@@ -4,14 +4,25 @@
   "branch": "worker-runtime/implementation",
   "based_on_branch": "core-v2/prototypes",
   "machine": "KARMO-DEV01 (Apple M3, arm64, macOS 14.8.7)",
-  "status": "Two rounds of independent (ChatGPT) verification of PRs #23-#25 found blocking findings before merge. All fixed on the same open PRs, with new adversarial tests. Not merged yet -- awaiting re-verification.",
+  "status": "Three rounds of independent (ChatGPT) verification of PRs #23-#25 found blocking findings before merge. All fixed on the same open PRs, with new adversarial tests. Not merged yet -- awaiting re-verification.",
   "independent_verification_round_1_commit": "5906f61",
   "independent_verification_round_2_commit": "08c501e",
+  "independent_verification_round_3_commit": "a2a1619",
   "test_results": {
-    "worker_runtime_suite": {"passed": 67, "failed": 0, "path": "worker-runtime/tests/test_worker_runtime.py", "note": "44 originally -> 62 after round 1 (+18) -> 67 after round 2 (+7, minus 2 superseded end-to-end tests replaced by the round-2 pending-approval workflow tests -- net +5 over round 1's 62)"},
-    "core_v2_prototypes_regression": {"passed": 161, "failed": 0, "note": "unaffected by either round's fixes; unchanged from the prior 161"}
+    "worker_runtime_suite": {"passed": 68, "failed": 0, "path": "worker-runtime/tests/test_worker_runtime.py", "note": "44 originally -> 62 after round 1 (+18) -> 67 after round 2 (+7, minus 2 superseded end-to-end tests) -> 68 after round 3 (+1 targeted test)"},
+    "core_v2_prototypes_regression": {"passed": 161, "failed": 0, "note": "unaffected by any round's fixes; unchanged from the prior 161"}
   },
   "required_failure_scenarios_covered": 24,
+  "independent_verification_round_3_findings_and_fixes": [
+    {
+      "finding": "The round-2 pending-approval fix correctly handled expiry while a job was still WAITING_FOR_APPROVAL, but missed a narrower sequence: WAITING_FOR_APPROVAL -> approve() (job moves to RUNNING) -> approval expires before try_resume() ever consumes it. resume()'s terminal-approval-ends-job-safely branch only transitioned the job to FAILED if it was still WAITING_FOR_APPROVAL; after approve() it was already RUNNING, so this sequence left the job stuck RUNNING and its assigned worker stuck BUSY forever, with nothing ever noticing.",
+      "severity": "blocking",
+      "location": "worker-runtime/app/job_protocol.py WorkerJobQueue.resume()",
+      "fix": "widened the guard to transition to FAILED from either WAITING_FOR_APPROVAL or RUNNING. RUNNING -> FAILED is already a legal transition in the reused job_model state machine (VALID_TRANSITIONS) -- no change to jobs.py was needed, and ApprovalEngine logic is still not duplicated anywhere.",
+      "tests_added": ["test_worker_client_approval_expires_after_being_approved_ends_safely"],
+      "verification_method": "confirmed the new test actually catches the bug by temporarily reverting the fix (git stash) and re-running it -- it failed with the job stuck in RUNNING state, exactly as the finding described, before the fix was re-applied and the test passed"
+    }
+  ],
   "independent_verification_round_2_findings_and_fixes": [
     {
       "finding": "The round-1 approval-gates-execution fix was correct (nothing unauthorized ever executed) but incomplete: the normal WorkerClient flow had no way to represent 'legitimately waiting on approval' as anything but a hard failure -- an approval-required job reached execute(), was correctly refused because approval wasn't present yet, and poll_and_execute_once() then called submit_failure(), permanently marking a merely-pending job FAILED before a human ever had a chance to approve it.",

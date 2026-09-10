@@ -9,12 +9,14 @@ configuration.
 # 1. Set up the venv (already created this workload; safe to re-run).
 cd worker-runtime && python3 -m venv venv && venv/bin/pip install -q pytest
 
-# 2. All tests pass (67 tests: the 24 required scenarios + supporting
+# 2. All tests pass (68 tests: the 24 required scenarios + supporting
 #    capability/integration tests + the 18 first-round fix-verification
 #    tests (approval-gates-execution, real timeout kill, bounded result,
 #    worker health separation) + the 7 second-round fix-verification
 #    tests (pending-approval workflow: park, resume, wrong-worker,
-#    denial/expiry safety, NONE-capability unaffected)).
+#    denial/expiry safety, NONE-capability unaffected) + the 1
+#    third-round fix-verification test (expiry AFTER approval, a
+#    narrower case the second round's test missed)).
 venv/bin/python -m pytest tests/ -v
 
 # 3. Worker registers.
@@ -178,6 +180,57 @@ c.jobs.approve(pending.job_id, approver='natalie', authorized_executor='dev01')
 completed = client.try_resume(pending)
 print('after approval + resume:', completed.state.value, 'sha256:', completed.result.output['sha256'][:16] + '...')
 print('worker status:', c.workers.get('dev01').status.value, '(expect AVAILABLE)')
+"
+
+# 13. An approval that expires AFTER being granted (job already moved to
+#     RUNNING by approve()) still ends the job FAILED and releases the
+#     worker -- third-round independent-review fix. The second-round
+#     fix only covered expiry while still WAITING_FOR_APPROVAL.
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator
+from capability_manifest import SAFE_CAPABILITIES
+from tool_registry_reuse import CapabilityClass
+from transport import LocalTransport
+from worker_client import WorkerClient, WorkerClientError
+from sandbox import _HANDLERS
+import capabilities
+from datetime import datetime, timedelta, timezone
+
+class FakeClock:
+    def __init__(self):
+        self._now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    def __call__(self):
+        return self._now
+    def advance(self, s):
+        self._now += timedelta(seconds=s)
+
+clock = FakeClock()
+synthetic = dict(SAFE_CAPABILITIES['hash_verify'])
+synthetic['capability_id'] = 'synthetic_expire_check'
+synthetic['authority_class'] = CapabilityClass.REVERSIBLE_WRITE
+SAFE_CAPABILITIES['synthetic_expire_check'] = synthetic
+_HANDLERS['synthetic_expire_check'] = _HANDLERS['hash_verify']
+
+c = Coordinator(clock=clock)
+c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+    architecture='arm64', capabilities=[{'capability_id': 'synthetic_expire_check'}], resource_limits={})
+c.heartbeat('dev01')
+c.submit_job(capability_id='synthetic_expire_check', payload={'path': 'sample_document.txt'}, idempotency_key='k1')
+client = WorkerClient(worker_id='dev01', transport=LocalTransport(c),
+    allowed_root='tests/fixtures/allowed_workspace')
+pending = client.poll_and_execute_once(['synthetic_expire_check'])
+print('after poll:', pending.state.value, '(expect WAITING_FOR_APPROVAL)')
+c.jobs.approve(pending.job_id, approver='natalie', authorized_executor='dev01')
+print('after approve:', c.jobs.get(pending.job_id).state.value, '(expect RUNNING)')
+clock.advance(400)  # expires before resume
+try:
+    client.try_resume(pending)
+    print('FAIL: resumed despite expiry')
+except WorkerClientError as e:
+    print('correctly refused:', e)
+print('job state after expiry:', c.jobs.get(pending.job_id).state.value, '(expect FAILED)')
+print('worker status after expiry:', c.workers.get('dev01').status.value, '(expect AVAILABLE)')
 "
 ```
 

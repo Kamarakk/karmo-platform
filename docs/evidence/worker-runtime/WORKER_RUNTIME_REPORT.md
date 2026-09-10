@@ -1,6 +1,6 @@
 # KARMO Worker Runtime v0.1 -- Implementation Report
 
-**Update (two rounds of post-independent-verification, before any
+**Update (three rounds of post-independent-verification, before any
 merge):**
 
 **Round 1** -- an independent (ChatGPT) verification pass of PRs #23-#25
@@ -23,11 +23,22 @@ commit `08c501e`: an approval-required job now parks in
 approved, or ends safely (worker released) on denial/expiry. 7 more
 tests (67/67 passing, up from 62/62).
 
-Both rounds are reflected throughout this report, `SECURITY_REVIEW.md`,
-and `WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md`. See `RUN_SUMMARY.json`'s
-`independent_verification_round_1_findings_and_fixes` and
-`..._round_2_findings_and_fixes` for full detail. **PRs #23-#25 remain
-unmerged, awaiting re-verification.**
+**Round 3** -- a third independent verification pass found one narrow
+gap remaining in round 2's fix: an approval granted (job moved to
+`RUNNING` by `approve()`) that then expired *before* `try_resume()`
+consumed it left the job stuck `RUNNING` and its worker stuck `BUSY`
+forever -- round 2's expiry guard only covered a job still
+`WAITING_FOR_APPROVAL`. Fixed at implementation commit `a2a1619` by
+widening that guard to cover `RUNNING` too (already a legal `job_model`
+transition to `FAILED`, no state-machine change needed). 1 targeted test
+(68/68 passing, up from 67/67), verified to actually catch the bug by
+temporarily reverting the fix and confirming the test failed first.
+
+All three rounds are reflected throughout this report, `SECURITY_REVIEW.md`
+(threat #23 updated for round 3), and `WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md`.
+See `RUN_SUMMARY.json`'s `independent_verification_round_1_findings_and_fixes`,
+`..._round_2_findings_and_fixes`, and `..._round_3_findings_and_fixes` for
+full detail. **PRs #23-#25 remain unmerged, awaiting re-verification.**
 
 ## 1. Architecture
 
@@ -180,18 +191,22 @@ executes a parked job) -- not just the low-level API.
 ## 8. Failure/adversarial test results
 
 All 24 required scenarios implemented and passing, plus supporting
-capability/integration tests, 18 round-1 fix-verification tests, and 7
-round-2 fix-verification tests -- **67/67 passing** (was 44/44 ->
-62/62 -> 67/67). Full list and output in `TEST_RESULTS.txt`. Nine real
-defects have now been found and fixed across this workload (not merely
+capability/integration tests, 18 round-1, 7 round-2, and 1 round-3
+fix-verification tests -- **68/68 passing** (was 44/44 -> 62/62 -> 67/67
+-> 68/68). Full list and output in `TEST_RESULTS.txt`. Ten real defects
+have now been found and fixed across this workload (not merely
 reproduced from a checklist): 4 during initial build (see
 `RUN_SUMMARY.json`'s `defects_found_and_fixed_prior_to_independent_verification`),
 4 blocking findings from round-1 independent verification plus a real
 multiprocessing deadlock found while fixing the timeout issue (see
-`independent_verification_round_1_findings_and_fixes`), and 1 blocking
+`independent_verification_round_1_findings_and_fixes`), 1 blocking
 workflow finding from round-2 independent verification plus a worker-
 stuck-BUSY-after-denial/expiry bug found while fixing it (see
-`independent_verification_round_2_findings_and_fixes`).
+`independent_verification_round_2_findings_and_fixes`), and 1 narrow
+blocking finding from round-3 independent verification -- an approval
+expiring *after* being granted (job already `RUNNING`) left the job and
+its worker stuck, since round-2's expiry guard only covered a job still
+`WAITING_FOR_APPROVAL` (see `independent_verification_round_3_findings_and_fixes`).
 
 ## 9. M3 benchmark results
 
@@ -223,19 +238,23 @@ comparison against KARMO production is made, per explicit instruction.
 ## 10. Security findings
 
 Full threat-by-threat table in `SECURITY_REVIEW.md` (23 threats, up from
-the original 20 -- 3 new rows across both verification rounds). Round 1
-found and this workload fixed 4 blocking security gaps
-(approval-gated-completion-not-execution, non-enforced timeout,
-unbounded structured result, heartbeat-settable scheduling state). Round
-2 found and fixed 1 blocking workflow/availability gap (approval-gate
-refusal treated as a hard failure instead of a legitimate pending state
--- see `SECURITY_REVIEW.md` threat #23; nothing unauthorized ever
-executed at any point, before or after). Five previously-named open gaps
-remain, unaffected by either round's fixes and none exploitable within
-this workload's actual threat surface today (no network transport exists
-yet; capability set is deliberately low-consequence; no production
-credentials reachable): no cryptographic worker credential, no
-subprocess environment allowlisting, no symlink-escape-specific test, no
+the original 20 -- 3 new rows across rounds 1-2, plus round 3's
+correction to threat #23's own claim). Round 1 found and this workload
+fixed 4 blocking security gaps (approval-gated-completion-not-execution,
+non-enforced timeout, unbounded structured result, heartbeat-settable
+scheduling state). Round 2 found and fixed 1 blocking
+workflow/availability gap (approval-gate refusal treated as a hard
+failure instead of a legitimate pending state -- see
+`SECURITY_REVIEW.md` threat #23; nothing unauthorized ever executed at
+any point, before or after). Round 3 found and fixed a narrower gap in
+round 2's own fix: expiry detected *after* approval had already moved
+the job to `RUNNING` left the job and its worker stuck rather than
+ending safely. Five previously-named open gaps remain, unaffected by
+any round's fixes and none exploitable within this workload's actual
+threat surface today (no network transport exists yet; capability set
+is deliberately low-consequence; no production credentials reachable):
+no cryptographic worker credential, no subprocess environment
+allowlisting, no symlink-escape-specific test, no
 result-authenticity binding beyond internal-consistency digest, no
 coordinator persistence.
 
@@ -253,10 +272,11 @@ PR #23 (implementation + tests, `worker-runtime/implementation`), PR #24
 (architecture/security/network docs, `worker-runtime/docs`), PR #25
 (evidence + PROJECT SAVE, `worker-runtime/evidence`) -- all against
 `core-v2/prototypes`, disclosed explicitly in the Invariant Impact
-Review. Updated after two rounds of independent verification: PR #23 at
-implementation commit `08c501e` (round 1: `5906f61`, the 4-fix commit;
-round 2: `08c501e`, the pending-approval workflow fix), PR #24 and PR #25
-updated to match each round. None merged.
+Review. Updated after three rounds of independent verification: PR #23
+at implementation commit `a2a1619` (round 1: `5906f61`, the 4-fix
+commit; round 2: `08c501e`, the pending-approval workflow fix; round 3:
+`a2a1619`, the expiry-after-approve fix), PR #24 and PR #25 updated to
+match each round. None merged.
 
 ## 13. Production access: 0
 No SSH, no production database, no production Qdrant, no production
@@ -275,17 +295,20 @@ SAVE confirmation (files updated, commit hash, stopping point, next
 action).
 
 ## 17. Independent verification commands
-`VERIFICATION_CHECKLIST.md` -- 12 commands (10 original + 1 round-1
+`VERIFICATION_CHECKLIST.md` -- 13 commands (10 original + 1 round-1
 addition proving the approval-gates-execution fix + 1 round-2 addition
-proving the pending-approval park/resume workflow), all re-executed live
-against the fixed code with output matching what's documented there.
+proving the pending-approval park/resume workflow + 1 round-3 addition
+proving the expiry-after-approve fix), all re-executed live against the
+fixed code with output matching what's documented there.
 
 ## 18. Blockers
-None -- but only as of this update. Two rounds of independent (ChatGPT)
-verification of PRs #23-#25 found blocking findings before merge (see
-section 10 and `RUN_SUMMARY.json`): round 1 found 4 security gaps,
-round 2 found 1 workflow/availability gap in round 1's own fix. All are
-now fixed, tested (67/67 passing), and re-verified live via the updated
+None -- but only as of this update. Three rounds of independent
+(ChatGPT) verification of PRs #23-#25 found blocking findings before
+merge (see section 10 and `RUN_SUMMARY.json`): round 1 found 4 security
+gaps, round 2 found 1 workflow/availability gap in round 1's own fix,
+round 3 found 1 narrow gap in round 2's own fix (expiry detected after
+approval had already moved the job to RUNNING). All are now fixed,
+tested (68/68 passing), and re-verified live via the updated
 `VERIFICATION_CHECKLIST.md`. PRs remain open, unmerged, awaiting
 re-verification. All 15 phases were completed within the explicit scope
 and prohibitions of this workload; no new prohibited action (production

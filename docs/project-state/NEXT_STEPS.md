@@ -57,7 +57,7 @@ Runtime v0.1" in CURRENT_STATE.md and `docs/evidence/worker-runtime/`.
 **Not merged to `main` or `core-v2/prototypes`. Not deployed. Not
 connected to production.**
 
-**Two rounds of independent (ChatGPT) verification (2026-09-09/10,
+**Three rounds of independent (ChatGPT) verification (2026-09-09/10,
 before any merge)** of PRs #23–#25. Round 1 found 4 real blocking
 findings not caught by this workload's own original review: approval
 gated job completion but not execution; timeout enforcement was a
@@ -69,8 +69,12 @@ flow no way to represent a legitimately-pending approval other than a
 hard failure — an approval-required job was marked FAILED the instant it
 was leased — fixed at commit `08c501e` (jobs now park in
 `WAITING_FOR_APPROVAL` and resume exactly once approved, or end safely
-on denial/expiry). **67/67 tests passing** (was 44/44 → 62/62 → 67/67) —
-see CURRENT_STATE.md's Worker Runtime section and
+on denial/expiry). Round 3 found a narrower gap in round 2's own fix: an
+approval expiring after being granted (job already `RUNNING`) left the
+job and its worker stuck, since round 2's expiry guard only covered a
+job still `WAITING_FOR_APPROVAL` — fixed at commit `a2a1619`. **68/68
+tests passing** (was 44/44 → 62/62 → 67/67 → 68/68) — see
+CURRENT_STATE.md's Worker Runtime section and
 `docs/evidence/worker-runtime/RUN_SUMMARY.json` for full detail. PRs
 remain open, awaiting re-verification, still Natalie's to review/merge.
 Remaining choice for Natalie: merge this as-is, request further changes,

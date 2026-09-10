@@ -66,7 +66,7 @@ independent-verification evidence package.
   NOT deployed, NOT connected to production.** First real post-foundation
   capability, built 2026-09-09/10 on branch `worker-runtime/implementation`
   (based on `core-v2/prototypes`, itself unmerged — a disclosed dependency).
-  **Two rounds** of independent (ChatGPT) verification of PRs #23–#25,
+  **Three rounds** of independent (ChatGPT) verification of PRs #23–#25,
   before any merge: round 1 found 4 real blocking findings (approval
   gated job completion but not execution; timeout enforcement was a
   post-return check, not a real deadline; only `stdout_summary` was
@@ -78,8 +78,12 @@ independent-verification evidence package.
   job was marked FAILED the instant it was leased — fixed at commit
   `08c501e` (approval-required jobs now park in `WAITING_FOR_APPROVAL`
   and resume execution exactly once approved, or end safely on
-  denial/expiry). **67/67 tests passing** (was 44/44 → 62/62 → 67/67),
-  including all 24 required failure/adversarial scenarios plus both
+  denial/expiry). Round 3 found a narrower gap in round 2's own fix: an
+  approval expiring *after* being granted (job already `RUNNING`) left
+  the job and its worker stuck, since round 2's expiry guard only
+  covered a job still `WAITING_FOR_APPROVAL` — fixed at commit `a2a1619`.
+  **68/68 tests passing** (was 44/44 → 62/62 → 67/67 → 68/68), including
+  all 24 required failure/adversarial scenarios plus all three
   fix-verification suites. PRs remain open, unmerged, awaiting
   re-verification. See "KARMO Worker Runtime v0.1" section below and
   `docs/evidence/worker-runtime/WORKER_RUNTIME_REPORT.md`.
@@ -357,10 +361,10 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
 - KARMO-DEV01 (this Mac, Apple M3/arm64) registers, heartbeats, is leased
   a job, executes it sandboxed, and returns a verified result — proven
   end-to-end in `test_end_to_end_pull_based_hash_verify`.
-- 67/67 tests passing (`worker-runtime/tests/test_worker_runtime.py`,
-  was 44/44 → 62/62 → 67/67), covering all 24 required failure/adversarial
-  scenarios plus supporting capability/integration tests plus both
-  rounds' fix-verification tests (see below).
+- 68/68 tests passing (`worker-runtime/tests/test_worker_runtime.py`,
+  was 44/44 → 62/62 → 67/67 → 68/68), covering all 24 required
+  failure/adversarial scenarios plus supporting capability/integration
+  tests plus all three rounds' fix-verification tests (see below).
 - 4 real defects found and fixed while building this workload's own test
   suite (not pre-existing production bugs): a missing
   `WAITING_FOR_APPROVAL → FAILED` transition in the reused
@@ -416,6 +420,24 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
   same callable-based, in-process-only limitation. Full detail:
   `docs/evidence/worker-runtime/RUN_SUMMARY.json`'s
   `independent_verification_round_2_findings_and_fixes`.
+- **VERIFIED — third round of independent (ChatGPT) verification,
+  2026-09-10, before any merge**: found one narrow gap remaining in
+  round 2's fix — `resume()`'s "ends safely on a terminal approval
+  outcome" guard only transitioned the job to `FAILED` if it was still
+  `WAITING_FOR_APPROVAL`; if `approve()` had already run (moving the job
+  to `RUNNING`) and the approval *then* expired before `try_resume()`
+  ever consumed it, the job was left stuck `RUNNING` and its worker
+  stuck `BUSY` forever, since nothing ever noticed. **Fixed** at
+  implementation commit `a2a1619`: the guard now covers both
+  `WAITING_FOR_APPROVAL` and `RUNNING` (`RUNNING → FAILED` was already a
+  legal transition in the reused `job_model` state machine — no change
+  to `jobs.py` needed, `ApprovalEngine` logic still not duplicated
+  anywhere). One targeted test proves all 7 required points (park,
+  approve, expire, no action invoked, job `FAILED`, worker `AVAILABLE`,
+  a second resume also cleanly refused) — verified to actually catch the
+  bug by temporarily reverting the fix and confirming the test failed
+  first. Full detail: `docs/evidence/worker-runtime/RUN_SUMMARY.json`'s
+  `independent_verification_round_3_findings_and_fixes`.
 - M3 benchmark run (bounded, local, no production comparison), re-run
   after the fork-based timeout fix (numbers essentially unchanged, a few
   ms of fork overhead): `docs/evidence/worker-runtime/BENCHMARK_RESULTS.json`.
