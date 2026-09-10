@@ -39,7 +39,12 @@ VALID_TRANSITIONS = {
         JobState.TIMED_OUT,
         JobState.CANCELLED,
     },
-    JobState.WAITING_FOR_APPROVAL: {JobState.RUNNING, JobState.CANCELLED, JobState.TIMED_OUT},
+    JobState.WAITING_FOR_APPROVAL: {
+        JobState.RUNNING,
+        JobState.FAILED,  # approval denied -- a legitimate terminal outcome, not a fake resume-then-fail
+        JobState.CANCELLED,
+        JobState.TIMED_OUT,
+    },
 }
 
 

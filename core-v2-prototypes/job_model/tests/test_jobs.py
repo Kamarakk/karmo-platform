@@ -105,6 +105,7 @@ def test_current_workers_claim_token_succeeds(store):
         (JobState.RUNNING, JobState.TIMED_OUT),
         (JobState.RUNNING, JobState.CANCELLED),
         (JobState.WAITING_FOR_APPROVAL, JobState.RUNNING),
+        (JobState.WAITING_FOR_APPROVAL, JobState.FAILED),
         (JobState.WAITING_FOR_APPROVAL, JobState.CANCELLED),
         (JobState.WAITING_FOR_APPROVAL, JobState.TIMED_OUT),
     ],

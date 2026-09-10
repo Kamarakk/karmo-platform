@@ -1,0 +1,5 @@
+This is a synthetic test document used only by the Worker Runtime's own
+capability tests. It contains no real KARMO data, no production content,
+and no personal information. Its only purpose is to give the hash_verify,
+repository_analysis, and document_processing_test capabilities something
+real to operate on inside the explicitly scoped, allowed test workspace.
