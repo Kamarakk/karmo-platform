@@ -1,0 +1,19 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.3.3, pluggy-1.6.0 -- /Users/sdcity/KARMO-DEV/h04/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/sdcity/KARMO-DEV/h04
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 2 items
+
+tests/test_h04_active_state_legacy_fix.py::test_legacy_bootstrapped_document_no_longer_falsely_flagged PASSED [ 50%]
+tests/test_h04_active_state_legacy_fix.py::test_registry_inactive_qdrant_missing_field_now_detected PASSED [100%]
+
+=============================== warnings summary ===============================
+venv/lib/python3.9/site-packages/urllib3/__init__.py:35
+  /Users/sdcity/KARMO-DEV/h04/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+----------- generated xml file: /tmp/h04-active-state-fix-junit.xml ------------
+========================= 2 passed, 1 warning in 0.18s =========================
