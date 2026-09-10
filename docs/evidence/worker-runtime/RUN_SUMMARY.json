@@ -1,0 +1,100 @@
+{
+  "workload": "KARMO Worker Runtime v0.1",
+  "date": "2026-09-09",
+  "branch": "worker-runtime/implementation",
+  "based_on_branch": "core-v2/prototypes",
+  "machine": "KARMO-DEV01 (Apple M3, arm64, macOS 14.8.7)",
+  "status": "Three rounds of independent (ChatGPT) verification of PRs #23-#25 found blocking findings before merge. All fixed on the same open PRs, with new adversarial tests. Not merged yet -- awaiting re-verification.",
+  "independent_verification_round_1_commit": "5906f61",
+  "independent_verification_round_2_commit": "08c501e",
+  "independent_verification_round_3_commit": "a2a1619",
+  "test_results": {
+    "worker_runtime_suite": {"passed": 68, "failed": 0, "path": "worker-runtime/tests/test_worker_runtime.py", "note": "44 originally -> 62 after round 1 (+18) -> 67 after round 2 (+7, minus 2 superseded end-to-end tests) -> 68 after round 3 (+1 targeted test)"},
+    "core_v2_prototypes_regression": {"passed": 161, "failed": 0, "note": "unaffected by any round's fixes; unchanged from the prior 161"}
+  },
+  "required_failure_scenarios_covered": 24,
+  "independent_verification_round_3_findings_and_fixes": [
+    {
+      "finding": "The round-2 pending-approval fix correctly handled expiry while a job was still WAITING_FOR_APPROVAL, but missed a narrower sequence: WAITING_FOR_APPROVAL -> approve() (job moves to RUNNING) -> approval expires before try_resume() ever consumes it. resume()'s terminal-approval-ends-job-safely branch only transitioned the job to FAILED if it was still WAITING_FOR_APPROVAL; after approve() it was already RUNNING, so this sequence left the job stuck RUNNING and its assigned worker stuck BUSY forever, with nothing ever noticing.",
+      "severity": "blocking",
+      "location": "worker-runtime/app/job_protocol.py WorkerJobQueue.resume()",
+      "fix": "widened the guard to transition to FAILED from either WAITING_FOR_APPROVAL or RUNNING. RUNNING -> FAILED is already a legal transition in the reused job_model state machine (VALID_TRANSITIONS) -- no change to jobs.py was needed, and ApprovalEngine logic is still not duplicated anywhere.",
+      "tests_added": ["test_worker_client_approval_expires_after_being_approved_ends_safely"],
+      "verification_method": "confirmed the new test actually catches the bug by temporarily reverting the fix (git stash) and re-running it -- it failed with the job stuck in RUNNING state, exactly as the finding described, before the fix was re-applied and the test passed"
+    }
+  ],
+  "independent_verification_round_2_findings_and_fixes": [
+    {
+      "finding": "The round-1 approval-gates-execution fix was correct (nothing unauthorized ever executed) but incomplete: the normal WorkerClient flow had no way to represent 'legitimately waiting on approval' as anything but a hard failure -- an approval-required job reached execute(), was correctly refused because approval wasn't present yet, and poll_and_execute_once() then called submit_failure(), permanently marking a merely-pending job FAILED before a human ever had a chance to approve it.",
+      "severity": "blocking",
+      "location": "worker-runtime/app/job_protocol.py, worker_client.py, transport.py, coordinator.py",
+      "fix": "added WorkerJobQueue.resume() alongside execute(): request_approval_if_required() parks a job (RUNNING -> WAITING_FOR_APPROVAL) without ever calling the capability's action; resume() later checks on it and, if APPROVED, delegates to execute() (never duplicated) to run it exactly once, consuming the approval into EXECUTED. A still-REQUESTED approval returns None (not an error). A DENIED/EXPIRED/CANCELLED approval ends the job safely (FAILED, not left dangling) and raises. Wired through new coordinator.request_approval()/resume_job()/deny_job() and transport.request_approval()/resume() verbs into worker_client.py's poll_and_execute_once() (now parks instead of executing/failing) and new try_resume() (checks on / executes a parked job).",
+      "tests_added": ["test_worker_client_approval_required_job_parks_without_executing_or_failing", "test_worker_client_repeated_polling_while_pending_does_not_execute_or_duplicate", "test_worker_client_resumes_and_executes_exactly_once_after_approval", "test_worker_client_wrong_worker_cannot_resume", "test_worker_client_denial_ends_safely_and_releases_worker", "test_worker_client_expiry_ends_safely_and_releases_worker", "test_worker_client_none_required_capability_flow_is_unchanged"],
+      "tests_superseded": ["test_worker_client_end_to_end_refuses_unapproved_execution (asserted the now-wrong behavior -- job FAILED on an unapproved poll -- and was replaced)", "test_worker_client_end_to_end_executes_once_approved (manually drove transport.execute() directly rather than the real try_resume() flow -- replaced by test_worker_client_resumes_and_executes_exactly_once_after_approval)"],
+      "bug_found_while_fixing": "deny()'s and resume()'s terminal (denied/expired) paths did not release the assigned worker back to AVAILABLE, leaving it stuck BUSY indefinitely after a denial or expiry. Fixed via coordinator.deny_job() and resume_job()'s exception handling, both calling mark_available() guarded to the job's actual assigned worker only.",
+      "explicitly_not_done": "no redesign of the future network transport -- resume() inherits execute()'s exact same callable-based, in-process-only limitation, unchanged and still documented in transport.py and KARMO_WORKER_RUNTIME_NETWORK_PLAN.md"
+    }
+  ],
+  "independent_verification_round_1_findings_and_fixes": [
+    {
+      "finding": "Approval gated job completion, not execution -- a worker's sandboxed handler ran unconditionally at lease time; approval state was only checked afterward at complete()",
+      "severity": "blocking",
+      "location": "worker-runtime/app/job_protocol.py, worker_client.py, transport.py, coordinator.py",
+      "fix": "added WorkerJobQueue.execute() as the sole path to invoking a capability's action; for any authority_requirement != NONE, action() is only ever called from inside the reused ApprovalEngine.execute() (never duplicated), which validates approval state, executor identity, expiry, and an exact arguments digest, then atomically consumes the approval into EXECUTED. complete() now requires EXECUTED (was APPROVED) as defense in depth. Wired through transport.execute() into worker_client.py.",
+      "tests_added": ["test_approval_gate_unapproved_job_cannot_execute", "test_approval_gate_no_approval_requested_at_all_cannot_execute", "test_approval_gate_expired_approval_cannot_execute", "test_approval_gate_changed_payload_after_approval_cannot_execute", "test_approval_gate_wrong_executor_cannot_execute", "test_approval_gate_one_approval_cannot_execute_twice", "test_approval_gate_successful_execution_ends_executed_and_unlocks_completion", "test_approval_gate_none_required_capability_executes_directly"],
+      "note": "the 2 end-to-end WorkerClient tests originally added alongside this fix were superseded by round 2's fix -- see independent_verification_round_2_findings_and_fixes"
+    },
+    {
+      "finding": "Timeout enforcement was a post-return elapsed-time check, not a real deadline -- a hung/CPU-bound handler was never actually interrupted",
+      "severity": "blocking",
+      "location": "worker-runtime/app/sandbox.py run_capability()",
+      "fix": "handler now runs in a forked child process under a hard deadline; on overrun the child is terminated (SIGTERM then SIGKILL) and the call fails closed",
+      "tests_added": ["test_scenario_14_timeout_is_a_real_kill_not_a_post_hoc_check (proves an actual kill via a marker file the handler would only write after its full sleep -- the marker never appears)"],
+      "bug_found_while_fixing": "a real multiprocessing deadlock: waiting via process.join(timeout) before draining the result pipe hangs whenever a handler's result exceeds the pipe's kernel buffer (~64KB) -- the child blocks mid-write, the parent isn't reading, and every oversized-result test spuriously 'timed out'. Fixed by waiting on the connection (parent_conn.poll(timeout)) as the primary deadline gate, which starts draining as soon as data arrives."
+    },
+    {
+      "finding": "Only stdout_summary was bounded; the structured output result and evidence_files were not",
+      "severity": "blocking",
+      "location": "worker-runtime/app/sandbox.py",
+      "fix": "added MAX_RESULT_BYTES (64KB, refuses rather than truncates a structured dict) and MAX_EVIDENCE_FILES (20)",
+      "tests_added": ["test_oversized_structured_output_is_refused_not_truncated", "test_oversized_evidence_files_list_is_refused"]
+    },
+    {
+      "finding": "A worker heartbeat could set arbitrary coordinator-owned scheduling state (heartbeat(..., status=ANY_WORKERSTATUS)), letting a worker force itself AVAILABLE while actually BUSY on a live lease (or the reverse), bypassing mark_busy()/mark_available()",
+      "severity": "blocking",
+      "location": "worker-runtime/app/worker_registry.py WorkerRegistry.heartbeat()",
+      "fix": "heartbeat() now accepts only an optional WorkerHealth (HEALTHY/DEGRADED), never a raw WorkerStatus; BUSY is untouchable by a worker's own heartbeat in either direction; DEGRADED is honored only out of non-BUSY states",
+      "tests_added": ["test_worker_cannot_force_itself_available_via_heartbeat_while_busy", "test_heartbeat_no_longer_accepts_an_arbitrary_status_kwarg", "test_worker_can_self_report_degraded_health_without_touching_a_live_lease", "test_worker_busy_on_a_lease_cannot_self_report_degraded_out_of_it", "test_heartbeat_rejects_an_invalid_health_value"]
+    }
+  ],
+  "defects_found_and_fixed_prior_to_independent_verification": [
+    {
+      "location": "core-v2-prototypes/job_model/jobs.py VALID_TRANSITIONS",
+      "defect": "WAITING_FOR_APPROVAL -> FAILED was not a valid transition, so a denied approval on any approval-gated job would raise an unhandled JobStateError instead of failing the job",
+      "found_by": "exercising job_protocol.WorkerJobQueue.deny() with a synthetic approval-required capability (scenario 17's test setup)",
+      "fix": "added JobState.FAILED to the WAITING_FOR_APPROVAL transition set, plus a new parametrized test case in job_model/tests/test_jobs.py"
+    },
+    {
+      "location": "worker-runtime/app/job_protocol.py WorkerJobQueue.lease()",
+      "defect": "leaked the underlying job_model.JobStateError instead of wrapping it as JobProtocolError, breaking the module's own exception-boundary contract",
+      "found_by": "scenario 10 and scenario 13 tests",
+      "fix": "wrapped job_store.claim()'s JobStateError into JobProtocolError"
+    },
+    {
+      "location": "worker-runtime/app/coordinator.py Coordinator.finalize_success()",
+      "defect": "called workers.mark_available() unconditionally; crashed with WorkerRegistryError if the worker's status wasn't exactly BUSY/DEGRADED (e.g. a job leased via WorkerJobQueue.lease() directly rather than through poll_for_job's mark_busy path) -- inconsistent with finalize_failure(), which already guarded this",
+      "found_by": "scenario 16 test",
+      "fix": "wrapped mark_available() in the same defensive try/except finalize_failure() already used"
+    },
+    {
+      "location": "worker-runtime/app/worker_client.py and tests",
+      "defect": "no module in the actual runtime path ever imported capabilities.py, so sandbox._HANDLERS would be empty (no capability could ever execute) unless something happened to import it first",
+      "found_by": "first test run against real capability handlers (11 failures, all \"no registered handler\")",
+      "fix": "worker_client.py now imports capabilities.py for its registration side effect, since it's the module that actually calls run_capability"
+    }
+  ],
+  "production_access": 0,
+  "network_changes": 0,
+  "merges": 0,
+  "large_model_installs": 0
+}

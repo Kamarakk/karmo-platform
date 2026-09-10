@@ -389,3 +389,256 @@ MASTER_INDEX.md for status-tag definitions.
   first capability**.
 - **Production access: zero. Merges: zero.** No PR marked merged. No
   capability marked implemented.
+
+## KARMO Worker Runtime v0.1 — implemented, isolated prototype (2026-09-09)
+
+- **VERIFIED (repo)** — Natalie authorized a 15-phase Large Autonomous
+  Implementation Program to build KARMO's first real post-foundation
+  capability: a distributed worker runtime. Branch
+  `worker-runtime/implementation`, based on `core-v2/prototypes` (a
+  disclosed, deliberate dependency — see
+  `docs/evidence/worker-runtime/WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md`).
+- Built: worker registry (identity, heartbeat, lifecycle), resource
+  discovery (real hardware facts for KARMO-DEV01, VERIFIED vs
+  AVAILABLE-IN-PRINCIPLE labeled throughout), a closed capability manifest
+  (9 SAFE capabilities, 9 permanently forbidden), a job protocol
+  genuinely wiring the reused Tool Registry + Approval Engine prototypes
+  together (closing an integration gap the prior session's adversarial
+  review had flagged), an execution sandbox (handler-registry-only
+  dispatch, path-traversal refusal, timeout, output cap, sanitized
+  errors), a pull-based transport abstraction (`LocalTransport`,
+  in-process; no inbound port anywhere), a coordinator, and a worker
+  client — full pull cycle proven end-to-end.
+- 44/44 tests passing, including all 24 explicitly required
+  failure/adversarial scenarios. 4 real defects found and fixed while
+  building the suite (see CURRENT_STATE.md's Worker Runtime section for
+  the list); one of them required a fix to the shared, reused
+  `core-v2-prototypes/job_model/jobs.py` state machine (missing
+  `WAITING_FOR_APPROVAL → FAILED` transition) — core-v2-prototypes'
+  regression suite reconfirmed 161/161 after the fix.
+- M3 acceleration benchmark run (bounded, local only, no production
+  comparison): `docs/evidence/worker-runtime/BENCHMARK_RESULTS.json`.
+- Adversarial security review with 5 explicitly named, unresolved open
+  gaps (not fixed this workload, not hidden):
+  `docs/evidence/worker-runtime/SECURITY_REVIEW.md`.
+- Future network integration (Tailscale transport, worker credentials,
+  TLS, coordinator auth) designed but explicitly **not implemented, not
+  deployed** — `docs/architecture/KARMO_WORKER_RUNTIME_NETWORK_PLAN.md`.
+- Full evidence package: `docs/evidence/worker-runtime/`
+  (`WORKER_RUNTIME_REPORT.md`, `SECURITY_REVIEW.md`, `TEST_RESULTS.txt`,
+  `BENCHMARK_RESULTS.json`, `VERIFICATION_CHECKLIST.md`,
+  `RUN_SUMMARY.json`, `MANIFEST.sha256`).
+- **Production access: 0. Network/firewall/Tailscale changes: 0. Merges:
+  0.** Worker Runtime v0.1 is not connected to production KARMO and no PR
+  from this workload was merged.
+
+## KARMO Worker Runtime v0.1 — independent-verification fixes (2026-09-09, same day, before any merge)
+
+- **VERIFIED (repo)** — an independent (ChatGPT) verification pass of PRs
+  #23–#25 found 4 real blocking findings this workload's own review had
+  missed, and Natalie directed that PRs #23–#25 not be merged until they
+  were fixed and re-verified. Work was confined to the existing Worker
+  Runtime branches and the synthetic/local KARMO-DEV01 environment — no
+  production access, no network changes, no new PRs.
+- **Finding 1 — approval gated job completion, not execution.** A
+  worker's sandboxed capability handler ran unconditionally the moment a
+  job was leased; approval state was checked only afterward, at
+  `complete()`. Fixed: `job_protocol.WorkerJobQueue.execute()` is now the
+  sole path to invoking a capability's action; for any
+  `authority_requirement != NONE`, the action only runs from inside the
+  reused `ApprovalEngine.execute()` (never duplicated), which validates
+  approval state, executor identity, expiry, and an exact arguments
+  digest, then atomically consumes the approval into `EXECUTED`.
+  `complete()` now requires `EXECUTED` (was `APPROVED`) as defense in
+  depth. Wired through `transport.execute()` into `worker_client.py`. 10
+  new tests cover exactly the 6 required adversarial cases (unapproved,
+  expired, changed payload, wrong executor, double-execution, successful
+  EXECUTED outcome) plus 4 more.
+- **Finding 2 — timeout enforcement was a post-return check, not a real
+  deadline.** Fixed: `sandbox.run_capability()` now runs each handler in
+  a forked child process under a hard deadline; on overrun the child is
+  terminated (SIGTERM then SIGKILL) and the call fails closed. A real
+  multiprocessing deadlock was found and fixed while building this fix's
+  own test: waiting via `process.join(timeout)` before draining the
+  result pipe hangs whenever a handler's result exceeds the pipe's
+  kernel buffer (~64KB) — fixed by waiting on the connection
+  (`parent_conn.poll(timeout)`) as the primary deadline gate instead.
+- **Finding 3 — only `stdout_summary` was bounded, not the full result.**
+  Fixed: new `MAX_RESULT_BYTES` (64KB, refuses rather than truncates a
+  structured dict) and `MAX_EVIDENCE_FILES` (20) bound the complete
+  returned result.
+- **Finding 4 — a worker heartbeat could set coordinator-owned
+  scheduling state directly**, letting a worker force itself `AVAILABLE`
+  while actually `BUSY` on a live lease (enabling a double-lease), or the
+  reverse. Fixed: `WorkerRegistry.heartbeat()` now accepts only an
+  optional self-reported `WorkerHealth` (HEALTHY/DEGRADED), never a raw
+  `WorkerStatus`; `BUSY` is untouchable by a worker's own heartbeat in
+  either direction.
+- 18 new adversarial tests added; **worker-runtime suite now 62/62
+  passing** (was 44/44); core-v2-prototypes regression reconfirmed
+  161/161, unaffected. All fixes and new tests verified via a fresh full
+  run, not merely re-read from prior output.
+- Documentation updated to match: `SECURITY_REVIEW.md` (2 new threat rows,
+  updated rows 20), `WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md` (I-09
+  corrective note), `KARMO_WORKER_RUNTIME_NETWORK_PLAN.md` (new section
+  flagging that `execute()`'s callable shape cannot cross a real network
+  boundary as designed — a future execution-ticket redesign is needed
+  before Phase 15 can be implemented), `WORKER_RUNTIME_REPORT.md`,
+  `RUN_SUMMARY.json`, `TEST_RESULTS.txt`, `BENCHMARK_RESULTS.json`
+  (re-run), `VERIFICATION_CHECKLIST.md` (new command 11),
+  `MANIFEST.sha256` (regenerated).
+- PR #23 updated at commit `5906f61`. PR #24 updated at commit `8533642`.
+  PR #25 updated at this entry's accompanying commit (see this file's own
+  commit hash). **No new PRs opened. No merge.**
+- **Blockers: None** — but only as of this fix round; the four findings
+  above were genuine blockers until fixed and re-tested. PRs #23–#25
+  remain open and unmerged, awaiting re-verification.
+
+## KARMO Worker Runtime v0.1 — second independent-verification fix (2026-09-10, before any merge)
+
+- **VERIFIED (repo)** — a second independent (ChatGPT) verification pass
+  of PRs #23–#25 found one further real blocking finding: the round-1
+  approval-gates-execution fix was itself correct (nothing unauthorized
+  ever executed, before or after) but incomplete — the normal
+  `WorkerClient` flow had no way to represent "legitimately waiting on a
+  human approval" as anything other than a hard failure. An
+  approval-required job reached `execute()`, was correctly refused
+  because approval wasn't present yet, and `poll_and_execute_once()`
+  then called `submit_failure()`, permanently marking a merely-pending,
+  perfectly legitimate job `FAILED` before a human ever had a chance to
+  approve it. Natalie directed that PRs #23–#25 not be merged until this
+  was fixed and re-verified; work was confined to the existing Worker
+  Runtime branches and the synthetic/local KARMO-DEV01 environment — no
+  production access, no network changes, no new PRs.
+- **Fix** — `job_protocol.WorkerJobQueue.resume()` added alongside the
+  existing `execute()`: `request_approval_if_required()` now parks a job
+  (`RUNNING → WAITING_FOR_APPROVAL`, opens a real approval request)
+  without ever calling the capability's action; `resume()` later checks
+  on it and, if now `APPROVED`, delegates to `execute()` (never
+  duplicated) to run it exactly once, consuming the approval into
+  `EXECUTED`. A still-`REQUESTED` approval makes `resume()` return
+  `None` — not an error, safe to call again later. A
+  `DENIED`/`EXPIRED`/`CANCELLED` approval ends the job safely
+  (transitions it to `FAILED` if not already, rather than leaving it
+  stuck in `WAITING_FOR_APPROVAL` forever) and raises. Wired through new
+  `coordinator.request_approval()`/`resume_job()`/`deny_job()` and
+  `transport.request_approval()`/`resume()` verbs into
+  `worker_client.py`'s `poll_and_execute_once()` (now parks instead of
+  executing/failing an approval-required job) and a new `try_resume()`
+  (checks on / executes a previously-parked job).
+- **Bug found and fixed while building this fix's own tests** — `deny()`'s
+  and `resume()`'s terminal (denied/expired) paths did not release the
+  assigned worker back to `AVAILABLE`, leaving it stuck `BUSY`
+  indefinitely after a denial or expiry. Fixed via
+  `coordinator.deny_job()` and `resume_job()`'s exception handling, both
+  calling `mark_available()` guarded to the job's actual assigned worker
+  only (never an uninvolved worker, including a wrong-worker resume
+  attempt, which never reaches this path at all).
+- **Explicitly not done** — no redesign of the future network transport.
+  `resume()` inherits `execute()`'s exact same callable-based,
+  in-process-only limitation, unchanged and still documented in
+  `transport.py` and `KARMO_WORKER_RUNTIME_NETWORK_PLAN.md` (new section
+  flagging that `resume()`, like `execute()`, is not network-ready).
+- 7 new adversarial tests via the real `WorkerClient`/transport path
+  prove: an approval-required job parks without executing or failing; it
+  stays `WAITING_FOR_APPROVAL` under repeated polling/resume checks with
+  no duplicate work; the intended worker resumes and executes exactly
+  once after approval; the wrong worker cannot resume it; denial and
+  expiry both end safely and release the worker; `NONE`-authority
+  capabilities are unaffected. **Worker Runtime suite now 67/67 passing**
+  (was 62/62, originally 44/44); core-v2-prototypes regression
+  reconfirmed 161/161, unaffected. All fixes and new tests verified via a
+  fresh full run, not merely re-read from prior output; all 12
+  `VERIFICATION_CHECKLIST.md` commands re-executed live.
+- Documentation updated to match: `SECURITY_REVIEW.md` (new threat #23,
+  corrected stale test references on threat #21),
+  `WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md` (I-07/I-08 corrective
+  note), `KARMO_WORKER_RUNTIME_NETWORK_PLAN.md` (resume()'s network
+  limitation), `WORKER_RUNTIME_REPORT.md`, `RUN_SUMMARY.json`,
+  `TEST_RESULTS.txt`, `BENCHMARK_RESULTS.json` (re-run),
+  `VERIFICATION_CHECKLIST.md` (new command 12), `MANIFEST.sha256`
+  (regenerated).
+- PR #23 updated at commit `08c501e`. PR #24 updated at commit `4c5f61f`.
+  PR #25 updated at this entry's accompanying commit (see this file's own
+  commit hash). **No new PRs opened. No merge.**
+- **Blockers: None** — but only as of this second fix round; the finding
+  above was a genuine blocker until fixed and re-tested. PRs #23–#25
+  remain open and unmerged, awaiting a third round of re-verification.
+
+## KARMO Worker Runtime v0.1 — third independent-verification fix, narrow (2026-09-10, before any merge)
+
+- **VERIFIED (repo)** — a third independent (ChatGPT) verification pass
+  of PRs #23–#25 found one narrow remaining blocker in round 2's
+  pending-approval fix: `job_protocol.WorkerJobQueue.resume()`'s
+  "terminal approval outcome ends the job safely" guard only
+  transitioned the job to `FAILED` if it was still
+  `WAITING_FOR_APPROVAL`. If `approve()` had already run (moving the job
+  to `RUNNING`) and the approval *then* expired before `try_resume()`
+  ever consumed it, the job was left stuck `RUNNING` and its assigned
+  worker stuck `BUSY` forever — nothing ever noticed or released it.
+  Natalie directed that PRs #23–#25 not be merged until this was fixed
+  and re-verified; work was confined to the existing Worker Runtime
+  branches and the synthetic/local KARMO-DEV01 environment — no
+  production access, no network changes, no new PRs.
+- **Fix** — widened `resume()`'s guard to transition the job to `FAILED`
+  from either `WAITING_FOR_APPROVAL` or `RUNNING`. `RUNNING → FAILED` is
+  already a legal transition in the reused `job_model` state machine
+  (`VALID_TRANSITIONS`), so no change to `core-v2-prototypes/job_model/jobs.py`
+  was needed this time, and `ApprovalEngine` logic is still not
+  duplicated anywhere in this fix.
+- One targeted test via the real `WorkerClient`/transport path
+  (`test_worker_client_approval_expires_after_being_approved_ends_safely`)
+  proves all 7 required points: job parks for approval; approval is
+  granted for the assigned worker (job moves to `RUNNING`); approval
+  expires before execution; `try_resume()` executes no action (proven
+  via a call-counting handler, not just an absent result); job ends
+  `FAILED`; the worker returns `AVAILABLE`; a second resume attempt is
+  also cleanly refused with no duplicate execution. Verified the test
+  actually catches the bug by temporarily reverting the fix (`git
+  stash`) and confirming the test failed first (job stuck `RUNNING`)
+  before re-applying it.
+- **Worker Runtime suite now 68/68 passing** (was 67/67, originally
+  44/44); core-v2-prototypes regression reconfirmed 161/161, unaffected.
+  Both runs fresh, not merely re-read from prior output.
+- Documentation updated to match, narrowly (only what materially needed
+  the corrected result): `SECURITY_REVIEW.md` threat #23's row (its
+  "denial/expiry both end safely" claim was incomplete before this fix;
+  corrected and the new test added to its evidence list).
+  `WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md` and
+  `KARMO_WORKER_RUNTIME_NETWORK_PLAN.md` did not need changes for this
+  narrow fix (no new invariant implications, no network-transport
+  implications) and were left untouched. `WORKER_RUNTIME_REPORT.md`,
+  `RUN_SUMMARY.json`, `TEST_RESULTS.txt`, `VERIFICATION_CHECKLIST.md`
+  (new command 13), `MANIFEST.sha256` all updated;
+  `BENCHMARK_RESULTS.json` unaffected by this fix, not re-run.
+- PR #23 updated at commit `a2a1619`. PR #24 updated at commit `b3bac0c`.
+  PR #25 updated at this entry's accompanying commit (see this file's own
+  commit hash). **No new PRs opened. No merge.**
+- **Blockers: None** — but only as of this third fix round; the finding
+  above was a genuine blocker until fixed and re-tested. PRs #23–#25
+  remain open and unmerged, awaiting a fourth round of re-verification.
+
+## Worker Runtime v0.1 merge closeout — PRs #22, #23, #24 merged; PR #25 pending (2026-09-10)
+
+- **VERIFIED (repo)** — Natalie's approved KARMO merge sequence proceeded:
+  PR #22 (`review/pr14-21-merge-readiness`) merged into `main`; PR #23
+  (Worker Runtime implementation + tests) merged into `main` at merge
+  commit `11d4f86e04d22aae0072923ec387a11f0e205cbc`; PR #24
+  (architecture/security/network docs) merged into `main` at merge commit
+  `9f3215ecd3be31d2096273be4afb389edbcbf9f8`. Both commits independently
+  confirmed as ancestors of `origin/main` via `git merge-base
+  --is-ancestor` before this entry was written.
+- PR #25 (evidence + PROJECT SAVE) was retargeted to `main` and, at the
+  time of this merge, was **not mergeable due to the expected conflicts**
+  in these same three `docs/project-state/` files — this commit resolves
+  those conflicts on the `worker-runtime/evidence` branch. **PR #25
+  itself remains OPEN and NOT merged** as of this entry; it is not
+  self-merged here.
+- Authoritative Worker Runtime verification remains **68/68** tests
+  passing (`worker-runtime/tests/test_worker_runtime.py`, all 24 required
+  scenarios plus three rounds of fix-verification tests) and **161/161**
+  core-v2-prototypes regression — unchanged by this merge-conflict
+  resolution; no executable code was touched, so the suite was not
+  rerun.
+- **Production access: zero. Network/Tailscale/firewall changes: zero.
+  Deployment: zero.** No new PR created. PR #25 not merged.

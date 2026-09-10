@@ -1,0 +1,238 @@
+# KARMO Worker Runtime v0.1 -- Independent Verification Checklist
+
+Run from repo root. All commands are read-only or operate only inside
+`worker-runtime/`'s own venv and synthetic fixtures -- nothing here
+touches production, installs a large model, or changes network
+configuration.
+
+```bash
+# 1. Set up the venv (already created this workload; safe to re-run).
+cd worker-runtime && python3 -m venv venv && venv/bin/pip install -q pytest
+
+# 2. All tests pass (68 tests: the 24 required scenarios + supporting
+#    capability/integration tests + the 18 first-round fix-verification
+#    tests (approval-gates-execution, real timeout kill, bounded result,
+#    worker health separation) + the 7 second-round fix-verification
+#    tests (pending-approval workflow: park, resume, wrong-worker,
+#    denial/expiry safety, NONE-capability unaffected) + the 1
+#    third-round fix-verification test (expiry AFTER approval, a
+#    narrower case the second round's test missed)).
+venv/bin/python -m pytest tests/ -v
+
+# 3. Worker registers.
+venv/bin/python -c "
+from coordinator import Coordinator
+import sys; sys.path.insert(0, 'app')
+" 2>/dev/null
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator
+c = Coordinator()
+r = c.register_worker(worker_id='dev01', hostname='karmo-dev01.local', worker_version='0.1.0',
+    platform='Darwin', architecture='arm64', capabilities=[{'capability_id': 'hash_verify'}],
+    resource_limits={'cpu': 8, 'memory_mb': 8192})
+print('registered:', r.worker_id, r.status.value)
+"
+
+# 4. Heartbeat works.
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator
+c = Coordinator()
+c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+    architecture='arm64', capabilities=[{'capability_id': 'hash_verify'}], resource_limits={})
+r = c.heartbeat('dev01')
+print('heartbeat status:', r.status.value)
+"
+
+# 5. Capabilities advertised (worker record exposes exactly what it registered).
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator
+c = Coordinator()
+r = c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+    architecture='arm64', capabilities=[{'capability_id': 'hash_verify'}, {'capability_id': 'pytest'}],
+    resource_limits={})
+print('capabilities:', r.capabilities)
+"
+
+# 6. Unauthorized capability is rejected (registering 'ssh' fails).
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator, CoordinatorError
+c = Coordinator()
+try:
+    c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+        architecture='arm64', capabilities=[{'capability_id': 'ssh'}], resource_limits={})
+    print('FAIL: ssh capability was accepted')
+except CoordinatorError as e:
+    print('correctly refused:', e)
+"
+
+# 7. Job executes end-to-end (register -> heartbeat -> poll -> execute -> result).
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator
+from transport import LocalTransport
+from worker_client import WorkerClient
+c = Coordinator()
+c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+    architecture='arm64', capabilities=[{'capability_id': 'hash_verify'}], resource_limits={})
+c.heartbeat('dev01')
+c.submit_job(capability_id='hash_verify', payload={'path': 'sample_document.txt'}, idempotency_key='verify-1')
+client = WorkerClient(worker_id='dev01', transport=LocalTransport(c),
+    allowed_root='tests/fixtures/allowed_workspace')
+result = client.poll_and_execute_once(['hash_verify'])
+print('job state:', result.state.value, 'sha256:', result.result.output['sha256'])
+"
+
+# 8. Path traversal is rejected.
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from sandbox import run_capability, PathTraversalError
+import capabilities
+try:
+    run_capability('hash_verify', {'path': '../../../etc/passwd'}, timeout_seconds=30,
+        allowed_root='tests/fixtures/allowed_workspace')
+    print('FAIL: traversal was allowed')
+except PathTraversalError as e:
+    print('correctly refused:', e)
+"
+
+# 9. Duplicate/replay job submission is idempotent.
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator
+c = Coordinator()
+j1 = c.submit_job(capability_id='hash_verify', payload={'path': 'x'}, idempotency_key='dup-check')
+j2 = c.submit_job(capability_id='hash_verify', payload={'path': 'x'}, idempotency_key='dup-check')
+print('same job_id:', j1.job_id == j2.job_id)
+"
+
+# 10. Full regression: the reused core-v2 job_model/approval_engine/tool_registry
+#     prototypes still pass after this workload's WAITING_FOR_APPROVAL->FAILED fix.
+cd ../core-v2-prototypes && venv/bin/python -m pytest -q
+cd ../worker-runtime
+
+# 11. Approval gates EXECUTION, not merely completion (independent-review
+#     fix). A capability requiring approval must refuse to run its
+#     action at all until approved -- the action must never be invoked.
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator, CoordinatorError
+from capability_manifest import SAFE_CAPABILITIES
+from tool_registry_reuse import CapabilityClass
+synthetic = dict(SAFE_CAPABILITIES['hash_verify'])
+synthetic['capability_id'] = 'synthetic_check'
+synthetic['authority_class'] = CapabilityClass.REVERSIBLE_WRITE
+SAFE_CAPABILITIES['synthetic_check'] = synthetic
+c = Coordinator()
+c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+    architecture='arm64', capabilities=[{'capability_id': 'synthetic_check'}], resource_limits={})
+c.heartbeat('dev01')
+worker_job = c.submit_job(capability_id='synthetic_check', payload={'path': 'x'}, idempotency_key='k1')
+c.jobs.lease(worker_job.job_id, worker_id='dev01', presented_payload=worker_job.payload)
+executed = []
+try:
+    c.execute_job(worker_job.job_id, executor_identity='dev01', presented_payload=worker_job.payload,
+        action=lambda: executed.append(True))
+    print('FAIL: executed without approval')
+except CoordinatorError as e:
+    print('correctly refused:', e)
+print('action ran:', len(executed) > 0)
+"
+
+# 12. An approval-required job PARKS (WAITING_FOR_APPROVAL) instead of
+#     being marked FAILED the instant it's leased -- second-round
+#     independent-review fix -- then resumes and executes exactly once
+#     after approval, through the real WorkerClient/transport path.
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator
+from capability_manifest import SAFE_CAPABILITIES
+from tool_registry_reuse import CapabilityClass
+from transport import LocalTransport
+from worker_client import WorkerClient
+from sandbox import _HANDLERS
+import capabilities
+
+synthetic = dict(SAFE_CAPABILITIES['hash_verify'])
+synthetic['capability_id'] = 'synthetic_pending_check'
+synthetic['authority_class'] = CapabilityClass.REVERSIBLE_WRITE
+SAFE_CAPABILITIES['synthetic_pending_check'] = synthetic
+_HANDLERS['synthetic_pending_check'] = _HANDLERS['hash_verify']
+
+c = Coordinator()
+c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+    architecture='arm64', capabilities=[{'capability_id': 'synthetic_pending_check'}], resource_limits={})
+c.heartbeat('dev01')
+c.submit_job(capability_id='synthetic_pending_check', payload={'path': 'sample_document.txt'}, idempotency_key='k1')
+
+client = WorkerClient(worker_id='dev01', transport=LocalTransport(c),
+    allowed_root='tests/fixtures/allowed_workspace')
+pending = client.poll_and_execute_once(['synthetic_pending_check'])
+print('after poll:', pending.state.value, '(expect WAITING_FOR_APPROVAL, not FAILED)')
+
+still_pending = client.try_resume(pending)
+print('resume before approval:', still_pending, '(expect None -- not executed, not failed)')
+
+c.jobs.approve(pending.job_id, approver='natalie', authorized_executor='dev01')
+completed = client.try_resume(pending)
+print('after approval + resume:', completed.state.value, 'sha256:', completed.result.output['sha256'][:16] + '...')
+print('worker status:', c.workers.get('dev01').status.value, '(expect AVAILABLE)')
+"
+
+# 13. An approval that expires AFTER being granted (job already moved to
+#     RUNNING by approve()) still ends the job FAILED and releases the
+#     worker -- third-round independent-review fix. The second-round
+#     fix only covered expiry while still WAITING_FOR_APPROVAL.
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator
+from capability_manifest import SAFE_CAPABILITIES
+from tool_registry_reuse import CapabilityClass
+from transport import LocalTransport
+from worker_client import WorkerClient, WorkerClientError
+from sandbox import _HANDLERS
+import capabilities
+from datetime import datetime, timedelta, timezone
+
+class FakeClock:
+    def __init__(self):
+        self._now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    def __call__(self):
+        return self._now
+    def advance(self, s):
+        self._now += timedelta(seconds=s)
+
+clock = FakeClock()
+synthetic = dict(SAFE_CAPABILITIES['hash_verify'])
+synthetic['capability_id'] = 'synthetic_expire_check'
+synthetic['authority_class'] = CapabilityClass.REVERSIBLE_WRITE
+SAFE_CAPABILITIES['synthetic_expire_check'] = synthetic
+_HANDLERS['synthetic_expire_check'] = _HANDLERS['hash_verify']
+
+c = Coordinator(clock=clock)
+c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+    architecture='arm64', capabilities=[{'capability_id': 'synthetic_expire_check'}], resource_limits={})
+c.heartbeat('dev01')
+c.submit_job(capability_id='synthetic_expire_check', payload={'path': 'sample_document.txt'}, idempotency_key='k1')
+client = WorkerClient(worker_id='dev01', transport=LocalTransport(c),
+    allowed_root='tests/fixtures/allowed_workspace')
+pending = client.poll_and_execute_once(['synthetic_expire_check'])
+print('after poll:', pending.state.value, '(expect WAITING_FOR_APPROVAL)')
+c.jobs.approve(pending.job_id, approver='natalie', authorized_executor='dev01')
+print('after approve:', c.jobs.get(pending.job_id).state.value, '(expect RUNNING)')
+clock.advance(400)  # expires before resume
+try:
+    client.try_resume(pending)
+    print('FAIL: resumed despite expiry')
+except WorkerClientError as e:
+    print('correctly refused:', e)
+print('job state after expiry:', c.jobs.get(pending.job_id).state.value, '(expect FAILED)')
+print('worker status after expiry:', c.workers.get('dev01').status.value, '(expect AVAILABLE)')
+"
+```
+
+Expected results are recorded verbatim in `TEST_RESULTS.txt` and
+`RUN_SUMMARY.json` in this directory.

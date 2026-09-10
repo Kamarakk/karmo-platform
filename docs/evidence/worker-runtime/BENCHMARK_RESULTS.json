@@ -1,0 +1,155 @@
+{
+  "machine": "KARMO-DEV01",
+  "timestamp": "2026-09-10T07:07:02Z",
+  "hardware": {
+    "cpu": {
+      "machine": "arm64",
+      "logical_cpu_count": 8,
+      "status": "VERIFIED",
+      "brand": "Apple M3",
+      "brand_status": "VERIFIED"
+    },
+    "memory": {
+      "total_bytes": 8589934592,
+      "total_gb": 8.0,
+      "status": "VERIFIED"
+    },
+    "disk": {
+      "path": "/",
+      "total_gb": 460.43,
+      "used_gb": 427.03,
+      "free_gb": 33.4,
+      "status": "VERIFIED"
+    },
+    "os": {
+      "system": "Darwin",
+      "release": "23.6.0",
+      "version": "Darwin Kernel Version 23.6.0: Tue Apr 21 20:19:38 PDT 2026; root:xnu-10063.141.1.712.16~1/RELEASE_ARM64_T8122",
+      "mac_version": "14.8.7",
+      "status": "VERIFIED"
+    },
+    "runtime": {
+      "python_version": "3.9.6",
+      "python_implementation": "CPython",
+      "status": "VERIFIED"
+    },
+    "uptime": {
+      "uptime_seconds": 3917029,
+      "status": "VERIFIED"
+    },
+    "acceleration": {
+      "apple_silicon": true,
+      "apple_silicon_status": "VERIFIED",
+      "metal_support": "Metal Support: Metal 3",
+      "metal_status": "VERIFIED",
+      "neural_engine": "AVAILABLE-IN-PRINCIPLE",
+      "mlx_installed": false,
+      "mlx_status": "NOT_INSTALLED",
+      "ollama_installed": false,
+      "ollama_status": "NOT_INSTALLED"
+    }
+  },
+  "measurements": [
+    {
+      "capability_id": "resource_benchmark",
+      "output": {
+        "elapsed_seconds": 0.0058,
+        "iterations": 100000,
+        "checksum": 2741317296
+      },
+      "duration_seconds": 0.006922167000000007,
+      "wall_seconds": 0.008733959000000013
+    },
+    {
+      "capability_id": "resource_benchmark",
+      "output": {
+        "elapsed_seconds": 0.0554,
+        "iterations": 1000000,
+        "checksum": 32355575520
+      },
+      "duration_seconds": 0.05642470900000002,
+      "wall_seconds": 0.05686870800000002
+    },
+    {
+      "capability_id": "resource_benchmark",
+      "output": {
+        "elapsed_seconds": 0.2804,
+        "iterations": 5000000,
+        "checksum": 163391808096
+      },
+      "duration_seconds": 0.28142933400000003,
+      "wall_seconds": 0.28204683299999994
+    },
+    {
+      "capability_id": "hash_verify",
+      "output": {
+        "sha256": "da3434cdf49f589ac82ae1c1ff68db3ea9494249fa2c23e078a79984e2647c8c",
+        "path": "sample_document.txt"
+      },
+      "duration_seconds": 0.0013727499999999226,
+      "wall_seconds": 0.001845042000000019
+    },
+    {
+      "capability_id": "pytest",
+      "output": {
+        "exit_code": 0,
+        "summary": "============================= test session starts ==============================\nplatform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/sdcity/KARMO-DEV/worker-runtime/venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/sdcity/KARMO-DEV/worker-runtime/tests/fixtures/allowed_workspace/sample_tests\ncollecting ... collected 2 items\n\n../../../../../../../Users/sdcity/KARMO-DEV/worker-runtime/tests/fixtures/allowed_workspace/sample_tests/test_synthetic.py::test_synthetic_addition PASSED [ 50%]\n../../../../../../../Users/sdcity/KARMO-DEV/worker-runtime/tests/fixtures/allowed_workspace/sample_tests/test_synthetic.py::test_synthetic_string PASSED [100%]\n\n============================== 2 passed in 0.00s ==============================="
+      },
+      "duration_seconds": 0.08989745799999993,
+      "wall_seconds": 0.09044645899999992
+    },
+    {
+      "capability_id": "embedding_benchmark_test",
+      "output": {
+        "elapsed_seconds": 0.0033,
+        "vector_count": 100,
+        "dim": 64
+      },
+      "duration_seconds": 0.004383499999999985,
+      "wall_seconds": 0.004844624999999936
+    },
+    {
+      "capability_id": "embedding_benchmark_test",
+      "output": {
+        "elapsed_seconds": 0.0336,
+        "vector_count": 1000,
+        "dim": 64
+      },
+      "duration_seconds": 0.03475499999999998,
+      "wall_seconds": 0.03515608299999995
+    },
+    {
+      "capability_id": "embedding_benchmark_test",
+      "output": {
+        "elapsed_seconds": 0.3283,
+        "vector_count": 10000,
+        "dim": 64
+      },
+      "duration_seconds": 0.331655959,
+      "wall_seconds": 0.332308833
+    },
+    {
+      "capability_id": "media_probe_test",
+      "output": {
+        "metal_available": true,
+        "metal_support": "Metal Support: Metal 3"
+      },
+      "duration_seconds": 0.12361495899999997,
+      "wall_seconds": 0.12419587500000007
+    },
+    {
+      "capability_id": "local_model_probe",
+      "output": {
+        "mlx_installed": false,
+        "ollama_installed": false
+      },
+      "duration_seconds": 0.13074891700000002,
+      "wall_seconds": 0.1313264999999999
+    }
+  ],
+  "notes": [
+    "All measurements taken through the real sandboxed capability handlers, not an unsandboxed fast path -- these are the numbers a real worker job would see.",
+    "No comparison against KARMO production is made here -- that requires directly measuring both sides together, out of scope for this workload.",
+    "No model weights were downloaded or installed to produce these numbers."
+  ]
+}
