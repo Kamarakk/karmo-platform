@@ -52,6 +52,23 @@ This is a real design change, not a drop-in swap like the other four
 verbs -- flagged explicitly so a future session doesn't assume
 `execute()` is already network-ready just because the other four are.
 
+**Update:** `WorkerTransport` gained a sixth and seventh verb,
+`request_approval()` and `resume()`, to fix a workflow gap (an
+approval-required job used to be marked `FAILED` the instant it was
+leased, since the normal worker flow had no way to represent
+"legitimately pending" -- see `SECURITY_REVIEW.md` threat #23).
+`request_approval()` is plain data (parks a job, opens a request) and
+crosses a real network transport fine, same as the other four original
+verbs. **`resume()` is not** -- it takes the same local `action`
+callable `execute()` does, for the exact same reason, and inherits the
+exact same network gap and the exact same execution-ticket redesign
+described above (resume() would become "present the ticket, along with
+the locally-computed result, for the coordinator to validate and
+consume" rather than "hand the coordinator a callable to run"). This
+was a deliberate choice to keep this workload's fix minimal and
+consistent with `execute()`'s already-documented limitation, not an
+oversight -- do not assume `resume()` is network-ready either.
+
 ## Transport shape
 
 - Worker initiates every call: `register`, `heartbeat`, `poll`,

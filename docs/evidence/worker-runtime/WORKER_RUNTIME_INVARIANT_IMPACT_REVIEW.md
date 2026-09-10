@@ -18,6 +18,22 @@ does not change any of the I-01–I-08 analysis below, which remains
 accurate; it corrects I-09's authority-enforcement claims to match what
 the code now actually does.
 
+**Second update (same workload, before any merge):** a second
+independent verification pass found the execution-gate fix above was
+correct but incomplete: the normal `WorkerClient` flow had no way to
+represent "legitimately waiting on a human approval" as anything other
+than a hard failure, so an approval-required job was marked `FAILED`
+the instant it was leased -- before a human ever had a chance to
+approve it. This is an I-08 (validation scope did not cover the
+resulting workflow, only the security-gate mechanism in isolation) /
+I-07 (observability: a job silently self-destructing looks
+indistinguishable from a real failure) gap more than an I-09 one --
+nothing unauthorized ever executed at any point, before or after this
+fix. Fixed: `job_protocol.WorkerJobQueue.resume()` lets a parked job
+be checked on and executed later, exactly once, once approved, or
+ended safely (not left dangling) on denial/expiry. See
+`SECURITY_REVIEW.md`'s threat #23 for full detail.
+
 ```
 Phase: KARMO Worker Runtime v0.1 (first post-foundation capability)
 
