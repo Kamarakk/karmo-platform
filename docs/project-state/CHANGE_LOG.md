@@ -271,3 +271,45 @@ MASTER_INDEX.md for status-tag definitions.
 - H0.5/Workload 5 correctly not started — first post-foundation capability
   phase, Natalie's scope choice, not invented.
 - **KARMO FOUNDATION v1 — COMPLETE.**
+
+## KARMO Worker Runtime v0.1 — implemented, isolated prototype (2026-09-09)
+
+- **VERIFIED (repo)** — Natalie authorized a 15-phase Large Autonomous
+  Implementation Program to build KARMO's first real post-foundation
+  capability: a distributed worker runtime. Branch
+  `worker-runtime/implementation`, based on `core-v2/prototypes` (a
+  disclosed, deliberate dependency — see
+  `docs/evidence/worker-runtime/WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md`).
+- Built: worker registry (identity, heartbeat, lifecycle), resource
+  discovery (real hardware facts for KARMO-DEV01, VERIFIED vs
+  AVAILABLE-IN-PRINCIPLE labeled throughout), a closed capability manifest
+  (9 SAFE capabilities, 9 permanently forbidden), a job protocol
+  genuinely wiring the reused Tool Registry + Approval Engine prototypes
+  together (closing an integration gap the prior session's adversarial
+  review had flagged), an execution sandbox (handler-registry-only
+  dispatch, path-traversal refusal, timeout, output cap, sanitized
+  errors), a pull-based transport abstraction (`LocalTransport`,
+  in-process; no inbound port anywhere), a coordinator, and a worker
+  client — full pull cycle proven end-to-end.
+- 44/44 tests passing, including all 24 explicitly required
+  failure/adversarial scenarios. 4 real defects found and fixed while
+  building the suite (see CURRENT_STATE.md's Worker Runtime section for
+  the list); one of them required a fix to the shared, reused
+  `core-v2-prototypes/job_model/jobs.py` state machine (missing
+  `WAITING_FOR_APPROVAL → FAILED` transition) — core-v2-prototypes'
+  regression suite reconfirmed 161/161 after the fix.
+- M3 acceleration benchmark run (bounded, local only, no production
+  comparison): `docs/evidence/worker-runtime/BENCHMARK_RESULTS.json`.
+- Adversarial security review with 5 explicitly named, unresolved open
+  gaps (not fixed this workload, not hidden):
+  `docs/evidence/worker-runtime/SECURITY_REVIEW.md`.
+- Future network integration (Tailscale transport, worker credentials,
+  TLS, coordinator auth) designed but explicitly **not implemented, not
+  deployed** — `docs/architecture/KARMO_WORKER_RUNTIME_NETWORK_PLAN.md`.
+- Full evidence package: `docs/evidence/worker-runtime/`
+  (`WORKER_RUNTIME_REPORT.md`, `SECURITY_REVIEW.md`, `TEST_RESULTS.txt`,
+  `BENCHMARK_RESULTS.json`, `VERIFICATION_CHECKLIST.md`,
+  `RUN_SUMMARY.json`, `MANIFEST.sha256`).
+- **Production access: 0. Network/firewall/Tailscale changes: 0. Merges:
+  0.** Worker Runtime v0.1 is not connected to production KARMO and no PR
+  from this workload was merged.

@@ -45,15 +45,36 @@ action if ever pursued (not currently planned).
 
 Merged 2026-09-09 (PR #9, `cd72938`).
 
-## 6. Choose the first post-foundation capability phase (the actual next action)
+## 6. Choose the first post-foundation capability phase (PARTIALLY ACTED ON — Worker Runtime v0.1 built, not merged/deployed)
 
-H0.5's specific scope remains **NEEDS VERIFICATION** — not defined, and
-explicitly not invented by this or any prior pass. The Foundation Closeout
-consolidation review's extensibility-review-derived observation (a
-tool/capability registry as a strong first candidate, since every planned
-domain depends on it) is a suggestion for Natalie to weigh, not a decision
-made on her behalf. This is the primary open item now that Foundation v1
-is complete.
+H0.5's specific scope was not formally chosen by Natalie, but on
+2026-09-09 she explicitly authorized building KARMO's first real
+post-foundation capability directly: a distributed Worker Runtime
+allowing trusted machines (starting with KARMO-DEV01) to register, poll
+for bounded jobs, execute them sandboxed, and return evidence. This was
+implemented, tested (44/44, all 24 required scenarios), and evidenced
+this workload — see "KARMO Worker Runtime v0.1" in CURRENT_STATE.md and
+`docs/evidence/worker-runtime/`. **Not merged to `main` or
+`core-v2/prototypes`. Not deployed. Not connected to production.** Open
+PRs from this workload are Natalie's to review/merge. Remaining choice
+for Natalie: merge this as-is, request changes, or treat it as one input
+alongside the still-undecided Tool/Capability Registry track when
+formally scoping H0.5.
+
+## 6a. Worker Runtime v0.1 — named follow-ups before any real network exposure
+
+Not blocking, not started, explicitly deferred per this workload's scope:
+cryptographic worker credentials (currently a bare `worker_id` string with
+only identity-consistency checking, no proof of possession); subprocess
+environment allowlisting for `pytest`/`static_analysis` handlers; a
+symlink-escape-specific test to directly prove `resolve_within_sandbox`'s
+existing containment check; a result-authenticity binding beyond the
+current internal-consistency digest; and coordinator persistence (today
+fully in-memory, confirmed by scenario 24 — no restart recovery exists).
+Full detail: `docs/evidence/worker-runtime/SECURITY_REVIEW.md`'s "Open
+findings" section. None of these block continued isolated-prototype work;
+all of them block any real network transport or any capability above
+`READ`/workspace-scoped `REVERSIBLE_WRITE`.
 
 ## 7. Recommended (non-blocking) follow-up: H0.4 auditor legacy-active-state gap
 

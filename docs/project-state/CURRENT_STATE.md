@@ -62,6 +62,13 @@ independent-verification evidence package.
   result, per the same PROJECT SAVE steps already in force. No AGENTS.md or
   CLAUDE.md change was needed — both already reference the rule as a whole
   rather than enumerating its sub-parts.
+- KARMO Worker Runtime v0.1: **IMPLEMENTED, isolated prototype, NOT merged,
+  NOT deployed, NOT connected to production.** First real post-foundation
+  capability, built 2026-09-09 on branch `worker-runtime/implementation`
+  (based on `core-v2/prototypes`, itself unmerged — a disclosed dependency).
+  44/44 tests passing, including all 24 required failure/adversarial
+  scenarios. See "KARMO Worker Runtime v0.1" section below and
+  `docs/evidence/worker-runtime/WORKER_RUNTIME_REPORT.md`.
 
 ## H0.1 — Transactional Outbox
 
@@ -323,6 +330,49 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
   H0.1/H0.2/H0.4 production cutover history (I-01: those predate this gate
   and remain VERIFIED as recorded); it governs future production access
   only.
+
+## KARMO Worker Runtime v0.1 (2026-09-09, isolated prototype)
+
+- **VERIFIED (repo, this workload)** — full worker runtime built on
+  `worker-runtime/implementation` (based on `core-v2/prototypes`): worker
+  registry, resource discovery, capability manifest, job protocol
+  (genuinely wiring the reused Tool Registry + Approval Engine
+  prototypes together), execution sandbox, 9 SAFE capability handlers,
+  pull-based transport (`LocalTransport`, in-process), coordinator, and
+  worker client.
+- KARMO-DEV01 (this Mac, Apple M3/arm64) registers, heartbeats, is leased
+  a job, executes it sandboxed, and returns a verified result — proven
+  end-to-end in `test_end_to_end_pull_based_hash_verify`.
+- 44/44 tests passing (`worker-runtime/tests/test_worker_runtime.py`),
+  covering all 24 required failure/adversarial scenarios plus 20
+  supporting capability/integration tests.
+- 4 real defects found and fixed while building this workload's own test
+  suite (not pre-existing production bugs): a missing
+  `WAITING_FOR_APPROVAL → FAILED` transition in the reused
+  `core-v2-prototypes/job_model/jobs.py` state machine (fixed at the
+  source, +1 test, core-v2-prototypes now 161/161); `job_protocol.py`
+  leaking a raw `JobStateError` instead of `JobProtocolError`;
+  `coordinator.finalize_success` crashing if a worker wasn't exactly
+  `BUSY`/`DEGRADED`; and no runtime module actually importing
+  `capabilities.py`, meaning no handler would ever be registered in
+  practice. Full detail: `docs/evidence/worker-runtime/RUN_SUMMARY.json`.
+- M3 benchmark run (bounded, local, no production comparison):
+  `docs/evidence/worker-runtime/BENCHMARK_RESULTS.json`. Metal 3
+  confirmed present; MLX and Ollama confirmed NOT installed (neither was
+  installed by this workload, per instruction).
+- Security review with 5 explicitly named open gaps (no cryptographic
+  worker credential, no subprocess env allowlisting, no symlink-escape
+  test, no result-authenticity binding, no coordinator persistence) —
+  none exploitable within this workload's actual threat surface today
+  (no network transport exists; capability set is READ-only/workspace-
+  scoped). `docs/evidence/worker-runtime/SECURITY_REVIEW.md`.
+- Future network plan (Tailscale transport, worker credentials, TLS,
+  coordinator auth) is design-only —
+  `docs/architecture/KARMO_WORKER_RUNTIME_NETWORK_PLAN.md`. **No network,
+  firewall, or Tailscale configuration was changed.**
+- **Production access: 0. Network changes: 0. Merges: 0.** Not connected
+  to production KARMO. See "Next action" in NEXT_STEPS.md for what a
+  future, separately-authorized controlled integration test would require.
 
 ## Confirmed data-state baselines (for reference, HISTORICAL unless restated)
 

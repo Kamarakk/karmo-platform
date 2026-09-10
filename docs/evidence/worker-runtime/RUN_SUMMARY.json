@@ -1,0 +1,42 @@
+{
+  "workload": "KARMO Worker Runtime v0.1",
+  "date": "2026-09-09",
+  "branch": "worker-runtime/implementation",
+  "based_on_branch": "core-v2/prototypes",
+  "machine": "KARMO-DEV01 (Apple M3, arm64, macOS 14.8.7)",
+  "test_results": {
+    "worker_runtime_suite": {"passed": 44, "failed": 0, "path": "worker-runtime/tests/test_worker_runtime.py"},
+    "core_v2_prototypes_regression": {"passed": 161, "failed": 0, "note": "+1 vs prior session's 160 due to the WAITING_FOR_APPROVAL->FAILED transition-table fix and its new parametrized test case"}
+  },
+  "required_failure_scenarios_covered": 24,
+  "defects_found_and_fixed_this_workload": [
+    {
+      "location": "core-v2-prototypes/job_model/jobs.py VALID_TRANSITIONS",
+      "defect": "WAITING_FOR_APPROVAL -> FAILED was not a valid transition, so a denied approval on any approval-gated job would raise an unhandled JobStateError instead of failing the job",
+      "found_by": "exercising job_protocol.WorkerJobQueue.deny() with a synthetic approval-required capability (scenario 17's test setup)",
+      "fix": "added JobState.FAILED to the WAITING_FOR_APPROVAL transition set, plus a new parametrized test case in job_model/tests/test_jobs.py"
+    },
+    {
+      "location": "worker-runtime/app/job_protocol.py WorkerJobQueue.lease()",
+      "defect": "leaked the underlying job_model.JobStateError instead of wrapping it as JobProtocolError, breaking the module's own exception-boundary contract",
+      "found_by": "scenario 10 and scenario 13 tests",
+      "fix": "wrapped job_store.claim()'s JobStateError into JobProtocolError"
+    },
+    {
+      "location": "worker-runtime/app/coordinator.py Coordinator.finalize_success()",
+      "defect": "called workers.mark_available() unconditionally; crashed with WorkerRegistryError if the worker's status wasn't exactly BUSY/DEGRADED (e.g. a job leased via WorkerJobQueue.lease() directly rather than through poll_for_job's mark_busy path) -- inconsistent with finalize_failure(), which already guarded this",
+      "found_by": "scenario 16 test",
+      "fix": "wrapped mark_available() in the same defensive try/except finalize_failure() already used"
+    },
+    {
+      "location": "worker-runtime/app/worker_client.py and tests",
+      "defect": "no module in the actual runtime path ever imported capabilities.py, so sandbox._HANDLERS would be empty (no capability could ever execute) unless something happened to import it first",
+      "found_by": "first test run against real capability handlers (11 failures, all \"no registered handler\")",
+      "fix": "worker_client.py now imports capabilities.py for its registration side effect, since it's the module that actually calls run_capability"
+    }
+  ],
+  "production_access": 0,
+  "network_changes": 0,
+  "merges": 0,
+  "large_model_installs": 0
+}
