@@ -230,6 +230,64 @@ class WorkerJobQueue:
         except ApprovalStateError as error:
             raise JobProtocolError(str(error)) from error
 
+    def resume(self, job_id, *, worker_id, presented_payload, action):
+        """Check on -- and, if now approved, execute -- a job this worker
+        previously parked in WAITING_FOR_APPROVAL. Fixes a gap found by
+        independent review: the normal poll -> execute path had no way
+        to represent "this job legitimately can't run yet" as anything
+        other than a hard failure, so an approval-required job leased by
+        a real worker was immediately marked FAILED the moment execute()
+        correctly refused it -- even though nothing was actually wrong,
+        the job was just waiting on a human.
+
+        Returns:
+          - the action's result, if the approval was APPROVED for this
+            exact worker_id -- delegates to execute() (never duplicated),
+            so the same identity/digest/single-use guarantees apply;
+          - None, if the approval is still REQUESTED -- not an error, not
+            a failure, safe to call again later, and calling it
+            repeatedly never executes or duplicates work;
+          - raises JobProtocolError if the approval ended DENIED/EXPIRED/
+            CANCELLED (or was already EXECUTED -- a duplicate resume
+            attempt), moving the underlying job to FAILED as part of
+            handling DENIED/EXPIRED/CANCELLED specifically if it had not
+            already been (EXPIRED is detected only lazily -- this is
+            where an expired approval's job actually learns about it and
+            terminates, rather than sitting in WAITING_FOR_APPROVAL
+            forever)."""
+        worker_job = self._require(job_id)
+
+        if worker_job.assigned_worker_id != worker_id:
+            raise JobProtocolError(
+                f"job {job_id} is not assigned to worker {worker_id!r} -- refused"
+            )
+        if worker_job.approval_id is None:
+            raise JobProtocolError(f"job {job_id} has no associated approval to resume")
+
+        approval_record = self._approval_engine.get(worker_job.approval_id)  # lazy expiry applied here
+
+        if approval_record.state == ApprovalState.REQUESTED:
+            return None  # still pending -- not an error, nothing executed
+
+        if approval_record.state == ApprovalState.APPROVED:
+            return self.execute(
+                job_id, executor_identity=worker_id, presented_payload=presented_payload, action=action,
+            )
+
+        if approval_record.state == ApprovalState.EXECUTED:
+            raise JobProtocolError(
+                f"job {job_id}'s approval has already been executed -- refusing a duplicate resume"
+            )
+
+        # DENIED / CANCELLED / FAILED (deny() already fails the job
+        # synchronously) or EXPIRED (only ever detected lazily, so this
+        # may be the first time anything notices) -- ends safely rather
+        # than leaving the job stuck in WAITING_FOR_APPROVAL forever.
+        reason = f"approval ended in state {approval_record.state.value} -- job cannot proceed"
+        if self._job_store.get(job_id).state == JobState.WAITING_FOR_APPROVAL:
+            self._job_store.transition(job_id, JobState.FAILED, claim_token=worker_job.job.claim_token, note=reason)
+        raise JobProtocolError(reason)
+
     def complete(self, job_id, *, output, duration_seconds, stdout_summary, evidence_files=None, claim_token=None):
         worker_job = self._require(job_id)
         token = claim_token or worker_job.job.claim_token

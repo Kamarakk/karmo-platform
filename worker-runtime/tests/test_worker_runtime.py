@@ -694,72 +694,150 @@ def test_approval_gate_none_required_capability_executes_directly(coordinator):
     assert result == {"ran": True}
 
 
-def test_worker_client_end_to_end_refuses_unapproved_execution(coordinator, approval_required_capability):
-    """Full WorkerClient/LocalTransport wiring, not just the low-level
-    job_protocol API: a real worker pulling a real approval-required job
-    through poll_and_execute_once() must not execute it before approval
-    exists -- the sandboxed handler must never run, and the job ends
-    FAILED, not SUCCEEDED-with-a-side-effect."""
+def _register_and_park(coordinator, capability_id, worker_id="dev01", idempotency_key="park-1"):
+    """Shared setup for the pending-approval WorkerClient tests below:
+    register a worker, submit an approval-required job, and drive it
+    through poll_and_execute_once() to the parked (WAITING_FOR_APPROVAL)
+    state via the real, normal WorkerClient/transport path -- not the
+    low-level job_protocol API directly."""
     coordinator.register_worker(
-        worker_id="dev01", hostname="karmo-dev01.local", worker_version="0.1.0",
-        platform="Darwin", architecture="arm64", capabilities=_caps(approval_required_capability),
+        worker_id=worker_id, hostname=f"{worker_id}.local", worker_version="0.1.0",
+        platform="Darwin", architecture="arm64", capabilities=_caps(capability_id),
         resource_limits={"cpu": 8, "memory_mb": 8192},
     )
-    coordinator.heartbeat("dev01")
-    worker_job = coordinator.submit_job(
-        capability_id=approval_required_capability, payload={"path": "sample_document.txt"},
-        idempotency_key="gate-e2e-1",
+    coordinator.heartbeat(worker_id)
+    coordinator.submit_job(
+        capability_id=capability_id, payload={"path": "sample_document.txt"}, idempotency_key=idempotency_key,
     )
-
     transport = LocalTransport(coordinator)
-    client = WorkerClient(worker_id="dev01", transport=transport, allowed_root=FIXTURES)
+    client = WorkerClient(worker_id=worker_id, transport=transport, allowed_root=FIXTURES)
+    pending = client.poll_and_execute_once([capability_id])
+    return client, transport, pending
+
+
+# =============================================================================
+# Pending-approval workflow through the NORMAL WorkerClient/transport path
+# (fix for a gap found by re-verification): an approval-required job must
+# be able to enter WAITING_FOR_APPROVAL without executing or being marked
+# FAILED, sit there safely while polled repeatedly, and later resume
+# execution -- exactly once -- once actually approved. The prior design's
+# poll_and_execute_once() had no way to represent "legitimately pending"
+# as anything but a hard failure, so an approval-required job was marked
+# FAILED the instant it was leased, even though nothing was actually
+# wrong. request_approval()/resume() (job_protocol.py, coordinator.py,
+# transport.py, worker_client.py) fix this. The in-process, callable-based
+# transport limitation already documented for execute() is unchanged and
+# explicitly NOT redesigned here -- resume() inherits the exact same gap
+# (see transport.py's module docstring).
+# =============================================================================
+
+def test_worker_client_approval_required_job_parks_without_executing_or_failing(coordinator, approval_required_capability):
+    client, transport, pending = _register_and_park(coordinator, approval_required_capability)
+
+    assert pending is not None
+    assert pending.state == JobState.WAITING_FOR_APPROVAL
+    assert pending.result is None  # the sandboxed handler never ran
+    assert coordinator.jobs.get(pending.job_id).state == JobState.WAITING_FOR_APPROVAL  # not FAILED
+
+
+def test_worker_client_repeated_polling_while_pending_does_not_execute_or_duplicate(coordinator, approval_required_capability):
+    client, transport, pending = _register_and_park(coordinator, approval_required_capability)
+    approval_id = pending.approval_id
+    audit_len_before = len(coordinator.jobs._approval_engine.get(approval_id).audit_trail)
+
+    # Polling again: the worker is still BUSY holding the pending job, so
+    # no new job is leased and nothing executes.
+    again = client.poll_and_execute_once([approval_required_capability])
+    assert again is None
+    assert coordinator.jobs.get(pending.job_id).state == JobState.WAITING_FOR_APPROVAL
+
+    # Checking in via try_resume() while still unapproved: safe, returns
+    # None, no execution, no duplicate approval request.
+    for _ in range(3):
+        result = client.try_resume(pending)
+        assert result is None
+    assert coordinator.jobs.get(pending.job_id).state == JobState.WAITING_FOR_APPROVAL
+    assert coordinator.jobs.get(pending.job_id).approval_id == approval_id  # same approval, not re-requested
+    assert len(coordinator.jobs._approval_engine.get(approval_id).audit_trail) == audit_len_before
+
+
+def test_worker_client_resumes_and_executes_exactly_once_after_approval(coordinator, approval_required_capability):
+    client, transport, pending = _register_and_park(coordinator, approval_required_capability)
+    coordinator.jobs.approve(pending.job_id, approver="natalie", authorized_executor="dev01")
+
+    completed = client.try_resume(pending)
+    assert completed is not None
+    assert completed.state == JobState.SUCCEEDED
+    assert len(completed.result.output["sha256"]) == 64  # the real handler actually ran, exactly once
+    assert coordinator.workers.get("dev01").status == WorkerStatus.AVAILABLE  # released after completion
+
+    # A second resume attempt on the same (now-finished) job is refused,
+    # not a silent duplicate execution.
+    with pytest.raises(WorkerClientError):
+        client.try_resume(pending)
+
+
+def test_worker_client_wrong_worker_cannot_resume(coordinator, approval_required_capability):
+    client, transport, pending = _register_and_park(coordinator, approval_required_capability, worker_id="dev01")
+    coordinator.register_worker(
+        worker_id="dev02", hostname="dev02.local", worker_version="0.1.0", platform="Darwin",
+        architecture="arm64", capabilities=_caps(approval_required_capability), resource_limits={},
+    )
+    coordinator.heartbeat("dev02")
+    coordinator.jobs.approve(pending.job_id, approver="natalie", authorized_executor="dev01")
+
+    impostor_client = WorkerClient(worker_id="dev02", transport=transport, allowed_root=FIXTURES)
+    with pytest.raises(WorkerClientError):
+        impostor_client.try_resume(pending)
+    assert coordinator.jobs.get(pending.job_id).state != JobState.SUCCEEDED  # nothing executed for the impostor
+
+    # The legitimate worker can still resume normally afterward -- the
+    # wrong-worker attempt did not corrupt the job.
+    completed = client.try_resume(pending)
+    assert completed.state == JobState.SUCCEEDED
+
+
+def test_worker_client_denial_ends_safely_and_releases_worker(coordinator, approval_required_capability):
+    client, transport, pending = _register_and_park(coordinator, approval_required_capability)
+    coordinator.deny_job(pending.job_id, approver="natalie", reason="not needed")
+
+    assert coordinator.jobs.get(pending.job_id).state == JobState.FAILED
+    assert coordinator.workers.get("dev01").status == WorkerStatus.AVAILABLE  # released, not stuck BUSY
 
     with pytest.raises(WorkerClientError):
-        client.poll_and_execute_once([approval_required_capability])
-    assert coordinator.jobs.get(worker_job.job_id).state == JobState.FAILED
+        client.try_resume(pending)  # already terminal -- refused cleanly, not a crash
 
 
-def test_worker_client_end_to_end_executes_once_approved(coordinator, approval_required_capability):
-    """The success-path counterpart: once a job has been leased,
-    approval-requested, and approved (authorizing this exact worker_id),
-    a real WorkerClient executing through the transport's execute() gate
-    succeeds and the underlying capability actually ran."""
+def test_worker_client_expiry_ends_safely_and_releases_worker(coordinator, clock, approval_required_capability):
+    client, transport, pending = _register_and_park(coordinator, approval_required_capability)
+    clock.advance(400)  # WorkerJobQueue's default approval_ttl_seconds=300 -- never approved in time
+
+    with pytest.raises(WorkerClientError):
+        client.try_resume(pending)
+
+    assert coordinator.jobs.get(pending.job_id).state == JobState.FAILED
+    assert coordinator.workers.get("dev01").status == WorkerStatus.AVAILABLE  # released, not stuck BUSY
+
+
+def test_worker_client_none_required_capability_flow_is_unchanged(coordinator):
+    """Control case, through the real WorkerClient path this time (not
+    just job_protocol directly, see test_approval_gate_none_required_...
+    above): a NONE-authority capability executes immediately on the
+    first poll, with no parking step at all."""
     coordinator.register_worker(
         worker_id="dev01", hostname="karmo-dev01.local", worker_version="0.1.0",
-        platform="Darwin", architecture="arm64", capabilities=_caps(approval_required_capability),
+        platform="Darwin", architecture="arm64", capabilities=_caps("hash_verify"),
         resource_limits={"cpu": 8, "memory_mb": 8192},
     )
     coordinator.heartbeat("dev01")
-    worker_job = coordinator.submit_job(
-        capability_id=approval_required_capability, payload={"path": "sample_document.txt"},
-        idempotency_key="gate-e2e-2",
+    coordinator.submit_job(
+        capability_id="hash_verify", payload={"path": "sample_document.txt"}, idempotency_key="none-flow-1",
     )
-    leased = coordinator.poll_for_job("dev01", [approval_required_capability])
-    coordinator.jobs.request_approval_if_required(leased.job_id, requester="natalie")
-    coordinator.jobs.approve(leased.job_id, approver="natalie", authorized_executor="dev01")
+    client = WorkerClient(worker_id="dev01", transport=LocalTransport(coordinator), allowed_root=FIXTURES)
 
-    # The worker was already leased this job by poll_for_job above (via
-    # the coordinator directly, standing in for the worker's earlier poll
-    # that triggered the approval workflow); now drive its execution
-    # through the same transport.execute() gate a real poll_and_execute
-    # cycle would use, proving the wiring, not just job_protocol directly.
-    transport = LocalTransport(coordinator)
-
-    def _action():
-        return run_capability(
-            leased.capability_id, leased.payload, timeout_seconds=30, allowed_root=FIXTURES,
-        )
-
-    output, stdout_summary, duration, evidence_files = transport.execute(
-        leased.job_id, executor_identity="dev01", presented_payload=leased.payload, action=_action,
-    )
-    assert len(output["sha256"]) == 64  # the real hash_verify handler actually ran
-
-    completed = transport.submit_result(
-        leased.job_id, output=output, duration_seconds=duration,
-        stdout_summary=stdout_summary, evidence_files=evidence_files,
-    )
-    assert completed.state == JobState.SUCCEEDED
+    result = client.poll_and_execute_once(["hash_verify"])
+    assert result.state == JobState.SUCCEEDED
+    assert len(result.result.output["sha256"]) == 64
 
 
 # --- Scenario 18: path traversal attempt ---------------------------------------

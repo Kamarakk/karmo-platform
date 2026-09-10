@@ -81,6 +81,59 @@ class Coordinator:
         except JobProtocolError as error:
             raise CoordinatorError(str(error)) from error
 
+    def request_approval(self, job_id, *, requester):
+        """Parks an approval-required job in WAITING_FOR_APPROVAL and
+        opens a real approval request -- NOT a failure path. See
+        job_protocol.WorkerJobQueue.request_approval_if_required (a
+        no-op, stays RUNNING, if the capability doesn't require
+        approval)."""
+        try:
+            return self.jobs.request_approval_if_required(job_id, requester=requester)
+        except JobProtocolError as error:
+            raise CoordinatorError(str(error)) from error
+
+    def resume_job(self, job_id, *, worker_id, presented_payload, action):
+        """Check on (and execute, if now approved) a job a worker
+        previously parked via request_approval. See job_protocol.py's
+        resume() for the full contract -- a None return (still pending)
+        is NOT an error and passes through unwrapped."""
+        try:
+            return self.jobs.resume(
+                job_id, worker_id=worker_id, presented_payload=presented_payload, action=action,
+            )
+        except JobProtocolError as error:
+            # If this resume() call is what just ended the job (denial
+            # already handled by deny_job() below; expiry is detected
+            # only lazily, so resume() may be the first thing to notice
+            # it), the worker's lease on it is over -- release it back
+            # to AVAILABLE. Guarded to the job's actual assigned worker
+            # only, and safe to attempt even if already released (a
+            # wrong-worker attempt never reaches this -- resume() raises
+            # before any job-state change for that case, so job.state
+            # here is never FAILED as a result of an imposter's attempt).
+            worker_job = self.jobs.get(job_id)
+            if worker_job.state == JobState.FAILED and worker_job.assigned_worker_id == worker_id:
+                try:
+                    self.workers.mark_available(worker_id)
+                except WorkerRegistryError:
+                    pass
+            raise CoordinatorError(str(error)) from error
+
+    def deny_job(self, job_id, *, approver, reason=""):
+        """Approver-side action (not a worker/transport verb -- a human
+        or system denying a pending approval). deny() itself only knows
+        about job/approval state, not the worker registry, so this
+        wrapper is what actually releases the assigned worker back to
+        AVAILABLE as part of ending the job safely -- without it, a
+        denied job would leave its worker stuck BUSY indefinitely."""
+        worker_job = self.jobs.deny(job_id, approver=approver, reason=reason)
+        if worker_job.assigned_worker_id:
+            try:
+                self.workers.mark_available(worker_job.assigned_worker_id)
+            except WorkerRegistryError:
+                pass
+        return worker_job
+
     def _select_job(self, eligible_capabilities, required_label, worker_record):
         """Minimum selection logic -- first-eligible-QUEUED-job by
         capability, no priority, no load balancing, no affinity beyond

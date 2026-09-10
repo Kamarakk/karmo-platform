@@ -9,9 +9,9 @@ opened on the worker by anything in this module -- the worker only ever
 initiates outbound calls (poll, heartbeat, submit), matching the
 pull-based architecture explicitly required.
 
-NOTE on `execute()` and the in-process prototype limitation: `execute()`
-takes a local Python callable (`action`) so that approval-gating (which
-only the coordinator's ApprovalEngine can decide) and the actual
+NOTE on `execute()`/`resume()` and the in-process prototype limitation:
+both take a local Python callable (`action`) so that approval-gating
+(which only the coordinator's ApprovalEngine can decide) and the actual
 sandboxed execution (which only the worker can perform) happen as a
 single atomic step, with the approval consumed exactly if and only if
 `action()` actually ran. That is trivial to express in-process, as
@@ -21,8 +21,10 @@ coordinator returns a signed "execution ticket" bound to the exact
 approval + arguments digest, the worker executes locally and presents the
 ticket back with its result, and the coordinator's ApprovalEngine.execute
 validates+consumes the ticket against the presented result at that point)
-before Phase 15's network plan can be implemented. This is called out
-explicitly in KARMO_WORKER_RUNTIME_NETWORK_PLAN.md.
+before Phase 15's network plan can be implemented. This limitation is
+unchanged and still explicitly not redesigned by `resume()`'s addition --
+it inherits `execute()`'s exact same callable-based shape and the exact
+same network gap. See KARMO_WORKER_RUNTIME_NETWORK_PLAN.md.
 """
 
 from abc import ABC, abstractmethod
@@ -46,6 +48,21 @@ class WorkerTransport(ABC):
         """Runs `action()` (the worker's local sandboxed execution) only
         if approval-gating (coordinator-owned) allows it. See the module
         docstring's note on this method's in-process-only shape."""
+
+    @abstractmethod
+    def request_approval(self, job_id, *, requester):
+        """Parks an approval-required job in WAITING_FOR_APPROVAL and
+        opens a real approval request. NOT a failure path -- a job
+        legitimately waiting on a human is not a broken job. A no-op
+        (job stays RUNNING) for a NONE-authority-requirement job."""
+
+    @abstractmethod
+    def resume(self, worker_id, job_id, *, presented_payload, action):
+        """Checks on (and executes, if now approved) a job previously
+        parked via request_approval. Returns None if still pending --
+        not an error, safe to call again later. See the module
+        docstring's note on this method's in-process-only shape (same
+        limitation as execute())."""
 
     @abstractmethod
     def submit_result(self, job_id, **kwargs):
@@ -79,6 +96,14 @@ class LocalTransport(WorkerTransport):
     def execute(self, job_id, *, executor_identity, presented_payload, action):
         return self._coordinator.execute_job(
             job_id, executor_identity=executor_identity, presented_payload=presented_payload, action=action,
+        )
+
+    def request_approval(self, job_id, *, requester):
+        return self._coordinator.request_approval(job_id, requester=requester)
+
+    def resume(self, worker_id, job_id, *, presented_payload, action):
+        return self._coordinator.resume_job(
+            job_id, worker_id=worker_id, presented_payload=presented_payload, action=action,
         )
 
     def submit_result(self, job_id, **kwargs):
