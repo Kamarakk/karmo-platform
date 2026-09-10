@@ -1,0 +1,31 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.3.3, pluggy-1.6.0 -- /Users/sdcity/KARMO-DEV/h04/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/sdcity/KARMO-DEV/h04
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 15 items
+
+tests/test_h04_integrity_reconciliation.py::test_healthy_consistent_document_has_no_findings PASSED [  6%]
+tests/test_h04_integrity_reconciliation.py::test_missing_archived_file_detected PASSED [ 13%]
+tests/test_h04_integrity_reconciliation.py::test_archived_file_hash_mismatch_detected PASSED [ 20%]
+tests/test_h04_integrity_reconciliation.py::test_missing_qdrant_vector_detected PASSED [ 26%]
+tests/test_h04_integrity_reconciliation.py::test_orphan_qdrant_vector_detected PASSED [ 33%]
+tests/test_h04_integrity_reconciliation.py::test_incorrect_expected_chunk_count_detected PASSED [ 40%]
+tests/test_h04_integrity_reconciliation.py::test_multiple_active_versions_detected PASSED [ 46%]
+tests/test_h04_integrity_reconciliation.py::test_provenance_version_mismatch_detected PASSED [ 53%]
+tests/test_h04_integrity_reconciliation.py::test_auditor_is_report_only PASSED [ 60%]
+tests/test_h04_integrity_reconciliation.py::test_backup_snapshot_corruption_restore_integrity_workflow PASSED [ 66%]
+tests/test_h04_pagination.py::test_reconciliation_paginates_across_multiple_scroll_pages PASSED [ 73%]
+tests/test_h04_registry_repair.py::test_healthy_orphan_repaired_and_no_longer_reported PASSED [ 80%]
+tests/test_h04_registry_repair.py::test_ambiguous_group_is_refused_not_guessed PASSED [ 86%]
+tests/test_h04_registry_repair.py::test_already_registered_group_is_a_noop_on_rerun PASSED [ 93%]
+tests/test_h04_registry_repair.py::test_build_plan_is_report_only_by_default PASSED [100%]
+
+=============================== warnings summary ===============================
+venv/lib/python3.9/site-packages/urllib3/__init__.py:35
+  /Users/sdcity/KARMO-DEV/h04/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 15 passed, 1 warning in 1.52s =========================

@@ -187,11 +187,35 @@ def find_orphan_vectors(qdrant_client, collection_name, known_hashes, *, page_si
 def check_active_version_state(document_id, registry_rows, points):
     """Detect invalid active-version state for one logical document.
 
-    Two independent checks, both frozen H0.4 requirements:
+    Two independent checks, both frozen H0.4 requirements -- the detection
+    *intent* is frozen; the definition of "Qdrant-active" below was
+    corrected (2026-09-09) to actually match that intent rather than
+    silently drifting from it, per the same "fix and revalidate" precedent
+    already used for this file's pagination-ceiling correction:
+
     - MULTIPLE_ACTIVE_VERSIONS: more than one registry row for this
       document_id is marked is_active.
-    - ACTIVE_STATE_MISMATCH: the set of document_hash values Qdrant marks
-      is_active for this document_id disagrees with the registry's.
+    - ACTIVE_STATE_MISMATCH: the set of document_hash values Qdrant treats
+      as active for this document_id disagrees with the registry's. A
+      point counts as Qdrant-active when its payload has ``is_active=True``
+      OR the ``is_active`` field is absent entirely -- this is not a
+      legacy-only carve-out, it is the exact, single definition of
+      "active" ``document_memory.search_documents`` already uses in
+      production (see ``docs/handoff/h04/document_memory.py``: "the filter
+      treats is_active=True and a missing is_active field as active, and
+      excludes only is_active=False"). Only an explicit ``is_active=False``
+      excludes a point. Before this correction, a legacy-bootstrapped
+      document (registry is_active=True, Qdrant points with no is_active
+      field at all -- the same class of pre-H0.2 point
+      ``check_provenance``'s ``LEGACY_PROVENANCE_UNVERIFIED`` already
+      accounts for) was permanently, spuriously reported as mismatched,
+      even though production retrieval already treats it as fully active
+      and consistent. The correction also *newly catches* a real gap the
+      old definition silently missed: a document the registry marks
+      ``is_active=False`` (superseded) whose Qdrant points still lack an
+      explicit ``is_active=False`` -- production retrieval would still
+      surface those points as active, which is a genuine inconsistency the
+      old, narrower definition never reported.
     """
     findings = []
 
@@ -209,7 +233,7 @@ def check_active_version_state(document_id, registry_rows, points):
     qdrant_active_hashes = {
         point.payload.get("document_hash")
         for point in points
-        if point.payload.get("is_active") is True
+        if point.payload.get("is_active") is not False
     }
 
     if registry_active_hashes != qdrant_active_hashes:
