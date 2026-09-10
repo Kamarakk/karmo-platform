@@ -9,10 +9,12 @@ configuration.
 # 1. Set up the venv (already created this workload; safe to re-run).
 cd worker-runtime && python3 -m venv venv && venv/bin/pip install -q pytest
 
-# 2. All tests pass (62 tests: the 24 required scenarios + supporting
-#    capability/integration tests + the 18 fix-verification tests added
-#    after independent review -- approval-gates-execution, real timeout
-#    kill, bounded result, worker health separation).
+# 2. All tests pass (67 tests: the 24 required scenarios + supporting
+#    capability/integration tests + the 18 first-round fix-verification
+#    tests (approval-gates-execution, real timeout kill, bounded result,
+#    worker health separation) + the 7 second-round fix-verification
+#    tests (pending-approval workflow: park, resume, wrong-worker,
+#    denial/expiry safety, NONE-capability unaffected)).
 venv/bin/python -m pytest tests/ -v
 
 # 3. Worker registers.
@@ -136,6 +138,46 @@ try:
 except CoordinatorError as e:
     print('correctly refused:', e)
 print('action ran:', len(executed) > 0)
+"
+
+# 12. An approval-required job PARKS (WAITING_FOR_APPROVAL) instead of
+#     being marked FAILED the instant it's leased -- second-round
+#     independent-review fix -- then resumes and executes exactly once
+#     after approval, through the real WorkerClient/transport path.
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator
+from capability_manifest import SAFE_CAPABILITIES
+from tool_registry_reuse import CapabilityClass
+from transport import LocalTransport
+from worker_client import WorkerClient
+from sandbox import _HANDLERS
+import capabilities
+
+synthetic = dict(SAFE_CAPABILITIES['hash_verify'])
+synthetic['capability_id'] = 'synthetic_pending_check'
+synthetic['authority_class'] = CapabilityClass.REVERSIBLE_WRITE
+SAFE_CAPABILITIES['synthetic_pending_check'] = synthetic
+_HANDLERS['synthetic_pending_check'] = _HANDLERS['hash_verify']
+
+c = Coordinator()
+c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+    architecture='arm64', capabilities=[{'capability_id': 'synthetic_pending_check'}], resource_limits={})
+c.heartbeat('dev01')
+c.submit_job(capability_id='synthetic_pending_check', payload={'path': 'sample_document.txt'}, idempotency_key='k1')
+
+client = WorkerClient(worker_id='dev01', transport=LocalTransport(c),
+    allowed_root='tests/fixtures/allowed_workspace')
+pending = client.poll_and_execute_once(['synthetic_pending_check'])
+print('after poll:', pending.state.value, '(expect WAITING_FOR_APPROVAL, not FAILED)')
+
+still_pending = client.try_resume(pending)
+print('resume before approval:', still_pending, '(expect None -- not executed, not failed)')
+
+c.jobs.approve(pending.job_id, approver='natalie', authorized_executor='dev01')
+completed = client.try_resume(pending)
+print('after approval + resume:', completed.state.value, 'sha256:', completed.result.output['sha256'][:16] + '...')
+print('worker status:', c.workers.get('dev01').status.value, '(expect AVAILABLE)')
 "
 ```
 

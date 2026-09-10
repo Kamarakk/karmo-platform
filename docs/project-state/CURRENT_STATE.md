@@ -64,19 +64,25 @@ independent-verification evidence package.
   rather than enumerating its sub-parts.
 - KARMO Worker Runtime v0.1: **IMPLEMENTED, isolated prototype, NOT merged,
   NOT deployed, NOT connected to production.** First real post-foundation
-  capability, built 2026-09-09 on branch `worker-runtime/implementation`
+  capability, built 2026-09-09/10 on branch `worker-runtime/implementation`
   (based on `core-v2/prototypes`, itself unmerged — a disclosed dependency).
-  Independent (ChatGPT) verification of PRs #23–#25 (2026-09-09, same day,
-  before any merge) found 4 real blocking findings — approval gated job
-  completion but not execution; timeout enforcement was a post-return
-  check, not a real deadline; only `stdout_summary` was bounded, not the
-  full result; a worker heartbeat could set coordinator-owned scheduling
-  state directly. **All 4 fixed on the same open PRs** (implementation
-  commit `5906f61`), with 18 new adversarial tests. **62/62 tests
-  passing** (was 44/44), including all 24 required failure/adversarial
-  scenarios plus the fix-verification suite. PRs remain open, unmerged,
-  awaiting re-verification. See "KARMO Worker Runtime v0.1" section below
-  and `docs/evidence/worker-runtime/WORKER_RUNTIME_REPORT.md`.
+  **Two rounds** of independent (ChatGPT) verification of PRs #23–#25,
+  before any merge: round 1 found 4 real blocking findings (approval
+  gated job completion but not execution; timeout enforcement was a
+  post-return check, not a real deadline; only `stdout_summary` was
+  bounded, not the full result; a worker heartbeat could set
+  coordinator-owned scheduling state directly) — fixed at commit
+  `5906f61`. Round 2 found round 1's approval-gate fix was correct but
+  left the normal WorkerClient flow with no way to represent "legitimately
+  waiting on approval" other than a hard failure — an approval-required
+  job was marked FAILED the instant it was leased — fixed at commit
+  `08c501e` (approval-required jobs now park in `WAITING_FOR_APPROVAL`
+  and resume execution exactly once approved, or end safely on
+  denial/expiry). **67/67 tests passing** (was 44/44 → 62/62 → 67/67),
+  including all 24 required failure/adversarial scenarios plus both
+  fix-verification suites. PRs remain open, unmerged, awaiting
+  re-verification. See "KARMO Worker Runtime v0.1" section below and
+  `docs/evidence/worker-runtime/WORKER_RUNTIME_REPORT.md`.
 
 ## H0.1 — Transactional Outbox
 
@@ -351,10 +357,10 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
 - KARMO-DEV01 (this Mac, Apple M3/arm64) registers, heartbeats, is leased
   a job, executes it sandboxed, and returns a verified result — proven
   end-to-end in `test_end_to_end_pull_based_hash_verify`.
-- 62/62 tests passing (`worker-runtime/tests/test_worker_runtime.py`,
-  was 44/44), covering all 24 required failure/adversarial scenarios plus
-  supporting capability/integration tests plus 18 fix-verification tests
-  added after independent review (see below).
+- 67/67 tests passing (`worker-runtime/tests/test_worker_runtime.py`,
+  was 44/44 → 62/62 → 67/67), covering all 24 required failure/adversarial
+  scenarios plus supporting capability/integration tests plus both
+  rounds' fix-verification tests (see below).
 - 4 real defects found and fixed while building this workload's own test
   suite (not pre-existing production bugs): a missing
   `WAITING_FOR_APPROVAL → FAILED` transition in the reused
@@ -386,20 +392,43 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
   `WorkerRegistry.heartbeat()` now accepts only a self-reported
   `WorkerHealth`, never a raw `WorkerStatus`. Full detail:
   `docs/evidence/worker-runtime/RUN_SUMMARY.json`'s
-  `independent_verification_findings_and_fixes`.
+  `independent_verification_round_1_findings_and_fixes`.
+- **VERIFIED — second round of independent (ChatGPT) verification,
+  2026-09-10, before any merge**: found round 1's approval-gate fix was
+  itself correct (nothing unauthorized ever executed, before or after)
+  but the normal `WorkerClient` flow treated its correct refusal as a
+  hard failure — an approval-required job reached `execute()`, was
+  refused because approval wasn't present yet, and
+  `poll_and_execute_once()` then called `submit_failure()`, permanently
+  marking a merely-pending job `FAILED` before a human ever had a chance
+  to approve it. **Fixed** at implementation commit `08c501e`:
+  `job_protocol.WorkerJobQueue.resume()` (alongside `execute()`) lets an
+  approval-required job park in `WAITING_FOR_APPROVAL` without executing
+  or failing, then resume execution — exactly once — once approved
+  (delegating to `execute()`, never duplicated), or end safely (`FAILED`,
+  worker released) on denial/expiry. Also fixed while building this: a
+  denied/expired job's worker was left stuck `BUSY` forever —
+  `coordinator.deny_job()`/`resume_job()` now release it. Wired through
+  new `coordinator`/`transport` `request_approval()`/`resume()` verbs
+  into `worker_client.py`'s `poll_and_execute_once()` (now parks instead
+  of failing) and new `try_resume()`. Explicitly not done: no redesign of
+  the future network transport — `resume()` inherits `execute()`'s exact
+  same callable-based, in-process-only limitation. Full detail:
+  `docs/evidence/worker-runtime/RUN_SUMMARY.json`'s
+  `independent_verification_round_2_findings_and_fixes`.
 - M3 benchmark run (bounded, local, no production comparison), re-run
   after the fork-based timeout fix (numbers essentially unchanged, a few
   ms of fork overhead): `docs/evidence/worker-runtime/BENCHMARK_RESULTS.json`.
   Metal 3 confirmed present; MLX and Ollama confirmed NOT installed
   (neither was installed by this workload, per instruction).
-- Security review with 22 threats (was 20 — 2 new rows for the
-  approval-gates-execution and worker-health-separation fixes) and 5
-  previously-named open gaps, unaffected by this round's fixes (no
-  cryptographic worker credential, no subprocess env allowlisting, no
-  symlink-escape test, no result-authenticity binding, no coordinator
-  persistence) — none exploitable within this workload's actual threat
-  surface today (no network transport exists; capability set is
-  READ-only/workspace-scoped). `docs/evidence/worker-runtime/SECURITY_REVIEW.md`.
+- Security review with 23 threats (was 20 — 3 new rows across both
+  verification rounds) and 5 previously-named open gaps, unaffected by
+  either round's fixes (no cryptographic worker credential, no subprocess
+  env allowlisting, no symlink-escape test, no result-authenticity
+  binding, no coordinator persistence) — none exploitable within this
+  workload's actual threat surface today (no network transport exists;
+  capability set is READ-only/workspace-scoped).
+  `docs/evidence/worker-runtime/SECURITY_REVIEW.md`.
 - Future network plan (Tailscale transport, worker credentials, TLS,
   coordinator auth) is design-only —
   `docs/architecture/KARMO_WORKER_RUNTIME_NETWORK_PLAN.md`. **No network,

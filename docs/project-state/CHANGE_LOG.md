@@ -375,3 +375,74 @@ MASTER_INDEX.md for status-tag definitions.
 - **Blockers: None** — but only as of this fix round; the four findings
   above were genuine blockers until fixed and re-tested. PRs #23–#25
   remain open and unmerged, awaiting re-verification.
+
+## KARMO Worker Runtime v0.1 — second independent-verification fix (2026-09-10, before any merge)
+
+- **VERIFIED (repo)** — a second independent (ChatGPT) verification pass
+  of PRs #23–#25 found one further real blocking finding: the round-1
+  approval-gates-execution fix was itself correct (nothing unauthorized
+  ever executed, before or after) but incomplete — the normal
+  `WorkerClient` flow had no way to represent "legitimately waiting on a
+  human approval" as anything other than a hard failure. An
+  approval-required job reached `execute()`, was correctly refused
+  because approval wasn't present yet, and `poll_and_execute_once()`
+  then called `submit_failure()`, permanently marking a merely-pending,
+  perfectly legitimate job `FAILED` before a human ever had a chance to
+  approve it. Natalie directed that PRs #23–#25 not be merged until this
+  was fixed and re-verified; work was confined to the existing Worker
+  Runtime branches and the synthetic/local KARMO-DEV01 environment — no
+  production access, no network changes, no new PRs.
+- **Fix** — `job_protocol.WorkerJobQueue.resume()` added alongside the
+  existing `execute()`: `request_approval_if_required()` now parks a job
+  (`RUNNING → WAITING_FOR_APPROVAL`, opens a real approval request)
+  without ever calling the capability's action; `resume()` later checks
+  on it and, if now `APPROVED`, delegates to `execute()` (never
+  duplicated) to run it exactly once, consuming the approval into
+  `EXECUTED`. A still-`REQUESTED` approval makes `resume()` return
+  `None` — not an error, safe to call again later. A
+  `DENIED`/`EXPIRED`/`CANCELLED` approval ends the job safely
+  (transitions it to `FAILED` if not already, rather than leaving it
+  stuck in `WAITING_FOR_APPROVAL` forever) and raises. Wired through new
+  `coordinator.request_approval()`/`resume_job()`/`deny_job()` and
+  `transport.request_approval()`/`resume()` verbs into
+  `worker_client.py`'s `poll_and_execute_once()` (now parks instead of
+  executing/failing an approval-required job) and a new `try_resume()`
+  (checks on / executes a previously-parked job).
+- **Bug found and fixed while building this fix's own tests** — `deny()`'s
+  and `resume()`'s terminal (denied/expired) paths did not release the
+  assigned worker back to `AVAILABLE`, leaving it stuck `BUSY`
+  indefinitely after a denial or expiry. Fixed via
+  `coordinator.deny_job()` and `resume_job()`'s exception handling, both
+  calling `mark_available()` guarded to the job's actual assigned worker
+  only (never an uninvolved worker, including a wrong-worker resume
+  attempt, which never reaches this path at all).
+- **Explicitly not done** — no redesign of the future network transport.
+  `resume()` inherits `execute()`'s exact same callable-based,
+  in-process-only limitation, unchanged and still documented in
+  `transport.py` and `KARMO_WORKER_RUNTIME_NETWORK_PLAN.md` (new section
+  flagging that `resume()`, like `execute()`, is not network-ready).
+- 7 new adversarial tests via the real `WorkerClient`/transport path
+  prove: an approval-required job parks without executing or failing; it
+  stays `WAITING_FOR_APPROVAL` under repeated polling/resume checks with
+  no duplicate work; the intended worker resumes and executes exactly
+  once after approval; the wrong worker cannot resume it; denial and
+  expiry both end safely and release the worker; `NONE`-authority
+  capabilities are unaffected. **Worker Runtime suite now 67/67 passing**
+  (was 62/62, originally 44/44); core-v2-prototypes regression
+  reconfirmed 161/161, unaffected. All fixes and new tests verified via a
+  fresh full run, not merely re-read from prior output; all 12
+  `VERIFICATION_CHECKLIST.md` commands re-executed live.
+- Documentation updated to match: `SECURITY_REVIEW.md` (new threat #23,
+  corrected stale test references on threat #21),
+  `WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md` (I-07/I-08 corrective
+  note), `KARMO_WORKER_RUNTIME_NETWORK_PLAN.md` (resume()'s network
+  limitation), `WORKER_RUNTIME_REPORT.md`, `RUN_SUMMARY.json`,
+  `TEST_RESULTS.txt`, `BENCHMARK_RESULTS.json` (re-run),
+  `VERIFICATION_CHECKLIST.md` (new command 12), `MANIFEST.sha256`
+  (regenerated).
+- PR #23 updated at commit `08c501e`. PR #24 updated at commit `4c5f61f`.
+  PR #25 updated at this entry's accompanying commit (see this file's own
+  commit hash). **No new PRs opened. No merge.**
+- **Blockers: None** — but only as of this second fix round; the finding
+  above was a genuine blocker until fixed and re-tested. PRs #23–#25
+  remain open and unmerged, awaiting a third round of re-verification.

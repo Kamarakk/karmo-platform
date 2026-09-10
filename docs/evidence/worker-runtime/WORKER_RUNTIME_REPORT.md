@@ -1,18 +1,33 @@
 # KARMO Worker Runtime v0.1 -- Implementation Report
 
-**Update (post-independent-verification, before any merge):** an
-independent (ChatGPT) verification pass of PRs #23-#25 found four real
-blocking findings not caught by this workload's own original review:
-approval gated job completion but not execution; timeout enforcement was
-a post-return check, not a real deadline; only `stdout_summary` was
-bounded, not the full result; and a worker heartbeat could set
-coordinator-owned scheduling state directly. All four are now fixed on
-the same open PRs (implementation commit `5906f61`), with 18 new
-adversarial tests (62/62 passing, up from 44/44), and are reflected
-throughout this report, `SECURITY_REVIEW.md`, and
-`WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md`. See `RUN_SUMMARY.json`'s
-`independent_verification_findings_and_fixes` for full detail. **PRs
-#23-#25 remain unmerged, awaiting re-verification.**
+**Update (two rounds of post-independent-verification, before any
+merge):**
+
+**Round 1** -- an independent (ChatGPT) verification pass of PRs #23-#25
+found four real blocking findings not caught by this workload's own
+original review: approval gated job completion but not execution;
+timeout enforcement was a post-return check, not a real deadline; only
+`stdout_summary` was bounded, not the full result; and a worker
+heartbeat could set coordinator-owned scheduling state directly. All
+four were fixed at implementation commit `5906f61`, with 18 new
+adversarial tests (62/62 passing, up from 44/44).
+
+**Round 2** -- a second independent verification pass found round 1's
+approval-gate fix was correct (nothing unauthorized ever executed) but
+incomplete: the normal `WorkerClient` flow had no way to represent
+"legitimately waiting on approval" as anything but a hard failure, so an
+approval-required job was marked `FAILED` the instant it was leased,
+before a human ever had a chance to approve it. Fixed at implementation
+commit `08c501e`: an approval-required job now parks in
+`WAITING_FOR_APPROVAL` and resumes execution -- exactly once -- once
+approved, or ends safely (worker released) on denial/expiry. 7 more
+tests (67/67 passing, up from 62/62).
+
+Both rounds are reflected throughout this report, `SECURITY_REVIEW.md`,
+and `WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md`. See `RUN_SUMMARY.json`'s
+`independent_verification_round_1_findings_and_fixes` and
+`..._round_2_findings_and_fixes` for full detail. **PRs #23-#25 remain
+unmerged, awaiting re-verification.**
 
 ## 1. Architecture
 
@@ -116,17 +131,26 @@ actually require approval (all `authority_class=READ`), but the mechanism
 is real and tested against a synthetic `REVERSIBLE_WRITE` capability
 (scenario 17 and the dedicated approval-gate test block).
 
-**Approval now gates execution, not merely completion** (independent-
-review fix). `WorkerJobQueue.execute()` is the sole path to invoking a
-capability's action; for any `authority_requirement != NONE`, the action
-is only ever called from inside the reused `ApprovalEngine.execute()`
-(never duplicated), which validates approval state, executor identity,
-expiry, and an exact arguments digest before running anything, and
-atomically consumes the approval into `EXECUTED`. `complete()`
-independently requires `EXECUTED` (was `APPROVED`) as defense in depth,
-not the sole gate. Wired through `transport.execute()` into
-`worker_client.py`'s real pull-execute-submit cycle, not just the
-low-level API.
+**Approval now gates execution, not merely completion** (round-1
+independent-review fix). `WorkerJobQueue.execute()` is the sole path to
+invoking a capability's action; for any `authority_requirement != NONE`,
+the action is only ever called from inside the reused
+`ApprovalEngine.execute()` (never duplicated), which validates approval
+state, executor identity, expiry, and an exact arguments digest before
+running anything, and atomically consumes the approval into `EXECUTED`.
+`complete()` independently requires `EXECUTED` (was `APPROVED`) as
+defense in depth, not the sole gate.
+
+**An approval-required job now parks instead of failing, and resumes
+later** (round-2 independent-review fix). `WorkerJobQueue.resume()`
+(alongside `execute()`) lets a job leased into an approval requirement
+transition RUNNING -> WAITING_FOR_APPROVAL without ever calling its
+action, then later be checked on and executed -- exactly once -- once
+approved, or ended safely (FAILED, worker released back to AVAILABLE)
+on denial/expiry. Wired through `transport.execute()`/`request_approval()`/
+`resume()` into `worker_client.py`'s `poll_and_execute_once()` (parks
+instead of executing/failing) and new `try_resume()` (checks on /
+executes a parked job) -- not just the low-level API.
 
 ## 7. Sandbox protections
 
@@ -156,15 +180,18 @@ low-level API.
 ## 8. Failure/adversarial test results
 
 All 24 required scenarios implemented and passing, plus supporting
-capability/integration tests and 18 fix-verification tests added after
-independent review -- **62/62 passing** (was 44/44). Full list and output
-in `TEST_RESULTS.txt`. Eight real defects have now been found and fixed
-across this workload (not merely reproduced from a checklist): 4 during
-initial build (see `RUN_SUMMARY.json`'s
-`defects_found_and_fixed_prior_to_independent_verification`) and 4
-blocking findings from independent verification, plus a real
-multiprocessing deadlock discovered while fixing the timeout issue (see
-`independent_verification_findings_and_fixes`).
+capability/integration tests, 18 round-1 fix-verification tests, and 7
+round-2 fix-verification tests -- **67/67 passing** (was 44/44 ->
+62/62 -> 67/67). Full list and output in `TEST_RESULTS.txt`. Nine real
+defects have now been found and fixed across this workload (not merely
+reproduced from a checklist): 4 during initial build (see
+`RUN_SUMMARY.json`'s `defects_found_and_fixed_prior_to_independent_verification`),
+4 blocking findings from round-1 independent verification plus a real
+multiprocessing deadlock found while fixing the timeout issue (see
+`independent_verification_round_1_findings_and_fixes`), and 1 blocking
+workflow finding from round-2 independent verification plus a worker-
+stuck-BUSY-after-denial/expiry bug found while fixing it (see
+`independent_verification_round_2_findings_and_fixes`).
 
 ## 9. M3 benchmark results
 
@@ -195,19 +222,22 @@ comparison against KARMO production is made, per explicit instruction.
 
 ## 10. Security findings
 
-Full threat-by-threat table in `SECURITY_REVIEW.md` (22 threats, up from
-20 -- two new rows added for the approval-gates-execution and
-worker-health-separation fixes). Independent verification found and this
-workload fixed 4 blocking gaps (approval-gated-completion-not-execution,
-non-enforced timeout, unbounded structured result, heartbeat-settable
-scheduling state) -- see `SECURITY_REVIEW.md`'s preface for the full
-account. Five previously-named open gaps remain, unaffected by this
-round's fixes and none exploitable within this workload's actual threat
-surface today (no network transport exists yet; capability set is
-deliberately low-consequence; no production credentials reachable): no
-cryptographic worker credential, no subprocess environment allowlisting,
-no symlink-escape-specific test, no result-authenticity binding beyond
-internal-consistency digest, no coordinator persistence.
+Full threat-by-threat table in `SECURITY_REVIEW.md` (23 threats, up from
+the original 20 -- 3 new rows across both verification rounds). Round 1
+found and this workload fixed 4 blocking security gaps
+(approval-gated-completion-not-execution, non-enforced timeout,
+unbounded structured result, heartbeat-settable scheduling state). Round
+2 found and fixed 1 blocking workflow/availability gap (approval-gate
+refusal treated as a hard failure instead of a legitimate pending state
+-- see `SECURITY_REVIEW.md` threat #23; nothing unauthorized ever
+executed at any point, before or after). Five previously-named open gaps
+remain, unaffected by either round's fixes and none exploitable within
+this workload's actual threat surface today (no network transport exists
+yet; capability set is deliberately low-consequence; no production
+credentials reachable): no cryptographic worker credential, no
+subprocess environment allowlisting, no symlink-escape-specific test, no
+result-authenticity binding beyond internal-consistency digest, no
+coordinator persistence.
 
 ## 11. Future Tailscale/network plan
 
@@ -223,9 +253,10 @@ PR #23 (implementation + tests, `worker-runtime/implementation`), PR #24
 (architecture/security/network docs, `worker-runtime/docs`), PR #25
 (evidence + PROJECT SAVE, `worker-runtime/evidence`) -- all against
 `core-v2/prototypes`, disclosed explicitly in the Invariant Impact
-Review. Updated after independent verification: PR #23 at implementation
-commit `5906f61` (the 4-fix commit), PR #24 and PR #25 updated to match.
-None merged.
+Review. Updated after two rounds of independent verification: PR #23 at
+implementation commit `08c501e` (round 1: `5906f61`, the 4-fix commit;
+round 2: `08c501e`, the pending-approval workflow fix), PR #24 and PR #25
+updated to match each round. None merged.
 
 ## 13. Production access: 0
 No SSH, no production database, no production Qdrant, no production
@@ -244,19 +275,22 @@ SAVE confirmation (files updated, commit hash, stopping point, next
 action).
 
 ## 17. Independent verification commands
-`VERIFICATION_CHECKLIST.md` -- 11 commands (10 original + 1 new, proving
-the approval-gates-execution fix), all re-executed live against the
-fixed code with output matching what's documented there.
+`VERIFICATION_CHECKLIST.md` -- 12 commands (10 original + 1 round-1
+addition proving the approval-gates-execution fix + 1 round-2 addition
+proving the pending-approval park/resume workflow), all re-executed live
+against the fixed code with output matching what's documented there.
 
 ## 18. Blockers
-None -- but only as of this update. Independent (ChatGPT) verification
-of PRs #23-#25 found 4 real blocking findings before merge (see section
-10 and `RUN_SUMMARY.json`); all 4 are now fixed, tested (62/62 passing),
-and re-verified live via the updated `VERIFICATION_CHECKLIST.md`. PRs
-remain open, unmerged, awaiting re-verification. All 15 phases were
-completed within the explicit scope and prohibitions of this workload;
-no new prohibited action (production access, network/firewall change,
-merge, new PR) was taken while fixing these findings.
+None -- but only as of this update. Two rounds of independent (ChatGPT)
+verification of PRs #23-#25 found blocking findings before merge (see
+section 10 and `RUN_SUMMARY.json`): round 1 found 4 security gaps,
+round 2 found 1 workflow/availability gap in round 1's own fix. All are
+now fixed, tested (67/67 passing), and re-verified live via the updated
+`VERIFICATION_CHECKLIST.md`. PRs remain open, unmerged, awaiting
+re-verification. All 15 phases were completed within the explicit scope
+and prohibitions of this workload; no new prohibited action (production
+access, network/firewall change, merge, new PR) was taken while fixing
+either round's findings.
 
 ## 19. Recommendation for a future controlled KARMO-AI <-> M3 integration test
 

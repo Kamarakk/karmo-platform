@@ -57,19 +57,25 @@ Runtime v0.1" in CURRENT_STATE.md and `docs/evidence/worker-runtime/`.
 **Not merged to `main` or `core-v2/prototypes`. Not deployed. Not
 connected to production.**
 
-**Independent (ChatGPT) verification (2026-09-09, same day, before any
-merge)** of PRs #23–#25 found 4 real blocking findings not caught by
-this workload's own original review: approval gated job completion but
-not execution; timeout enforcement was a post-return check, not a real
-deadline; only `stdout_summary` was bounded, not the full result; a
-worker heartbeat could set coordinator-owned scheduling state directly.
-**All 4 fixed** on the same open PRs (implementation commit `5906f61`,
-62/62 tests passing, was 44/44) — see CURRENT_STATE.md's Worker Runtime
-section and `docs/evidence/worker-runtime/RUN_SUMMARY.json` for full
-detail. PRs remain open, awaiting re-verification, still Natalie's to
-review/merge. Remaining choice for Natalie: merge this as-is, request
-further changes, or treat it as one input alongside the still-undecided
-Tool/Capability Registry track when formally scoping H0.5.
+**Two rounds of independent (ChatGPT) verification (2026-09-09/10,
+before any merge)** of PRs #23–#25. Round 1 found 4 real blocking
+findings not caught by this workload's own original review: approval
+gated job completion but not execution; timeout enforcement was a
+post-return check, not a real deadline; only `stdout_summary` was
+bounded, not the full result; a worker heartbeat could set
+coordinator-owned scheduling state directly — fixed at commit `5906f61`.
+Round 2 found round 1's fix was correct but left the normal WorkerClient
+flow no way to represent a legitimately-pending approval other than a
+hard failure — an approval-required job was marked FAILED the instant it
+was leased — fixed at commit `08c501e` (jobs now park in
+`WAITING_FOR_APPROVAL` and resume exactly once approved, or end safely
+on denial/expiry). **67/67 tests passing** (was 44/44 → 62/62 → 67/67) —
+see CURRENT_STATE.md's Worker Runtime section and
+`docs/evidence/worker-runtime/RUN_SUMMARY.json` for full detail. PRs
+remain open, awaiting re-verification, still Natalie's to review/merge.
+Remaining choice for Natalie: merge this as-is, request further changes,
+or treat it as one input alongside the still-undecided Tool/Capability
+Registry track when formally scoping H0.5.
 
 ## 6a. Worker Runtime v0.1 — named follow-ups before any real network exposure
 

@@ -1,6 +1,6 @@
 {
   "machine": "KARMO-DEV01",
-  "timestamp": "2026-09-10T06:50:55Z",
+  "timestamp": "2026-09-10T07:07:02Z",
   "hardware": {
     "cpu": {
       "machine": "arm64",
@@ -17,8 +17,8 @@
     "disk": {
       "path": "/",
       "total_gb": 460.43,
-      "used_gb": 427.04,
-      "free_gb": 33.39,
+      "used_gb": 427.03,
+      "free_gb": 33.4,
       "status": "VERIFIED"
     },
     "os": {
@@ -34,7 +34,7 @@
       "status": "VERIFIED"
     },
     "uptime": {
-      "uptime_seconds": 3916063,
+      "uptime_seconds": 3917029,
       "status": "VERIFIED"
     },
     "acceleration": {
@@ -53,32 +53,32 @@
     {
       "capability_id": "resource_benchmark",
       "output": {
-        "elapsed_seconds": 0.006,
+        "elapsed_seconds": 0.0058,
         "iterations": 100000,
         "checksum": 2741317296
       },
-      "duration_seconds": 0.007114416000000012,
-      "wall_seconds": 0.009006041999999992
+      "duration_seconds": 0.006922167000000007,
+      "wall_seconds": 0.008733959000000013
     },
     {
       "capability_id": "resource_benchmark",
       "output": {
-        "elapsed_seconds": 0.0558,
+        "elapsed_seconds": 0.0554,
         "iterations": 1000000,
         "checksum": 32355575520
       },
-      "duration_seconds": 0.05679616700000001,
-      "wall_seconds": 0.05728683399999998
+      "duration_seconds": 0.05642470900000002,
+      "wall_seconds": 0.05686870800000002
     },
     {
       "capability_id": "resource_benchmark",
       "output": {
-        "elapsed_seconds": 0.2785,
+        "elapsed_seconds": 0.2804,
         "iterations": 5000000,
         "checksum": 163391808096
       },
-      "duration_seconds": 0.27966741700000003,
-      "wall_seconds": 0.280345125
+      "duration_seconds": 0.28142933400000003,
+      "wall_seconds": 0.28204683299999994
     },
     {
       "capability_id": "hash_verify",
@@ -86,8 +86,8 @@
         "sha256": "da3434cdf49f589ac82ae1c1ff68db3ea9494249fa2c23e078a79984e2647c8c",
         "path": "sample_document.txt"
       },
-      "duration_seconds": 0.0014346249999999117,
-      "wall_seconds": 0.0019358750000000313
+      "duration_seconds": 0.0013727499999999226,
+      "wall_seconds": 0.001845042000000019
     },
     {
       "capability_id": "pytest",
@@ -95,8 +95,8 @@
         "exit_code": 0,
         "summary": "============================= test session starts ==============================\nplatform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/sdcity/KARMO-DEV/worker-runtime/venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/sdcity/KARMO-DEV/worker-runtime/tests/fixtures/allowed_workspace/sample_tests\ncollecting ... collected 2 items\n\n../../../../../../../Users/sdcity/KARMO-DEV/worker-runtime/tests/fixtures/allowed_workspace/sample_tests/test_synthetic.py::test_synthetic_addition PASSED [ 50%]\n../../../../../../../Users/sdcity/KARMO-DEV/worker-runtime/tests/fixtures/allowed_workspace/sample_tests/test_synthetic.py::test_synthetic_string PASSED [100%]\n\n============================== 2 passed in 0.00s ==============================="
       },
-      "duration_seconds": 0.08902387499999997,
-      "wall_seconds": 0.08956816700000003
+      "duration_seconds": 0.08989745799999993,
+      "wall_seconds": 0.09044645899999992
     },
     {
       "capability_id": "embedding_benchmark_test",
@@ -105,28 +105,28 @@
         "vector_count": 100,
         "dim": 64
       },
-      "duration_seconds": 0.004348499999999977,
-      "wall_seconds": 0.004801416000000058
+      "duration_seconds": 0.004383499999999985,
+      "wall_seconds": 0.004844624999999936
     },
     {
       "capability_id": "embedding_benchmark_test",
       "output": {
-        "elapsed_seconds": 0.0332,
+        "elapsed_seconds": 0.0336,
         "vector_count": 1000,
         "dim": 64
       },
-      "duration_seconds": 0.03425558400000006,
-      "wall_seconds": 0.034650709
+      "duration_seconds": 0.03475499999999998,
+      "wall_seconds": 0.03515608299999995
     },
     {
       "capability_id": "embedding_benchmark_test",
       "output": {
-        "elapsed_seconds": 0.3289,
+        "elapsed_seconds": 0.3283,
         "vector_count": 10000,
         "dim": 64
       },
-      "duration_seconds": 0.33228608400000004,
-      "wall_seconds": 0.332989792
+      "duration_seconds": 0.331655959,
+      "wall_seconds": 0.332308833
     },
     {
       "capability_id": "media_probe_test",
@@ -134,8 +134,8 @@
         "metal_available": true,
         "metal_support": "Metal Support: Metal 3"
       },
-      "duration_seconds": 0.12412920800000005,
-      "wall_seconds": 0.12472108399999993
+      "duration_seconds": 0.12361495899999997,
+      "wall_seconds": 0.12419587500000007
     },
     {
       "capability_id": "local_model_probe",
@@ -143,8 +143,8 @@
         "mlx_installed": false,
         "ollama_installed": false
       },
-      "duration_seconds": 0.1471315000000002,
-      "wall_seconds": 0.147707625
+      "duration_seconds": 0.13074891700000002,
+      "wall_seconds": 0.1313264999999999
     }
   ],
   "notes": [
