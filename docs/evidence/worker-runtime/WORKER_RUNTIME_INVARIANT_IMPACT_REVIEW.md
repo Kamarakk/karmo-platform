@@ -4,6 +4,20 @@ Performed before implementation, per the Mandatory Phase Invariant Impact
 Review. This is KARMO's first real post-foundation capability — treated
 with the review depth that deserves, not as a formality.
 
+**Update (post-independent-verification, before any merge):** an
+independent (ChatGPT) verification pass of the resulting PRs (#23-#25,
+none merged) found four real I-09-relevant gaps this review's own
+analysis below did not fully account for: approval gated job
+*completion* but not *execution*; timeout was measured after the fact
+rather than enforced as a real deadline; the structured result and
+evidence-file list were unbounded; and a worker heartbeat could set
+coordinator-owned scheduling state directly. All four are fixed on the
+same branches — see the "I-09" section below and
+`SECURITY_REVIEW.md`'s corresponding update for the full detail. This
+does not change any of the I-01–I-08 analysis below, which remains
+accurate; it corrects I-09's authority-enforcement claims to match what
+the code now actually does.
+
 ```
 Phase: KARMO Worker Runtime v0.1 (first post-foundation capability)
 
@@ -155,6 +169,33 @@ authority.** Concretely:
   credentials (none exist in this local, non-production context to begin
   with), never permits arbitrary shell, never permits path traversal
   outside an explicit allowed workspace.
+
+**Corrective fixes (post-independent-verification):**
+- Approval now gates **execution**, not merely completion —
+  `job_protocol.WorkerJobQueue.execute()` invokes a capability's action
+  only from inside the reused `ApprovalEngine.execute()`, which enforces
+  approval state, executor identity, expiry, and an exact arguments
+  digest before running anything, consuming the approval into EXECUTED
+  atomically with the run. Previously, execution happened unconditionally
+  at lease time and approval was checked only afterward, at completion —
+  a real authority-enforcement gap for any future capability whose
+  `authority_requirement` is not NONE (none of the current SAFE
+  capabilities are, so no unapproved SAFE capability ever actually ran
+  unauthorized in practice, but the mechanism itself was not
+  authority-correct).
+- Worker heartbeats can no longer set coordinator-owned scheduling state
+  (`BUSY`/`AVAILABLE`) directly — only a self-reported `WorkerHealth`
+  (HEALTHY/DEGRADED). This closes an authority-boundary violation where a
+  worker's own heartbeat could bypass the coordinator's lease tracking
+  (`mark_busy`/`mark_available`), which is exactly the kind of
+  "capability spoofing"/"privilege escalation" shape this section already
+  named as a worker-specific threat to defend against structurally.
+- Timeout enforcement and result bounding (I-05 concerns) are also now
+  real (forked-process kill, `MAX_RESULT_BYTES`/`MAX_EVIDENCE_FILES`) --
+  see `SECURITY_REVIEW.md` for full detail; noted here because an
+  unenforced deadline and an unbounded result are also, secondarily,
+  resource-exhaustion-shaped authority gaps (a job could consume more
+  than its declared bound without being stopped).
 
 ## Known inherited assumptions
 

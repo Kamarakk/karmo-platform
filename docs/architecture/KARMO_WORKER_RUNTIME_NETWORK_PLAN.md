@@ -17,6 +17,41 @@ architecture -- it already does in-process, and there is no
 architectural reason a network hop would need to change that. A worker
 should never need an open listening port to participate.
 
+## The `execute()` verb cannot cross a real network boundary as-is
+
+Added after independent verification found that approval was gating job
+*completion* but not *execution* (fixed on `worker-runtime/implementation`
+by adding `job_protocol.WorkerJobQueue.execute()` as the sole path to
+running a capability's handler). `WorkerTransport.execute()`'s current
+shape takes a local Python `action` callable so that approval-gating
+(coordinator-owned) and the actual sandboxed execution (worker-owned)
+happen as one atomic step, with the approval consumed if and only if
+`action()` actually ran. That is trivial in-process (`LocalTransport`
+just calls the callable directly) and genuinely correct for this
+prototype's threat model. **A real network transport cannot send a
+Python callable over the wire.** Before Phase 15's transport can be
+implemented, `execute()` needs a different shape, e.g.:
+
+1. Worker polls and receives a leased job as today.
+2. If approval is required, the worker requests/awaits it as today (this
+   part already crosses the wire fine -- it's just data).
+3. The coordinator, on approving, issues a short-lived, signed
+   **execution ticket** bound to the exact `approval_id` +
+   `arguments_digest` + `executor_identity` (the worker_id).
+4. The worker executes locally (unchanged -- `sandbox.run_capability`
+   never needed to cross the wire) and submits its result *together with*
+   the ticket.
+5. The coordinator's `ApprovalEngine.execute()` validates the ticket
+   (state, identity, digest) against the submitted result and consumes
+   it into EXECUTED at that point -- i.e., approval consumption moves
+   from "wraps the local call" to "validates a submitted ticket+result
+   pair", but enforces the exact same invariants (state APPROVED,
+   correct executor, unchanged arguments, single-use).
+
+This is a real design change, not a drop-in swap like the other four
+verbs -- flagged explicitly so a future session doesn't assume
+`execute()` is already network-ready just because the other four are.
+
 ## Transport shape
 
 - Worker initiates every call: `register`, `heartbeat`, `poll`,

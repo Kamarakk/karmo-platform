@@ -6,6 +6,46 @@ corresponding passing test in `worker-runtime/tests/test_worker_runtime.py`
 (TEST_RESULTS.txt has the fresh run). No production system, credential,
 or data was touched to produce this review.
 
+**Update (post-independent-verification, same workload, before any
+merge):** an independent (ChatGPT) verification pass of PRs #23-#25
+found four real blocking defects that this document's original version
+had either missed or under-stated. None of the affected PRs had been
+merged. All four are now fixed on the same open PRs, with new adversarial
+tests, and are reflected in the threat table and open-findings list
+below. Nothing here was previously claimed fixed and then found broken
+-- these are corrections to gaps this review did not originally catch:
+
+1. **Approval only gated job *completion*, not *execution*.** A worker's
+   sandboxed handler ran unconditionally the moment a job was leased;
+   approval state was checked only afterward, at `complete()` time -- by
+   which point a possibly-unapproved, wrong-executor, or
+   argument-tampered execution had already happened. Fixed:
+   `job_protocol.WorkerJobQueue.execute()` is now the single choke point,
+   delegating to the reused `ApprovalEngine.execute()` (never
+   duplicated) so execution itself only happens after approval state,
+   executor identity, expiry, and an exact arguments digest are all
+   validated, with the approval consumed (EXECUTED) atomically with the
+   action running. See threat #21 below.
+2. **Timeout enforcement was a post-return elapsed-time check, not a
+   real deadline.** `sandbox.run_capability()` called the handler
+   in-process and only measured how long it had already taken after it
+   returned -- a hung or slow handler was never actually interrupted.
+   Fixed: the handler now runs in a forked child process; a missed
+   deadline terminates the child (SIGTERM then SIGKILL) and fails
+   closed. See threat #20 (updated).
+3. **Only `stdout_summary` was bounded; the structured `output` result
+   and `evidence_files` were not.** Fixed: `MAX_RESULT_BYTES` (64KB,
+   refuses rather than truncates a structured dict) and
+   `MAX_EVIDENCE_FILES` (20) now bound the complete returned result. See
+   threat #20 (updated).
+4. **A worker heartbeat could set arbitrary coordinator-owned scheduling
+   state.** `heartbeat(..., status=ANY_WORKERSTATUS)` accepted any value
+   from the caller, so a worker could force itself `AVAILABLE` while
+   actually `BUSY` on a live lease (enabling a double-lease), or the
+   reverse. Fixed: heartbeat now accepts only a self-reported
+   `WorkerHealth` (HEALTHY/DEGRADED); `BUSY` is untouchable by a
+   worker's own heartbeat in either direction. See new threat #22.
+
 Core principle repeated throughout: **network identity and KARMO
 authorization are separate layers.** A worker is never trusted because it
 is reachable on Tailscale or the LAN -- authorization always comes from
@@ -35,7 +75,9 @@ coordinator's own state, never from network position.
 | 17 | Worker-to-worker trust (one worker's job/result affecting another) | Every `WorkerJob` is leased to exactly one `worker_id`; the coordinator is the only broker between workers -- no worker ever sees another worker's queue state or leases directly | scenario 22 (routing correctness); `WorkerJobQueue._worker_jobs` is never exposed to a worker |
 | 18 | Authority computed by a worker rather than KARMO Core | `authority_requirement` is computed by `job_protocol.submit()` from the canonical capability's `authority_class`, looked up server-side -- never accepted as a worker- or job-supplied value | `job_protocol.WorkerJobQueue.submit` code path; scenario 17 |
 | 19 | Changed job arguments silently reused under a stale approval | `lease()` re-verifies the payload digest against the value captured at submission time; a changed payload is refused before the job can be claimed, so an approval bound to the original digest can never be consumed against different arguments | scenario 8, 17 |
-| 20 | Resource exhaustion (unbounded job work, unbounded output) | `timeout_seconds` enforced per capability; `MAX_OUTPUT_BYTES` truncation; `resource_benchmark`/`embedding_benchmark_test` server-side clamps | scenario 14, 19; bounded-iteration tests |
+| 20 | Resource exhaustion (unbounded job work, unbounded output) | `timeout_seconds` enforced per capability via a **real, forked-process deadline** (terminate/kill on overrun, fail closed -- not a post-return elapsed-time check); `MAX_OUTPUT_BYTES` truncates `stdout_summary`; **`MAX_RESULT_BYTES` refuses an oversized structured `output`**; **`MAX_EVIDENCE_FILES` refuses an oversized evidence list**; `resource_benchmark`/`embedding_benchmark_test` server-side clamps | `test_scenario_14_timeout_is_a_real_kill_not_a_post_hoc_check`, `test_oversized_structured_output_is_refused_not_truncated`, `test_oversized_evidence_files_list_is_refused`, scenario 19; bounded-iteration tests |
+| 21 | Execution occurring before, or without, a valid approval (approval gates completion but not execution) | `job_protocol.WorkerJobQueue.execute()` is the sole path to invoking a capability's `action`; for any capability whose `authority_requirement` is not NONE, `action()` is only ever called from inside the reused `ApprovalEngine.execute()`, which validates approval state (must be APPROVED), executor identity, expiry, and an exact tool/version/arguments digest before running it, then atomically consumes the approval into EXECUTED. `complete()` independently requires EXECUTED (defense in depth, not the sole gate). Wired through `transport.execute()` into `worker_client.py`, not just the low-level API. | `test_approval_gate_unapproved_job_cannot_execute`, `test_approval_gate_no_approval_requested_at_all_cannot_execute`, `test_approval_gate_expired_approval_cannot_execute`, `test_approval_gate_changed_payload_after_approval_cannot_execute`, `test_approval_gate_wrong_executor_cannot_execute`, `test_approval_gate_one_approval_cannot_execute_twice`, `test_approval_gate_successful_execution_ends_executed_and_unlocks_completion`, `test_worker_client_end_to_end_refuses_unapproved_execution`, `test_worker_client_end_to_end_executes_once_approved` |
+| 22 | Worker self-reports coordinator-owned scheduling state (heartbeat spoofing a lease state) | `WorkerRegistry.heartbeat()` accepts only an optional `WorkerHealth` (HEALTHY/DEGRADED), never a raw `WorkerStatus`; `BUSY` can only be entered/exited by the coordinator itself (`mark_busy()`/`mark_available()` around a real lease, or `sweep_stale_workers()` on absence) -- a worker's own heartbeat can never flip `BUSY -> AVAILABLE` (which would enable a double-lease) or the reverse | `test_worker_cannot_force_itself_available_via_heartbeat_while_busy`, `test_heartbeat_no_longer_accepts_an_arbitrary_status_kwarg`, `test_worker_busy_on_a_lease_cannot_self_report_degraded_out_of_it`, `test_worker_can_self_report_degraded_health_without_touching_a_live_lease` |
 
 ## Open findings (named gaps, not fixed in this workload -- explicitly future scope)
 
