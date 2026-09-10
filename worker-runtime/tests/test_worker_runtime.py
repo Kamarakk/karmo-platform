@@ -19,15 +19,25 @@ from pathlib import Path
 import pytest
 
 import capabilities  # noqa: F401 -- import for its registration side effect (sandbox._HANDLERS population)
+from approval_engine_reuse import ApprovalState
 from capability_manifest import CapabilityManifestError, SAFE_CAPABILITIES, validate_capability_declaration
 from coordinator import Coordinator, CoordinatorError
 from job_model_reuse import JobState, JobStateError
 from job_protocol import JobProtocolError
-from sandbox import PathTraversalError, SandboxError, _HANDLERS, register_handler, resolve_within_sandbox, run_capability
+from sandbox import (
+    MAX_EVIDENCE_FILES,
+    MAX_RESULT_BYTES,
+    PathTraversalError,
+    SandboxError,
+    _HANDLERS,
+    register_handler,
+    resolve_within_sandbox,
+    run_capability,
+)
 from tool_registry_reuse import CapabilityClass
 from transport import LocalTransport
 from worker_client import WorkerClient, WorkerClientError
-from worker_registry import WorkerRegistryError, WorkerStatus
+from worker_registry import WorkerHealth, WorkerRegistryError, WorkerStatus
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "allowed_workspace"
 
@@ -51,6 +61,22 @@ def clock():
 @pytest.fixture
 def coordinator(clock):
     return Coordinator(clock=clock)
+
+
+@pytest.fixture
+def approval_required_capability(monkeypatch):
+    """A synthetic capability whose computed authority_requirement is not
+    NONE -- none of the real Phase 9 SAFE_CAPABILITIES require approval,
+    but the approval-gates-execution mechanism must still be provably
+    correct against something that does. Also registers a real sandbox
+    handler for it (reusing hash_verify's), so end-to-end tests that
+    actually execute it (not just exercise job_protocol directly) work."""
+    synthetic = dict(SAFE_CAPABILITIES["hash_verify"])
+    synthetic["capability_id"] = "synthetic_approval_gated"
+    synthetic["authority_class"] = CapabilityClass.REVERSIBLE_WRITE
+    monkeypatch.setitem(SAFE_CAPABILITIES, "synthetic_approval_gated", synthetic)
+    monkeypatch.setitem(_HANDLERS, "synthetic_approval_gated", _HANDLERS["hash_verify"])
+    return "synthetic_approval_gated"
 
 
 STANDARD_CAPS = ["hash_verify", "pytest", "static_analysis", "repository_analysis", "resource_benchmark"]
@@ -119,6 +145,90 @@ def test_scenario_04_worker_goes_offline_after_heartbeat_timeout(coordinator, cl
     clock.advance(91)  # default heartbeat_timeout_seconds=90
     coordinator.workers.sweep_stale_workers()
     assert coordinator.workers.get("dev01").status == WorkerStatus.OFFLINE
+
+
+# =============================================================================
+# Worker-reported health vs. coordinator-owned scheduling state (fix
+# verification). Prior to this fix, heartbeat(..., status=...) accepted
+# ANY WorkerStatus from the caller, letting a worker force itself
+# AVAILABLE while the coordinator still held it BUSY on a live lease (or
+# vice versa) -- bypassing mark_busy()/mark_available()'s lease-driven
+# authority entirely. heartbeat() now only accepts an optional `health`
+# (WorkerHealth.HEALTHY/DEGRADED); BUSY is untouchable by a worker's own
+# heartbeat, in either direction.
+# =============================================================================
+
+def test_worker_cannot_force_itself_available_via_heartbeat_while_busy(coordinator):
+    """The core exploit this fix closes: a worker holding a live lease
+    (BUSY) heartbeats -- with or without a health value -- and must NOT
+    be able to make itself AVAILABLE again behind the coordinator's back,
+    which would let the coordinator double-lease a second job to a
+    worker still executing the first."""
+    _register(coordinator, capabilities=["hash_verify"])
+    coordinator.heartbeat("dev01")
+    coordinator.submit_job(capability_id="hash_verify", payload={"path": "sample_document.txt"}, idempotency_key="busy-1")
+    leased = coordinator.poll_for_job("dev01", ["hash_verify"])
+    assert leased is not None
+    assert coordinator.workers.get("dev01").status == WorkerStatus.BUSY
+
+    coordinator.heartbeat("dev01")  # plain heartbeat, no health value
+    assert coordinator.workers.get("dev01").status == WorkerStatus.BUSY  # must NOT have flipped to AVAILABLE
+
+    coordinator.heartbeat("dev01", health=WorkerHealth.HEALTHY)
+    assert coordinator.workers.get("dev01").status == WorkerStatus.BUSY  # still BUSY -- health cannot override a lease
+
+    # And the job is still leased to this worker -- no double-lease
+    # occurred because of the heartbeat.
+    second_job = coordinator.submit_job(
+        capability_id="hash_verify", payload={"path": "sample_document.txt"}, idempotency_key="busy-2",
+    )
+    assert coordinator.poll_for_job("dev01", ["hash_verify"]) is None  # worker still BUSY, not eligible
+
+
+def test_heartbeat_no_longer_accepts_an_arbitrary_status_kwarg(coordinator):
+    """The old signature -- heartbeat(worker_id, status=WorkerStatus.X) --
+    must be gone. A caller attempting the old raw status override gets a
+    TypeError (unexpected keyword), not a silently-accepted scheduling
+    override."""
+    _register(coordinator)
+    with pytest.raises(TypeError):
+        coordinator.workers.heartbeat("dev01", status=WorkerStatus.AVAILABLE)
+
+
+def test_worker_can_self_report_degraded_health_without_touching_a_live_lease(coordinator):
+    """Preserve a safe way to report DEGRADED: allowed when the worker is
+    AVAILABLE (not currently leased anything), refused/ignored-for-status
+    purposes when BUSY (the coordinator, not the worker, owns that
+    transition)."""
+    _register(coordinator)
+    coordinator.heartbeat("dev01")
+    assert coordinator.workers.get("dev01").status == WorkerStatus.AVAILABLE
+
+    coordinator.heartbeat("dev01", health=WorkerHealth.DEGRADED)
+    assert coordinator.workers.get("dev01").status == WorkerStatus.DEGRADED
+    # A DEGRADED worker is not eligible for new work.
+    assert coordinator.workers.eligible_workers("hash_verify") == []
+
+    # Recovery: a subsequent healthy heartbeat brings it back.
+    coordinator.heartbeat("dev01")
+    assert coordinator.workers.get("dev01").status == WorkerStatus.AVAILABLE
+
+
+def test_worker_busy_on_a_lease_cannot_self_report_degraded_out_of_it(coordinator):
+    _register(coordinator, capabilities=["hash_verify"])
+    coordinator.heartbeat("dev01")
+    coordinator.submit_job(capability_id="hash_verify", payload={"path": "sample_document.txt"}, idempotency_key="busy-degrade-1")
+    coordinator.poll_for_job("dev01", ["hash_verify"])
+    assert coordinator.workers.get("dev01").status == WorkerStatus.BUSY
+
+    coordinator.heartbeat("dev01", health=WorkerHealth.DEGRADED)
+    assert coordinator.workers.get("dev01").status == WorkerStatus.BUSY  # unchanged -- coordinator owns BUSY exits
+
+
+def test_heartbeat_rejects_an_invalid_health_value(coordinator):
+    _register(coordinator)
+    with pytest.raises(CoordinatorError):
+        coordinator.heartbeat("dev01", health="not-a-real-health-value")
 
 
 # --- Scenario 5: capability missing ------------------------------------------
@@ -283,6 +393,54 @@ def test_scenario_14_execution_exceeding_timeout_is_refused(monkeypatch):
         run_capability("test_slow_probe", {}, timeout_seconds=0.05)
 
 
+def test_scenario_14_timeout_is_a_real_kill_not_a_post_hoc_check(tmp_path, monkeypatch):
+    """Proves the deadline is actually enforced, not merely measured
+    after the fact: the handler only writes its 'finished' marker file
+    AFTER a long sleep. If the child process were allowed to run to
+    completion (the old, insufficient post-return elapsed-time check),
+    the marker would exist by the time run_capability returns. With a
+    real kill, the process is terminated mid-sleep and the marker is
+    never written."""
+    marker = tmp_path / "finished.marker"
+
+    def _hanging_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+        time.sleep(2.0)
+        marker.write_text("i finished")  # must never happen -- process should be killed first
+        return {"ok": True}, "should not get here", []
+
+    monkeypatch.setitem(_HANDLERS, "test_hanging_probe", _hanging_handler)
+
+    start = time.monotonic()
+    with pytest.raises(SandboxError, match="exceeded its"):
+        run_capability("test_hanging_probe", {}, timeout_seconds=0.2)
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 1.5  # returned well before the handler's 2.0s sleep would have finished
+    assert not marker.exists()  # the process was actually killed, not merely reported as timed out
+
+
+# --- Bound the complete returned result (not only stdout_summary) -------------
+
+def test_oversized_structured_output_is_refused_not_truncated(monkeypatch):
+    def _oversized_output_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+        huge_output = {"data": "x" * (MAX_RESULT_BYTES + 1024)}
+        return huge_output, "small summary", []
+
+    monkeypatch.setitem(_HANDLERS, "test_oversized_output_probe", _oversized_output_handler)
+    with pytest.raises(SandboxError, match="oversized result"):
+        run_capability("test_oversized_output_probe", {}, timeout_seconds=5)
+
+
+def test_oversized_evidence_files_list_is_refused(monkeypatch):
+    def _too_many_evidence_files_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+        evidence_files = [f"file-{i}.txt" for i in range(MAX_EVIDENCE_FILES + 1)]
+        return {"ok": True}, "summary", evidence_files
+
+    monkeypatch.setitem(_HANDLERS, "test_too_many_evidence_probe", _too_many_evidence_files_handler)
+    with pytest.raises(SandboxError, match="too many evidence files"):
+        run_capability("test_too_many_evidence_probe", {}, timeout_seconds=5)
+
+
 # --- Scenario 15: cancellation ------------------------------------------------
 
 def test_scenario_15_cancellation_of_queued_job(coordinator):
@@ -360,6 +518,248 @@ def test_scenario_17_changed_arguments_invalidate_approval_binding(coordinator, 
             worker_job.job_id, worker_id="dev01",
             presented_payload={"path": "sample_document.txt", "changed": "yes"},
         )
+
+
+# =============================================================================
+# Approval gates EXECUTION, not merely completion (fix verification).
+#
+# Prior to this fix, a worker's sandboxed capability handler ran
+# unconditionally the moment a job was leased -- approval state was only
+# ever checked afterward, at complete() time, by which point the (possibly
+# unapproved/unauthorized/tampered) execution had already happened.
+# job_protocol.WorkerJobQueue.execute() is now the single choke point: for
+# any capability whose computed authority_requirement is not NONE, the
+# action (the actual sandboxed execution) is only ever invoked from
+# INSIDE the reused ApprovalEngine.execute() -- never duplicated here --
+# which enforces approval state, executor identity, expiry, an exact
+# arguments digest, and single-use consumption into EXECUTED.
+# =============================================================================
+
+def _lease_and_request_approval(coordinator, worker_job, worker_id="dev01"):
+    _register(coordinator, worker_id=worker_id, capabilities=[worker_job.capability_id])
+    coordinator.heartbeat(worker_id)
+    coordinator.jobs.lease(worker_job.job_id, worker_id=worker_id, presented_payload=worker_job.payload)
+    coordinator.jobs.request_approval_if_required(worker_job.job_id, requester="natalie")
+    return worker_job
+
+
+def test_approval_gate_unapproved_job_cannot_execute(coordinator, approval_required_capability):
+    worker_job = coordinator.jobs.submit(
+        capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-unapproved",
+    )
+    _lease_and_request_approval(coordinator, worker_job)  # WAITING_FOR_APPROVAL -- never approved
+
+    executed = []
+    with pytest.raises(JobProtocolError):
+        coordinator.jobs.execute(
+            worker_job.job_id, executor_identity="dev01", presented_payload=worker_job.payload,
+            action=lambda: executed.append(True),
+        )
+    assert executed == []  # the action must never have run
+
+
+def test_approval_gate_no_approval_requested_at_all_cannot_execute(coordinator, approval_required_capability):
+    """Distinct from the above: no approval was even requested (a worker
+    skipping the approval step entirely and going straight for
+    execution)."""
+    worker_job = coordinator.jobs.submit(
+        capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-none",
+    )
+    _register(coordinator, capabilities=[approval_required_capability])
+    coordinator.heartbeat("dev01")
+    coordinator.jobs.lease(worker_job.job_id, worker_id="dev01", presented_payload=worker_job.payload)
+
+    executed = []
+    with pytest.raises(JobProtocolError, match="requires approval"):
+        coordinator.jobs.execute(
+            worker_job.job_id, executor_identity="dev01", presented_payload=worker_job.payload,
+            action=lambda: executed.append(True),
+        )
+    assert executed == []
+
+
+def test_approval_gate_expired_approval_cannot_execute(coordinator, clock, approval_required_capability):
+    worker_job = coordinator.jobs.submit(
+        capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-expired",
+    )
+    _lease_and_request_approval(coordinator, worker_job)
+    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+
+    clock.advance(400)  # WorkerJobQueue's default approval_ttl_seconds=300
+
+    executed = []
+    with pytest.raises(JobProtocolError, match="EXPIRED"):
+        coordinator.jobs.execute(
+            worker_job.job_id, executor_identity="dev01", presented_payload=worker_job.payload,
+            action=lambda: executed.append(True),
+        )
+    assert executed == []
+
+
+def test_approval_gate_changed_payload_after_approval_cannot_execute(coordinator, approval_required_capability):
+    worker_job = coordinator.jobs.submit(
+        capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-changed",
+    )
+    _lease_and_request_approval(coordinator, worker_job)
+    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+
+    executed = []
+    with pytest.raises(JobProtocolError, match="do not match what was approved"):
+        coordinator.jobs.execute(
+            worker_job.job_id, executor_identity="dev01", presented_payload={"x": 999},
+            action=lambda: executed.append(True),
+        )
+    assert executed == []
+    approval = coordinator.jobs._approval_engine.get(worker_job.approval_id)
+    assert approval.state == ApprovalState.FAILED  # invalidated, not merely refused for this one call
+
+
+def test_approval_gate_wrong_executor_cannot_execute(coordinator, approval_required_capability):
+    worker_job = coordinator.jobs.submit(
+        capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-wrong-executor",
+    )
+    _lease_and_request_approval(coordinator, worker_job)
+    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+
+    executed = []
+    with pytest.raises(JobProtocolError, match="does not match"):
+        coordinator.jobs.execute(
+            worker_job.job_id, executor_identity="dev02", presented_payload=worker_job.payload,
+            action=lambda: executed.append(True),
+        )
+    assert executed == []
+    approval = coordinator.jobs._approval_engine.get(worker_job.approval_id)
+    assert approval.state == ApprovalState.FAILED
+
+
+def test_approval_gate_one_approval_cannot_execute_twice(coordinator, approval_required_capability):
+    worker_job = coordinator.jobs.submit(
+        capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-twice",
+    )
+    _lease_and_request_approval(coordinator, worker_job)
+    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+
+    first = coordinator.jobs.execute(
+        worker_job.job_id, executor_identity="dev01", presented_payload=worker_job.payload,
+        action=lambda: {"done": True},
+    )
+    assert first == {"done": True}
+
+    with pytest.raises(JobProtocolError, match="EXECUTED"):
+        coordinator.jobs.execute(
+            worker_job.job_id, executor_identity="dev01", presented_payload=worker_job.payload,
+            action=lambda: {"done": "second attempt -- must never run"},
+        )
+
+
+def test_approval_gate_successful_execution_ends_executed_and_unlocks_completion(coordinator, approval_required_capability):
+    worker_job = coordinator.jobs.submit(
+        capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-success",
+    )
+    _lease_and_request_approval(coordinator, worker_job)
+    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+
+    result = coordinator.jobs.execute(
+        worker_job.job_id, executor_identity="dev01", presented_payload=worker_job.payload,
+        action=lambda: {"done": True},
+    )
+    assert result == {"done": True}
+
+    approval = coordinator.jobs._approval_engine.get(worker_job.approval_id)
+    assert approval.state == ApprovalState.EXECUTED
+
+    # complete() must now succeed -- it requires EXECUTED, which execute()
+    # (not complete() itself) is what actually produces.
+    completed = coordinator.finalize_success(
+        worker_job.job_id, output={"done": True}, duration_seconds=0.01, stdout_summary="ok",
+    )
+    assert completed.state == JobState.SUCCEEDED
+
+
+def test_approval_gate_none_required_capability_executes_directly(coordinator):
+    """Control case: a real SAFE_CAPABILITIES entry (authority_requirement
+    NONE) must execute without any approval machinery in the way at all."""
+    worker_job = coordinator.jobs.submit(
+        capability_id="hash_verify", payload={"path": "sample_document.txt"}, idempotency_key="gate-none-required",
+    )
+    assert worker_job.authority_requirement == "NONE"
+    _register(coordinator)
+    coordinator.heartbeat("dev01")
+    coordinator.jobs.lease(worker_job.job_id, worker_id="dev01", presented_payload=worker_job.payload)
+
+    result = coordinator.jobs.execute(
+        worker_job.job_id, executor_identity="dev01", presented_payload=worker_job.payload,
+        action=lambda: {"ran": True},
+    )
+    assert result == {"ran": True}
+
+
+def test_worker_client_end_to_end_refuses_unapproved_execution(coordinator, approval_required_capability):
+    """Full WorkerClient/LocalTransport wiring, not just the low-level
+    job_protocol API: a real worker pulling a real approval-required job
+    through poll_and_execute_once() must not execute it before approval
+    exists -- the sandboxed handler must never run, and the job ends
+    FAILED, not SUCCEEDED-with-a-side-effect."""
+    coordinator.register_worker(
+        worker_id="dev01", hostname="karmo-dev01.local", worker_version="0.1.0",
+        platform="Darwin", architecture="arm64", capabilities=_caps(approval_required_capability),
+        resource_limits={"cpu": 8, "memory_mb": 8192},
+    )
+    coordinator.heartbeat("dev01")
+    worker_job = coordinator.submit_job(
+        capability_id=approval_required_capability, payload={"path": "sample_document.txt"},
+        idempotency_key="gate-e2e-1",
+    )
+
+    transport = LocalTransport(coordinator)
+    client = WorkerClient(worker_id="dev01", transport=transport, allowed_root=FIXTURES)
+
+    with pytest.raises(WorkerClientError):
+        client.poll_and_execute_once([approval_required_capability])
+    assert coordinator.jobs.get(worker_job.job_id).state == JobState.FAILED
+
+
+def test_worker_client_end_to_end_executes_once_approved(coordinator, approval_required_capability):
+    """The success-path counterpart: once a job has been leased,
+    approval-requested, and approved (authorizing this exact worker_id),
+    a real WorkerClient executing through the transport's execute() gate
+    succeeds and the underlying capability actually ran."""
+    coordinator.register_worker(
+        worker_id="dev01", hostname="karmo-dev01.local", worker_version="0.1.0",
+        platform="Darwin", architecture="arm64", capabilities=_caps(approval_required_capability),
+        resource_limits={"cpu": 8, "memory_mb": 8192},
+    )
+    coordinator.heartbeat("dev01")
+    worker_job = coordinator.submit_job(
+        capability_id=approval_required_capability, payload={"path": "sample_document.txt"},
+        idempotency_key="gate-e2e-2",
+    )
+    leased = coordinator.poll_for_job("dev01", [approval_required_capability])
+    coordinator.jobs.request_approval_if_required(leased.job_id, requester="natalie")
+    coordinator.jobs.approve(leased.job_id, approver="natalie", authorized_executor="dev01")
+
+    # The worker was already leased this job by poll_for_job above (via
+    # the coordinator directly, standing in for the worker's earlier poll
+    # that triggered the approval workflow); now drive its execution
+    # through the same transport.execute() gate a real poll_and_execute
+    # cycle would use, proving the wiring, not just job_protocol directly.
+    transport = LocalTransport(coordinator)
+
+    def _action():
+        return run_capability(
+            leased.capability_id, leased.payload, timeout_seconds=30, allowed_root=FIXTURES,
+        )
+
+    output, stdout_summary, duration, evidence_files = transport.execute(
+        leased.job_id, executor_identity="dev01", presented_payload=leased.payload, action=_action,
+    )
+    assert len(output["sha256"]) == 64  # the real hash_verify handler actually ran
+
+    completed = transport.submit_result(
+        leased.job_id, output=output, duration_seconds=duration,
+        stdout_summary=stdout_summary, evidence_files=evidence_files,
+    )
+    assert completed.state == JobState.SUCCEEDED
 
 
 # --- Scenario 18: path traversal attempt ---------------------------------------

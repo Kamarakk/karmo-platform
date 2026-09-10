@@ -66,6 +66,21 @@ class Coordinator:
         self.workers.mark_busy(worker_id)
         return leased
 
+    def execute_job(self, job_id, *, executor_identity, presented_payload, action):
+        """Approval-gated execution choke point (see job_protocol.py's
+        execute()). Only JobProtocolError (approval-gating refusals) is
+        wrapped as CoordinatorError here -- an exception raised BY
+        `action()` itself (e.g. sandbox.SandboxError from the worker's
+        own execution) is intentionally left unwrapped so the worker can
+        distinguish "you weren't allowed to run this" from "you ran it
+        and it failed"."""
+        try:
+            return self.jobs.execute(
+                job_id, executor_identity=executor_identity, presented_payload=presented_payload, action=action,
+            )
+        except JobProtocolError as error:
+            raise CoordinatorError(str(error)) from error
+
     def _select_job(self, eligible_capabilities, required_label, worker_record):
         """Minimum selection logic -- first-eligible-QUEUED-job by
         capability, no priority, no load balancing, no affinity beyond

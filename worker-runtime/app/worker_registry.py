@@ -25,6 +25,21 @@ class WorkerStatus(str, Enum):
     DISABLED = "DISABLED"
 
 
+class WorkerHealth(str, Enum):
+    """What a worker may self-report on heartbeat -- deliberately NOT the
+    same enum as WorkerStatus. A worker reports its own health; it never
+    reports (and heartbeat() never accepts) coordinator-owned scheduling
+    state like AVAILABLE/BUSY directly. Found and fixed after independent
+    review: the prior heartbeat(..., status=...) accepted ANY WorkerStatus
+    from the caller, letting a worker force itself AVAILABLE while the
+    coordinator still held it BUSY on a live lease (or the reverse) --
+    bypassing mark_busy()/mark_available()'s own lease-driven authority
+    entirely."""
+
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+
+
 class WorkerRegistryError(RuntimeError):
     pass
 
@@ -128,20 +143,43 @@ class WorkerRegistry:
             raise WorkerRegistryError(f"no such worker: {worker_id!r}")
         return record
 
-    def heartbeat(self, worker_id, *, status=None):
+    def heartbeat(self, worker_id, *, health=None):
+        """A worker heartbeat may report its own HEALTH (HEALTHY or
+        DEGRADED) -- it can never set coordinator-owned scheduling state
+        (AVAILABLE/BUSY/OFFLINE/DISABLED) directly. Scheduling state is
+        exclusively mutated by the coordinator itself: mark_busy() /
+        mark_available() around a lease, sweep_stale_workers() for
+        absence, disable() for an admin action. This is the fix for the
+        gap where a raw `status=` heartbeat parameter let a worker set
+        itself AVAILABLE while actually BUSY on a live lease (or the
+        reverse), bypassing lease-driven scheduling authority entirely."""
         record = self._require(worker_id)
         if record.status == WorkerStatus.DISABLED:
             raise WorkerRegistryError(f"worker {worker_id!r} is DISABLED -- heartbeat refused")
 
+        if health is not None and health not in (WorkerHealth.HEALTHY, WorkerHealth.DEGRADED):
+            raise WorkerRegistryError(f"invalid health value: {health!r} -- must be a WorkerHealth or None")
+
         now = self._now()
         record.last_seen = now
-        if status is not None:
-            if status == WorkerStatus.DISABLED:
-                raise WorkerRegistryError("a worker cannot disable itself via heartbeat -- DISABLED is an admin-only action")
-            record.status = status
-        elif record.status in (WorkerStatus.OFFLINE, WorkerStatus.REGISTERED):
+
+        if health == WorkerHealth.DEGRADED:
+            # Self-reported health problem. Honored out of any
+            # non-scheduling-owned state, but NEVER out of BUSY -- a
+            # worker mid-lease cannot use a heartbeat to unilaterally
+            # exit the coordinator's own BUSY tracking; only
+            # finalize_success/finalize_failure (via mark_available) or
+            # sweep_stale_workers (via absence) may ever move a worker
+            # out of BUSY.
+            if record.status in (WorkerStatus.AVAILABLE, WorkerStatus.REGISTERED, WorkerStatus.OFFLINE):
+                record.status = WorkerStatus.DEGRADED
+        elif record.status in (WorkerStatus.OFFLINE, WorkerStatus.REGISTERED, WorkerStatus.DEGRADED):
+            # The only status transition a worker's own heartbeat may
+            # ever trigger: "I'm reachable and healthy again" out of a
+            # non-scheduling-owned state. Never out of BUSY.
             record.status = WorkerStatus.AVAILABLE
-        record._record("heartbeat", now, note=f"status={record.status.value}")
+
+        record._record("heartbeat", now, note=f"status={record.status.value}, health={health.value if health else 'unspecified'}")
         return record
 
     def sweep_stale_workers(self):

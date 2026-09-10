@@ -8,6 +8,21 @@ without worker_client.py's own logic changing at all. No inbound port is
 opened on the worker by anything in this module -- the worker only ever
 initiates outbound calls (poll, heartbeat, submit), matching the
 pull-based architecture explicitly required.
+
+NOTE on `execute()` and the in-process prototype limitation: `execute()`
+takes a local Python callable (`action`) so that approval-gating (which
+only the coordinator's ApprovalEngine can decide) and the actual
+sandboxed execution (which only the worker can perform) happen as a
+single atomic step, with the approval consumed exactly if and only if
+`action()` actually ran. That is trivial to express in-process, as
+`LocalTransport` does below. A real network transport CANNOT send a
+callable over the wire -- it will need a different shape (e.g. the
+coordinator returns a signed "execution ticket" bound to the exact
+approval + arguments digest, the worker executes locally and presents the
+ticket back with its result, and the coordinator's ApprovalEngine.execute
+validates+consumes the ticket against the presented result at that point)
+before Phase 15's network plan can be implemented. This is called out
+explicitly in KARMO_WORKER_RUNTIME_NETWORK_PLAN.md.
 """
 
 from abc import ABC, abstractmethod
@@ -25,6 +40,12 @@ class WorkerTransport(ABC):
     @abstractmethod
     def poll(self, worker_id, capabilities):
         """Returns a leased WorkerJob, or None if no eligible job exists."""
+
+    @abstractmethod
+    def execute(self, job_id, *, executor_identity, presented_payload, action):
+        """Runs `action()` (the worker's local sandboxed execution) only
+        if approval-gating (coordinator-owned) allows it. See the module
+        docstring's note on this method's in-process-only shape."""
 
     @abstractmethod
     def submit_result(self, job_id, **kwargs):
@@ -54,6 +75,11 @@ class LocalTransport(WorkerTransport):
 
     def poll(self, worker_id, capabilities):
         return self._coordinator.poll_for_job(worker_id, capabilities)
+
+    def execute(self, job_id, *, executor_identity, presented_payload, action):
+        return self._coordinator.execute_job(
+            job_id, executor_identity=executor_identity, presented_payload=presented_payload, action=action,
+        )
 
     def submit_result(self, job_id, **kwargs):
         return self._coordinator.finalize_success(job_id, **kwargs)

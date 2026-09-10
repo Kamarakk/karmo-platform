@@ -34,7 +34,12 @@ class WorkerClient:
 
     def poll_and_execute_once(self, capabilities):
         """One full pull cycle. Returns the finalized WorkerJob, or None
-        if no eligible work was available."""
+        if no eligible work was available. Execution is routed through
+        the transport's approval-gated `execute()` -- a worker can never
+        run a capability's handler outside that gate, whether or not the
+        capability actually requires approval (for a NONE-requirement
+        capability the gate is a pass-through, but it is still the ONLY
+        path to actual execution)."""
         leased = self._transport.poll(self.worker_id, capabilities)
         if leased is None:
             return None
@@ -49,12 +54,23 @@ class WorkerClient:
             self._transport.submit_failure(leased.job_id, reason=f"unknown capability at execution time: {error}")
             raise WorkerClientError(str(error)) from error
 
-        try:
-            output, stdout_summary, duration, evidence_files = run_capability(
+        def _action():
+            return run_capability(
                 leased.capability_id, leased.payload,
                 timeout_seconds=canonical["timeout_seconds"], allowed_root=self._allowed_root,
             )
+
+        try:
+            output, stdout_summary, duration, evidence_files = self._transport.execute(
+                leased.job_id, executor_identity=self.worker_id, presented_payload=leased.payload, action=_action,
+            )
         except SandboxError as error:
+            self._transport.submit_failure(leased.job_id, reason=str(error))
+            raise WorkerClientError(str(error)) from error
+        except Exception as error:
+            # Approval-gating refusal (CoordinatorError/JobProtocolError)
+            # or anything else that isn't the handler's own SandboxError
+            # -- the job never actually executed; report failure and stop.
             self._transport.submit_failure(leased.job_id, reason=str(error))
             raise WorkerClientError(str(error)) from error
 

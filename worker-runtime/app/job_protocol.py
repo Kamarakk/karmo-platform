@@ -162,11 +162,19 @@ class WorkerJobQueue:
         worker_job.approval_id = approval.approval_id
         return worker_job
 
-    def approve(self, job_id, *, approver):
+    def approve(self, job_id, *, approver, authorized_executor=None):
+        """`authorized_executor` should normally be the worker_id that
+        will actually execute this job -- it is bound into the
+        underlying ApprovalEngine record and checked, at execute() time,
+        against the executor_identity the executing worker presents.
+        Defaults (via the Approval Engine itself) to the original
+        requester if not given, which is almost never the right value
+        for a worker-executed job -- callers approving worker jobs should
+        pass the intended worker_id explicitly."""
         worker_job = self._require(job_id)
         if worker_job.approval_id is None:
             raise JobProtocolError(f"job {job_id} has no pending approval to grant")
-        self._approval_engine.approve(worker_job.approval_id, approver=approver)
+        self._approval_engine.approve(worker_job.approval_id, approver=approver, authorized_executor=authorized_executor)
         self._job_store.transition(job_id, JobState.RUNNING, claim_token=worker_job.job.claim_token)
         return worker_job
 
@@ -178,19 +186,65 @@ class WorkerJobQueue:
         self._job_store.transition(job_id, JobState.FAILED, claim_token=worker_job.job.claim_token)
         return worker_job
 
+    def execute(self, job_id, *, executor_identity, presented_payload, action):
+        """The single choke point through which a leased job's capability
+        handler may ever actually run. Approval GATES execution here, not
+        merely completion -- fixed after independent review found the
+        prior design let a worker call its sandboxed handler directly,
+        with the approval state only ever checked afterward, at
+        complete() time, by which point the (possibly unapproved,
+        unauthorized, or tampered-with) execution had already happened.
+
+        If no approval is required, `action()` (the actual sandboxed
+        execution) is invoked directly. If approval IS required, this
+        delegates to the reused ApprovalEngine.execute() -- never
+        duplicated here -- which validates approval state (must be
+        APPROVED), executor identity (must match what approve() bound),
+        and an exact tool/version/arguments digest recomputed from
+        `presented_payload` (what is ACTUALLY about to run, not what was
+        requested), and only then calls `action()`, consuming the
+        approval into EXECUTED (single-use) as part of the same call. Any
+        mismatch invalidates the approval (FAILED) rather than merely
+        refusing this one attempt -- exactly the Approval Engine's own
+        discipline, inherited for free by delegating to it."""
+        worker_job = self._require(job_id)
+
+        if worker_job.authority_requirement == ApprovalRequirement.NONE.value:
+            return action()
+
+        if worker_job.approval_id is None:
+            raise JobProtocolError(
+                f"job {job_id} requires approval ({worker_job.authority_requirement}) but none has "
+                "been requested -- execution refused"
+            )
+
+        try:
+            return self._approval_engine.execute(
+                worker_job.approval_id,
+                tool_id=worker_job.capability_id,
+                tool_version="1.0.0",
+                arguments=presented_payload,
+                executor_identity=executor_identity,
+                action=action,
+            )
+        except ApprovalStateError as error:
+            raise JobProtocolError(str(error)) from error
+
     def complete(self, job_id, *, output, duration_seconds, stdout_summary, evidence_files=None, claim_token=None):
         worker_job = self._require(job_id)
         token = claim_token or worker_job.job.claim_token
 
-        # If this capability required approval, executing without a
-        # matching EXECUTED-bound approval is refused -- the job protocol
-        # itself enforces the same "approval must be consumed, not
-        # assumed" discipline the Approval Engine enforces internally.
+        # If this capability required approval, completing a job whose
+        # approval was never actually consumed by execute() is refused.
+        # By the time complete() runs, a required approval must already
+        # be EXECUTED (not merely APPROVED) -- execute() is what performs
+        # that consumption, so this is now a defense-in-depth
+        # double-check of execute()'s own gating, not the sole gate.
         if worker_job.approval_id is not None:
             approval_record = self._approval_engine.get(worker_job.approval_id)
-            if approval_record.state != ApprovalState.APPROVED:
+            if approval_record.state != ApprovalState.EXECUTED:
                 raise JobProtocolError(
-                    f"job {job_id} requires approval state APPROVED to complete, "
+                    f"job {job_id} requires approval state EXECUTED to complete, "
                     f"found {approval_record.state.value}"
                 )
 
