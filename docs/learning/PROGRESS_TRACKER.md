@@ -7,7 +7,8 @@ Anchor study time: Monday-Friday, 8:00 PM-9:30 PM
 ## Current status
 - Program plan: READY
 - Learning workspace: CREATED
-- Local learning environment: SETUP PENDING
+- Local learning environment: SETUP COMPLETE (2026-09-10) — see
+  `docs/learning/SETUP_VERIFICATION.md`
 - Current lesson: Day 1 — LLMs + Python Control Layer
 - Production access required: NO
 
@@ -16,7 +17,10 @@ Anchor study time: Monday-Friday, 8:00 PM-9:30 PM
 - Basic allow/deny logic: introductory warm-up completed.
 
 ## Day 1 completion checklist
-- [ ] Verify local Python learning environment.
+- [x] Verify local Python learning environment. (setup-only, verified
+      2026-09-10 — see `docs/learning/SETUP_VERIFICATION.md`; the
+      remaining items below are the lesson exercise itself, not yet
+      started)
 - [ ] Make a real Python request to a local model.
 - [ ] Receive a structured response.
 - [ ] Validate the structured response.
