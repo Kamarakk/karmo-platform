@@ -1,12 +1,21 @@
 # KARMO Current State
 
-Last reconciled: 2026-09-09 (Foundation v1 closeout pass). See
-MASTER_INDEX.md for status-tag definitions.
+Last reconciled: 2026-09-09 (Post-Foundation Overnight Readiness Program
+pass). See MASTER_INDEX.md for status-tag definitions.
 
 **KARMO FOUNDATION v1: DECLARED COMPLETE, 2026-09-09.** See
 `docs/evidence/foundation-v1/FOUNDATION_V1_CLOSEOUT_REPORT.md` for the full
 closeout report and `docs/evidence/foundation-v1/` for the complete
 independent-verification evidence package.
+
+**Post-Foundation Overnight Readiness Program run 2026-09-09** (same day,
+repository-only, zero production access): independent re-verification of
+the Foundation v1 evidence (one checklist correction), a fix for the
+recorded H0.4 auditor gap (PR open, not merged), a repository-wide
+adversarial architecture review, a Tool/Capability Registry design
+(design only, not implemented), and a post-foundation capability roadmap
+(no capability chosen). See "Post-Foundation Overnight Readiness Program"
+section below and PRs #14, #15, #16.
 
 ## Top-line
 
@@ -323,6 +332,73 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
   H0.1/H0.2/H0.4 production cutover history (I-01: those predate this gate
   and remain VERIFIED as recorded); it governs future production access
   only.
+
+## Post-Foundation Overnight Readiness Program (2026-09-09)
+
+**VERIFIED** — Natalie authorized one large, repository-only autonomous
+program the same night Foundation v1 was declared complete, explicitly
+prohibiting any production access. Five workstreams:
+
+- **Workstream 1 (Foundation verification review): complete.** Independent
+  claim-by-claim audit of `docs/evidence/foundation-v1/` — no claim found
+  false; two evidence-quality gaps named plainly (raw production command
+  output was never saved as a file, consistent with existing
+  operator-attestation precedent). Three circular checks in
+  `VERIFICATION_CHECKLIST.md` (items 4, 5, 10 — verified the closeout
+  session's own documents against themselves, not independent ground
+  truth) corrected in place; `MANIFEST.sha256` regenerated and reverified.
+  Full review: `docs/evidence/post-foundation-readiness/WORKSTREAM1_FOUNDATION_VERIFICATION_REVIEW.md`.
+  PR #14, open, not merged.
+- **Workstream 2 (H0.4 auditor gap): fixed, PR open.** Root cause
+  determined from evidence (`docs/handoff/h04/document_memory.py`'s own
+  documented definition of "active" disagreed with
+  `reconciliation.check_active_version_state`'s narrower one).
+  One-comparison fix (`is True` → `is not False`), proven in both
+  directions by two new targeted tests (removes a false-positive, adds
+  detection of a previously-missed real gap); 15/15 existing tests
+  unchanged; `auditor.py` untouched. Full evidence:
+  `docs/evidence/h04/H04_ACTIVE_STATE_LEGACY_FIX_REPORT.md`. PR #15, open,
+  not merged.
+- **Workstream 3 (Tool/Capability Registry): designed, not implemented.**
+  Built directly on I-09's existing classification; `financial_action`/
+  `destructive_action` structurally force `EXPLICIT_PER_CALL` approval,
+  computed, never independently declarable. Architecture:
+  `docs/architecture/KARMO_TOOL_CAPABILITY_REGISTRY.md`. Spec-Kit-shaped
+  proposal (not an approved H0.5 scope): `specs/001-tool-capability-registry/spec.md`.
+  Phased implementation proposal:
+  `docs/plans/KARMO_TOOL_CAPABILITY_REGISTRY_IMPLEMENTATION_PROPOSAL.md`.
+- **Workstream 4 (adversarial architecture review): complete.**
+  Repository-wide review grounded in code actually read this session.
+  Findings: a live-production pagination ceiling in
+  `document_memory.get_document_history` (MEDIUM, same bug class already
+  fixed elsewhere in H0.4, never applied here); its dead-code echo in the
+  superseded `h02/app/document_ingest.py` (LOW/INFORMATIONAL); no
+  connection pooling anywhere in the codebase (MEDIUM); no
+  embedding-model provenance on `karmo_semantic_memory` (MEDIUM);
+  configuration drift — Qdrant/Postgres endpoints duplicated across ~10
+  files (LOW–MEDIUM); two further LOW/INFORMATIONAL findings; several
+  categories checked with no credible issue found, named explicitly (race
+  conditions, TOCTOU, swallowed exceptions, secret persistence, backup/
+  restore assumptions, irreversible operations, implicit authority
+  escalation). One candidate invariant proposed (configuration
+  single-sourcing) — **not adopted**, governance unchanged. Full review:
+  `docs/evidence/post-foundation-readiness/WORKSTREAM4_ADVERSARIAL_ARCHITECTURE_REVIEW.md`.
+- **Workstream 5 (post-foundation capability roadmap): complete.**
+  Dependency graph, shared Core requirements (tying to Workstream 4's
+  findings), per-domain complexity/risk/prerequisites for Voice, Media,
+  BloomBoss, KarmoLab, Personal Productivity, and Finance/Trading, and
+  three sequencing alternatives.  **Does not choose Natalie's first
+  capability.** `docs/plans/POST_FOUNDATION_CAPABILITY_ROADMAP.md`.
+
+Workstreams 3–5 committed together: PR #16, open, not merged.
+
+**Production access this program: zero.** No SSH to `karmo-ai01`, no
+database/Qdrant/container/file/credential/service/log/network access of
+any kind — verified by this session's own command history (every action
+was a local repository read, edit, test, or `git`/`gh` operation).
+**Merges this program: zero.** No governance modified. No financial
+transaction. No external post. No Voice/Media/BloomBoss/KarmoLab/Finance
+capability implementation begun.
 
 ## Confirmed data-state baselines (for reference, HISTORICAL unless restated)
 
