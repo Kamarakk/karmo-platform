@@ -282,9 +282,24 @@ class WorkerJobQueue:
         # DENIED / CANCELLED / FAILED (deny() already fails the job
         # synchronously) or EXPIRED (only ever detected lazily, so this
         # may be the first time anything notices) -- ends safely rather
-        # than leaving the job stuck in WAITING_FOR_APPROVAL forever.
+        # than leaving the job stuck dangling forever. The underlying job
+        # may be in EITHER of two "still alive, not yet executed" states
+        # here, not just WAITING_FOR_APPROVAL: if the approval expired
+        # (or was otherwise invalidated -- e.g. a changed-payload/wrong-
+        # executor mismatch inside execute()) AFTER approve() already ran,
+        # approve() has already moved the job to RUNNING by this point.
+        # Fixed after independent review found the original WAITING_FOR_
+        # APPROVAL-only guard missed exactly that case: an approval
+        # granted for this job, then expiring before execute() ever
+        # consumed it, left the job stuck RUNNING and its worker stuck
+        # BUSY forever, since nothing ever transitioned it to FAILED. Both
+        # RUNNING and WAITING_FOR_APPROVAL are valid job_model transition
+        # sources to FAILED (see VALID_TRANSITIONS in jobs.py) -- no
+        # change to the reused state machine was needed, only widening
+        # this guard to match every state resume() can actually observe.
         reason = f"approval ended in state {approval_record.state.value} -- job cannot proceed"
-        if self._job_store.get(job_id).state == JobState.WAITING_FOR_APPROVAL:
+        current_state = self._job_store.get(job_id).state
+        if current_state in (JobState.WAITING_FOR_APPROVAL, JobState.RUNNING):
             self._job_store.transition(job_id, JobState.FAILED, claim_token=worker_job.job.claim_token, note=reason)
         raise JobProtocolError(reason)
 

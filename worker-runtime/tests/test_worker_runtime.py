@@ -819,6 +819,72 @@ def test_worker_client_expiry_ends_safely_and_releases_worker(coordinator, clock
     assert coordinator.workers.get("dev01").status == WorkerStatus.AVAILABLE  # released, not stuck BUSY
 
 
+def test_worker_client_approval_expires_after_being_approved_ends_safely(coordinator, clock, monkeypatch):
+    """Distinct from test_worker_client_expiry_ends_safely_and_releases_worker
+    above (expiry while still WAITING_FOR_APPROVAL, never approved): this
+    covers a gap a third round of independent review found -- the
+    approval IS granted (approve() moves the job WAITING_FOR_APPROVAL ->
+    RUNNING), but then expires before try_resume() ever consumes it.
+    resume()'s terminal-approval-ends-job-safely branch previously only
+    checked for job state WAITING_FOR_APPROVAL before transitioning to
+    FAILED; approve() had already moved the job past that into RUNNING,
+    so this exact sequence left the job stuck RUNNING and its worker
+    stuck BUSY forever -- nothing ever transitioned it to FAILED. Uses a
+    call-counting handler (not just checking for an absent result) to
+    prove the action was never invoked, not merely that no result was
+    recorded."""
+    synthetic = dict(SAFE_CAPABILITIES["hash_verify"])
+    synthetic["capability_id"] = "synthetic_expire_after_approve"
+    synthetic["authority_class"] = CapabilityClass.REVERSIBLE_WRITE
+    monkeypatch.setitem(SAFE_CAPABILITIES, "synthetic_expire_after_approve", synthetic)
+
+    call_count = []
+
+    def _counting_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+        call_count.append(1)
+        return {"ok": True}, "ran", []
+
+    monkeypatch.setitem(_HANDLERS, "synthetic_expire_after_approve", _counting_handler)
+
+    coordinator.register_worker(
+        worker_id="dev01", hostname="dev01.local", worker_version="0.1.0", platform="Darwin",
+        architecture="arm64", capabilities=_caps("synthetic_expire_after_approve"), resource_limits={},
+    )
+    coordinator.heartbeat("dev01")
+    coordinator.submit_job(
+        capability_id="synthetic_expire_after_approve", payload={"path": "sample_document.txt"},
+        idempotency_key="expire-after-approve-1",
+    )
+    client = WorkerClient(worker_id="dev01", transport=LocalTransport(coordinator), allowed_root=FIXTURES)
+
+    # 1. Job parks for approval.
+    pending = client.poll_and_execute_once(["synthetic_expire_after_approve"])
+    assert pending.state == JobState.WAITING_FOR_APPROVAL
+
+    # 2. Approval is granted for the assigned worker.
+    coordinator.jobs.approve(pending.job_id, approver="natalie", authorized_executor="dev01")
+    assert coordinator.jobs.get(pending.job_id).state == JobState.RUNNING  # approved, not yet executed
+
+    # 3. Approval expires before execution.
+    clock.advance(400)  # WorkerJobQueue's default approval_ttl_seconds=300
+
+    # 4. try_resume() executes no action.
+    with pytest.raises(WorkerClientError):
+        client.try_resume(pending)
+    assert call_count == []
+
+    # 5. Job ends FAILED.
+    assert coordinator.jobs.get(pending.job_id).state == JobState.FAILED
+
+    # 6. Worker returns AVAILABLE.
+    assert coordinator.workers.get("dev01").status == WorkerStatus.AVAILABLE
+
+    # 7. Another resume cannot execute.
+    with pytest.raises(WorkerClientError):
+        client.try_resume(pending)
+    assert call_count == []
+
+
 def test_worker_client_none_required_capability_flow_is_unchanged(coordinator):
     """Control case, through the real WorkerClient path this time (not
     just job_protocol directly, see test_approval_gate_none_required_...
