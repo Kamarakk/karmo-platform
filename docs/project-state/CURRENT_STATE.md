@@ -66,9 +66,17 @@ independent-verification evidence package.
   NOT deployed, NOT connected to production.** First real post-foundation
   capability, built 2026-09-09 on branch `worker-runtime/implementation`
   (based on `core-v2/prototypes`, itself unmerged — a disclosed dependency).
-  44/44 tests passing, including all 24 required failure/adversarial
-  scenarios. See "KARMO Worker Runtime v0.1" section below and
-  `docs/evidence/worker-runtime/WORKER_RUNTIME_REPORT.md`.
+  Independent (ChatGPT) verification of PRs #23–#25 (2026-09-09, same day,
+  before any merge) found 4 real blocking findings — approval gated job
+  completion but not execution; timeout enforcement was a post-return
+  check, not a real deadline; only `stdout_summary` was bounded, not the
+  full result; a worker heartbeat could set coordinator-owned scheduling
+  state directly. **All 4 fixed on the same open PRs** (implementation
+  commit `5906f61`), with 18 new adversarial tests. **62/62 tests
+  passing** (was 44/44), including all 24 required failure/adversarial
+  scenarios plus the fix-verification suite. PRs remain open, unmerged,
+  awaiting re-verification. See "KARMO Worker Runtime v0.1" section below
+  and `docs/evidence/worker-runtime/WORKER_RUNTIME_REPORT.md`.
 
 ## H0.1 — Transactional Outbox
 
@@ -343,9 +351,10 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
 - KARMO-DEV01 (this Mac, Apple M3/arm64) registers, heartbeats, is leased
   a job, executes it sandboxed, and returns a verified result — proven
   end-to-end in `test_end_to_end_pull_based_hash_verify`.
-- 44/44 tests passing (`worker-runtime/tests/test_worker_runtime.py`),
-  covering all 24 required failure/adversarial scenarios plus 20
-  supporting capability/integration tests.
+- 62/62 tests passing (`worker-runtime/tests/test_worker_runtime.py`,
+  was 44/44), covering all 24 required failure/adversarial scenarios plus
+  supporting capability/integration tests plus 18 fix-verification tests
+  added after independent review (see below).
 - 4 real defects found and fixed while building this workload's own test
   suite (not pre-existing production bugs): a missing
   `WAITING_FOR_APPROVAL → FAILED` transition in the reused
@@ -356,16 +365,41 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
   `BUSY`/`DEGRADED`; and no runtime module actually importing
   `capabilities.py`, meaning no handler would ever be registered in
   practice. Full detail: `docs/evidence/worker-runtime/RUN_SUMMARY.json`.
-- M3 benchmark run (bounded, local, no production comparison):
-  `docs/evidence/worker-runtime/BENCHMARK_RESULTS.json`. Metal 3
-  confirmed present; MLX and Ollama confirmed NOT installed (neither was
-  installed by this workload, per instruction).
-- Security review with 5 explicitly named open gaps (no cryptographic
-  worker credential, no subprocess env allowlisting, no symlink-escape
-  test, no result-authenticity binding, no coordinator persistence) —
-  none exploitable within this workload's actual threat surface today
-  (no network transport exists; capability set is READ-only/workspace-
-  scoped). `docs/evidence/worker-runtime/SECURITY_REVIEW.md`.
+- **VERIFIED — independent (ChatGPT) verification, 2026-09-09, before any
+  merge**: found 4 additional real blocking findings this workload's own
+  review had missed — (1) approval gated job *completion*, not
+  *execution* (a worker's sandboxed handler ran unconditionally at lease
+  time); (2) timeout enforcement was a post-return elapsed-time check,
+  not a real deadline (a hung handler was never actually interrupted);
+  (3) only `stdout_summary` was bounded, not the full structured `output`
+  result or `evidence_files`; (4) a worker heartbeat could set
+  coordinator-owned scheduling state (`BUSY`/`AVAILABLE`) directly,
+  bypassing lease tracking. **All 4 fixed** on the same open PRs
+  (implementation commit `5906f61`): `job_protocol.WorkerJobQueue.execute()`
+  now gates execution through the reused `ApprovalEngine.execute()`
+  (never duplicated); `sandbox.run_capability()` now runs each handler in
+  a forked child process under a real, killed-on-overrun deadline (a real
+  multiprocessing deadlock was found and fixed while building this —
+  waiting via `process.join()` before draining the result pipe hangs on
+  any oversized result; fixed by waiting on the connection instead);
+  `MAX_RESULT_BYTES`/`MAX_EVIDENCE_FILES` now bound the full result;
+  `WorkerRegistry.heartbeat()` now accepts only a self-reported
+  `WorkerHealth`, never a raw `WorkerStatus`. Full detail:
+  `docs/evidence/worker-runtime/RUN_SUMMARY.json`'s
+  `independent_verification_findings_and_fixes`.
+- M3 benchmark run (bounded, local, no production comparison), re-run
+  after the fork-based timeout fix (numbers essentially unchanged, a few
+  ms of fork overhead): `docs/evidence/worker-runtime/BENCHMARK_RESULTS.json`.
+  Metal 3 confirmed present; MLX and Ollama confirmed NOT installed
+  (neither was installed by this workload, per instruction).
+- Security review with 22 threats (was 20 — 2 new rows for the
+  approval-gates-execution and worker-health-separation fixes) and 5
+  previously-named open gaps, unaffected by this round's fixes (no
+  cryptographic worker credential, no subprocess env allowlisting, no
+  symlink-escape test, no result-authenticity binding, no coordinator
+  persistence) — none exploitable within this workload's actual threat
+  surface today (no network transport exists; capability set is
+  READ-only/workspace-scoped). `docs/evidence/worker-runtime/SECURITY_REVIEW.md`.
 - Future network plan (Tailscale transport, worker credentials, TLS,
   coordinator auth) is design-only —
   `docs/architecture/KARMO_WORKER_RUNTIME_NETWORK_PLAN.md`. **No network,

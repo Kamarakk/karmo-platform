@@ -1,6 +1,6 @@
 {
   "machine": "KARMO-DEV01",
-  "timestamp": "2026-09-10T04:26:51Z",
+  "timestamp": "2026-09-10T06:50:55Z",
   "hardware": {
     "cpu": {
       "machine": "arm64",
@@ -34,7 +34,7 @@
       "status": "VERIFIED"
     },
     "uptime": {
-      "uptime_seconds": 3907418,
+      "uptime_seconds": 3916063,
       "status": "VERIFIED"
     },
     "acceleration": {
@@ -53,32 +53,32 @@
     {
       "capability_id": "resource_benchmark",
       "output": {
-        "elapsed_seconds": 0.0069,
+        "elapsed_seconds": 0.006,
         "iterations": 100000,
         "checksum": 2741317296
       },
-      "duration_seconds": 0.006929957999999958,
-      "wall_seconds": 0.008022124999999991
+      "duration_seconds": 0.007114416000000012,
+      "wall_seconds": 0.009006041999999992
     },
     {
       "capability_id": "resource_benchmark",
       "output": {
-        "elapsed_seconds": 0.0626,
+        "elapsed_seconds": 0.0558,
         "iterations": 1000000,
         "checksum": 32355575520
       },
-      "duration_seconds": 0.06263595799999999,
-      "wall_seconds": 0.062910042
+      "duration_seconds": 0.05679616700000001,
+      "wall_seconds": 0.05728683399999998
     },
     {
       "capability_id": "resource_benchmark",
       "output": {
-        "elapsed_seconds": 0.3087,
+        "elapsed_seconds": 0.2785,
         "iterations": 5000000,
         "checksum": 163391808096
       },
-      "duration_seconds": 0.30870404099999993,
-      "wall_seconds": 0.309009833
+      "duration_seconds": 0.27966741700000003,
+      "wall_seconds": 0.280345125
     },
     {
       "capability_id": "hash_verify",
@@ -86,8 +86,8 @@
         "sha256": "da3434cdf49f589ac82ae1c1ff68db3ea9494249fa2c23e078a79984e2647c8c",
         "path": "sample_document.txt"
       },
-      "duration_seconds": 0.0003070419999999796,
-      "wall_seconds": 0.0005345829999999774
+      "duration_seconds": 0.0014346249999999117,
+      "wall_seconds": 0.0019358750000000313
     },
     {
       "capability_id": "pytest",
@@ -95,38 +95,38 @@
         "exit_code": 0,
         "summary": "============================= test session starts ==============================\nplatform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/sdcity/KARMO-DEV/worker-runtime/venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/sdcity/KARMO-DEV/worker-runtime/tests/fixtures/allowed_workspace/sample_tests\ncollecting ... collected 2 items\n\n../../../../../../../Users/sdcity/KARMO-DEV/worker-runtime/tests/fixtures/allowed_workspace/sample_tests/test_synthetic.py::test_synthetic_addition PASSED [ 50%]\n../../../../../../../Users/sdcity/KARMO-DEV/worker-runtime/tests/fixtures/allowed_workspace/sample_tests/test_synthetic.py::test_synthetic_string PASSED [100%]\n\n============================== 2 passed in 0.00s ==============================="
       },
-      "duration_seconds": 0.143820583,
-      "wall_seconds": 0.14407550000000002
+      "duration_seconds": 0.08902387499999997,
+      "wall_seconds": 0.08956816700000003
     },
     {
       "capability_id": "embedding_benchmark_test",
       "output": {
-        "elapsed_seconds": 0.0026,
+        "elapsed_seconds": 0.0033,
         "vector_count": 100,
         "dim": 64
       },
-      "duration_seconds": 0.002667332999999994,
-      "wall_seconds": 0.002896958000000005
+      "duration_seconds": 0.004348499999999977,
+      "wall_seconds": 0.004801416000000058
     },
     {
       "capability_id": "embedding_benchmark_test",
       "output": {
-        "elapsed_seconds": 0.0269,
+        "elapsed_seconds": 0.0332,
         "vector_count": 1000,
         "dim": 64
       },
-      "duration_seconds": 0.027165667000000004,
-      "wall_seconds": 0.027395375
+      "duration_seconds": 0.03425558400000006,
+      "wall_seconds": 0.034650709
     },
     {
       "capability_id": "embedding_benchmark_test",
       "output": {
-        "elapsed_seconds": 0.2666,
+        "elapsed_seconds": 0.3289,
         "vector_count": 10000,
         "dim": 64
       },
-      "duration_seconds": 0.2691070419999999,
-      "wall_seconds": 0.2694032500000001
+      "duration_seconds": 0.33228608400000004,
+      "wall_seconds": 0.332989792
     },
     {
       "capability_id": "media_probe_test",
@@ -134,8 +134,8 @@
         "metal_available": true,
         "metal_support": "Metal Support: Metal 3"
       },
-      "duration_seconds": 0.21197895899999986,
-      "wall_seconds": 0.21226224999999999
+      "duration_seconds": 0.12412920800000005,
+      "wall_seconds": 0.12472108399999993
     },
     {
       "capability_id": "local_model_probe",
@@ -143,8 +143,8 @@
         "mlx_installed": false,
         "ollama_installed": false
       },
-      "duration_seconds": 0.14375304199999994,
-      "wall_seconds": 0.14408895899999985
+      "duration_seconds": 0.1471315000000002,
+      "wall_seconds": 0.147707625
     }
   ],
   "notes": [

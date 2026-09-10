@@ -4,12 +4,45 @@
   "branch": "worker-runtime/implementation",
   "based_on_branch": "core-v2/prototypes",
   "machine": "KARMO-DEV01 (Apple M3, arm64, macOS 14.8.7)",
+  "status": "Independent (ChatGPT) verification of PRs #23-#25 found 4 blocking findings before merge. All 4 fixed on the same open PRs, with new adversarial tests. Not merged yet -- awaiting re-verification.",
+  "independent_verification_commit": "5906f61",
   "test_results": {
-    "worker_runtime_suite": {"passed": 44, "failed": 0, "path": "worker-runtime/tests/test_worker_runtime.py"},
-    "core_v2_prototypes_regression": {"passed": 161, "failed": 0, "note": "+1 vs prior session's 160 due to the WAITING_FOR_APPROVAL->FAILED transition-table fix and its new parametrized test case"}
+    "worker_runtime_suite": {"passed": 62, "failed": 0, "path": "worker-runtime/tests/test_worker_runtime.py", "note": "was 44; +18 from the fix-verification round (12 approval-gate tests, 1 real-timeout-kill test, 2 bounded-result tests, 5 worker-health-separation tests, minus overlap)"},
+    "core_v2_prototypes_regression": {"passed": 161, "failed": 0, "note": "unaffected by this round's fixes; unchanged from the prior 161"}
   },
   "required_failure_scenarios_covered": 24,
-  "defects_found_and_fixed_this_workload": [
+  "independent_verification_findings_and_fixes": [
+    {
+      "finding": "Approval gated job completion, not execution -- a worker's sandboxed handler ran unconditionally at lease time; approval state was only checked afterward at complete()",
+      "severity": "blocking",
+      "location": "worker-runtime/app/job_protocol.py, worker_client.py, transport.py, coordinator.py",
+      "fix": "added WorkerJobQueue.execute() as the sole path to invoking a capability's action; for any authority_requirement != NONE, action() is only ever called from inside the reused ApprovalEngine.execute() (never duplicated), which validates approval state, executor identity, expiry, and an exact arguments digest, then atomically consumes the approval into EXECUTED. complete() now requires EXECUTED (was APPROVED) as defense in depth. Wired through transport.execute() into worker_client.py.",
+      "tests_added": ["test_approval_gate_unapproved_job_cannot_execute", "test_approval_gate_no_approval_requested_at_all_cannot_execute", "test_approval_gate_expired_approval_cannot_execute", "test_approval_gate_changed_payload_after_approval_cannot_execute", "test_approval_gate_wrong_executor_cannot_execute", "test_approval_gate_one_approval_cannot_execute_twice", "test_approval_gate_successful_execution_ends_executed_and_unlocks_completion", "test_approval_gate_none_required_capability_executes_directly", "test_worker_client_end_to_end_refuses_unapproved_execution", "test_worker_client_end_to_end_executes_once_approved"]
+    },
+    {
+      "finding": "Timeout enforcement was a post-return elapsed-time check, not a real deadline -- a hung/CPU-bound handler was never actually interrupted",
+      "severity": "blocking",
+      "location": "worker-runtime/app/sandbox.py run_capability()",
+      "fix": "handler now runs in a forked child process under a hard deadline; on overrun the child is terminated (SIGTERM then SIGKILL) and the call fails closed",
+      "tests_added": ["test_scenario_14_timeout_is_a_real_kill_not_a_post_hoc_check (proves an actual kill via a marker file the handler would only write after its full sleep -- the marker never appears)"],
+      "bug_found_while_fixing": "a real multiprocessing deadlock: waiting via process.join(timeout) before draining the result pipe hangs whenever a handler's result exceeds the pipe's kernel buffer (~64KB) -- the child blocks mid-write, the parent isn't reading, and every oversized-result test spuriously 'timed out'. Fixed by waiting on the connection (parent_conn.poll(timeout)) as the primary deadline gate, which starts draining as soon as data arrives."
+    },
+    {
+      "finding": "Only stdout_summary was bounded; the structured output result and evidence_files were not",
+      "severity": "blocking",
+      "location": "worker-runtime/app/sandbox.py",
+      "fix": "added MAX_RESULT_BYTES (64KB, refuses rather than truncates a structured dict) and MAX_EVIDENCE_FILES (20)",
+      "tests_added": ["test_oversized_structured_output_is_refused_not_truncated", "test_oversized_evidence_files_list_is_refused"]
+    },
+    {
+      "finding": "A worker heartbeat could set arbitrary coordinator-owned scheduling state (heartbeat(..., status=ANY_WORKERSTATUS)), letting a worker force itself AVAILABLE while actually BUSY on a live lease (or the reverse), bypassing mark_busy()/mark_available()",
+      "severity": "blocking",
+      "location": "worker-runtime/app/worker_registry.py WorkerRegistry.heartbeat()",
+      "fix": "heartbeat() now accepts only an optional WorkerHealth (HEALTHY/DEGRADED), never a raw WorkerStatus; BUSY is untouchable by a worker's own heartbeat in either direction; DEGRADED is honored only out of non-BUSY states",
+      "tests_added": ["test_worker_cannot_force_itself_available_via_heartbeat_while_busy", "test_heartbeat_no_longer_accepts_an_arbitrary_status_kwarg", "test_worker_can_self_report_degraded_health_without_touching_a_live_lease", "test_worker_busy_on_a_lease_cannot_self_report_degraded_out_of_it", "test_heartbeat_rejects_an_invalid_health_value"]
+    }
+  ],
+  "defects_found_and_fixed_prior_to_independent_verification": [
     {
       "location": "core-v2-prototypes/job_model/jobs.py VALID_TRANSITIONS",
       "defect": "WAITING_FOR_APPROVAL -> FAILED was not a valid transition, so a denied approval on any approval-gated job would raise an unhandled JobStateError instead of failing the job",

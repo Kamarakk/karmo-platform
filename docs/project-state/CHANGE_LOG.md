@@ -313,3 +313,65 @@ MASTER_INDEX.md for status-tag definitions.
 - **Production access: 0. Network/firewall/Tailscale changes: 0. Merges:
   0.** Worker Runtime v0.1 is not connected to production KARMO and no PR
   from this workload was merged.
+
+## KARMO Worker Runtime v0.1 — independent-verification fixes (2026-09-09, same day, before any merge)
+
+- **VERIFIED (repo)** — an independent (ChatGPT) verification pass of PRs
+  #23–#25 found 4 real blocking findings this workload's own review had
+  missed, and Natalie directed that PRs #23–#25 not be merged until they
+  were fixed and re-verified. Work was confined to the existing Worker
+  Runtime branches and the synthetic/local KARMO-DEV01 environment — no
+  production access, no network changes, no new PRs.
+- **Finding 1 — approval gated job completion, not execution.** A
+  worker's sandboxed capability handler ran unconditionally the moment a
+  job was leased; approval state was checked only afterward, at
+  `complete()`. Fixed: `job_protocol.WorkerJobQueue.execute()` is now the
+  sole path to invoking a capability's action; for any
+  `authority_requirement != NONE`, the action only runs from inside the
+  reused `ApprovalEngine.execute()` (never duplicated), which validates
+  approval state, executor identity, expiry, and an exact arguments
+  digest, then atomically consumes the approval into `EXECUTED`.
+  `complete()` now requires `EXECUTED` (was `APPROVED`) as defense in
+  depth. Wired through `transport.execute()` into `worker_client.py`. 10
+  new tests cover exactly the 6 required adversarial cases (unapproved,
+  expired, changed payload, wrong executor, double-execution, successful
+  EXECUTED outcome) plus 4 more.
+- **Finding 2 — timeout enforcement was a post-return check, not a real
+  deadline.** Fixed: `sandbox.run_capability()` now runs each handler in
+  a forked child process under a hard deadline; on overrun the child is
+  terminated (SIGTERM then SIGKILL) and the call fails closed. A real
+  multiprocessing deadlock was found and fixed while building this fix's
+  own test: waiting via `process.join(timeout)` before draining the
+  result pipe hangs whenever a handler's result exceeds the pipe's
+  kernel buffer (~64KB) — fixed by waiting on the connection
+  (`parent_conn.poll(timeout)`) as the primary deadline gate instead.
+- **Finding 3 — only `stdout_summary` was bounded, not the full result.**
+  Fixed: new `MAX_RESULT_BYTES` (64KB, refuses rather than truncates a
+  structured dict) and `MAX_EVIDENCE_FILES` (20) bound the complete
+  returned result.
+- **Finding 4 — a worker heartbeat could set coordinator-owned
+  scheduling state directly**, letting a worker force itself `AVAILABLE`
+  while actually `BUSY` on a live lease (enabling a double-lease), or the
+  reverse. Fixed: `WorkerRegistry.heartbeat()` now accepts only an
+  optional self-reported `WorkerHealth` (HEALTHY/DEGRADED), never a raw
+  `WorkerStatus`; `BUSY` is untouchable by a worker's own heartbeat in
+  either direction.
+- 18 new adversarial tests added; **worker-runtime suite now 62/62
+  passing** (was 44/44); core-v2-prototypes regression reconfirmed
+  161/161, unaffected. All fixes and new tests verified via a fresh full
+  run, not merely re-read from prior output.
+- Documentation updated to match: `SECURITY_REVIEW.md` (2 new threat rows,
+  updated rows 20), `WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md` (I-09
+  corrective note), `KARMO_WORKER_RUNTIME_NETWORK_PLAN.md` (new section
+  flagging that `execute()`'s callable shape cannot cross a real network
+  boundary as designed — a future execution-ticket redesign is needed
+  before Phase 15 can be implemented), `WORKER_RUNTIME_REPORT.md`,
+  `RUN_SUMMARY.json`, `TEST_RESULTS.txt`, `BENCHMARK_RESULTS.json`
+  (re-run), `VERIFICATION_CHECKLIST.md` (new command 11),
+  `MANIFEST.sha256` (regenerated).
+- PR #23 updated at commit `5906f61`. PR #24 updated at commit `8533642`.
+  PR #25 updated at this entry's accompanying commit (see this file's own
+  commit hash). **No new PRs opened. No merge.**
+- **Blockers: None** — but only as of this fix round; the four findings
+  above were genuine blockers until fixed and re-tested. PRs #23–#25
+  remain open and unmerged, awaiting re-verification.

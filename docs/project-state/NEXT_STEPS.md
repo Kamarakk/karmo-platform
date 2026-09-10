@@ -52,14 +52,24 @@ H0.5's specific scope was not formally chosen by Natalie, but on
 post-foundation capability directly: a distributed Worker Runtime
 allowing trusted machines (starting with KARMO-DEV01) to register, poll
 for bounded jobs, execute them sandboxed, and return evidence. This was
-implemented, tested (44/44, all 24 required scenarios), and evidenced
-this workload — see "KARMO Worker Runtime v0.1" in CURRENT_STATE.md and
-`docs/evidence/worker-runtime/`. **Not merged to `main` or
-`core-v2/prototypes`. Not deployed. Not connected to production.** Open
-PRs from this workload are Natalie's to review/merge. Remaining choice
-for Natalie: merge this as-is, request changes, or treat it as one input
-alongside the still-undecided Tool/Capability Registry track when
-formally scoping H0.5.
+implemented, tested, and evidenced this workload — see "KARMO Worker
+Runtime v0.1" in CURRENT_STATE.md and `docs/evidence/worker-runtime/`.
+**Not merged to `main` or `core-v2/prototypes`. Not deployed. Not
+connected to production.**
+
+**Independent (ChatGPT) verification (2026-09-09, same day, before any
+merge)** of PRs #23–#25 found 4 real blocking findings not caught by
+this workload's own original review: approval gated job completion but
+not execution; timeout enforcement was a post-return check, not a real
+deadline; only `stdout_summary` was bounded, not the full result; a
+worker heartbeat could set coordinator-owned scheduling state directly.
+**All 4 fixed** on the same open PRs (implementation commit `5906f61`,
+62/62 tests passing, was 44/44) — see CURRENT_STATE.md's Worker Runtime
+section and `docs/evidence/worker-runtime/RUN_SUMMARY.json` for full
+detail. PRs remain open, awaiting re-verification, still Natalie's to
+review/merge. Remaining choice for Natalie: merge this as-is, request
+further changes, or treat it as one input alongside the still-undecided
+Tool/Capability Registry track when formally scoping H0.5.
 
 ## 6a. Worker Runtime v0.1 — named follow-ups before any real network exposure
 

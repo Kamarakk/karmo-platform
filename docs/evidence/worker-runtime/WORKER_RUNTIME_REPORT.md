@@ -1,5 +1,19 @@
 # KARMO Worker Runtime v0.1 -- Implementation Report
 
+**Update (post-independent-verification, before any merge):** an
+independent (ChatGPT) verification pass of PRs #23-#25 found four real
+blocking findings not caught by this workload's own original review:
+approval gated job completion but not execution; timeout enforcement was
+a post-return check, not a real deadline; only `stdout_summary` was
+bounded, not the full result; and a worker heartbeat could set
+coordinator-owned scheduling state directly. All four are now fixed on
+the same open PRs (implementation commit `5906f61`), with 18 new
+adversarial tests (62/62 passing, up from 44/44), and are reflected
+throughout this report, `SECURITY_REVIEW.md`, and
+`WORKER_RUNTIME_INVARIANT_IMPACT_REVIEW.md`. See `RUN_SUMMARY.json`'s
+`independent_verification_findings_and_fixes` for full detail. **PRs
+#23-#25 remain unmerged, awaiting re-verification.**
+
 ## 1. Architecture
 
 `Coordinator → Job Queue → Worker Lease/Poll → Capability Validation →
@@ -100,7 +114,19 @@ the prior session's adversarial review flagged between the Tool Registry
 and Approval Engine prototypes. None of the nine SAFE capabilities
 actually require approval (all `authority_class=READ`), but the mechanism
 is real and tested against a synthetic `REVERSIBLE_WRITE` capability
-(scenario 17).
+(scenario 17 and the dedicated approval-gate test block).
+
+**Approval now gates execution, not merely completion** (independent-
+review fix). `WorkerJobQueue.execute()` is the sole path to invoking a
+capability's action; for any `authority_requirement != NONE`, the action
+is only ever called from inside the reused `ApprovalEngine.execute()`
+(never duplicated), which validates approval state, executor identity,
+expiry, and an exact arguments digest before running anything, and
+atomically consumes the approval into `EXECUTED`. `complete()`
+independently requires `EXECUTED` (was `APPROVED`) as defense in depth,
+not the sole gate. Wired through `transport.execute()` into
+`worker_client.py`'s real pull-execute-submit cycle, not just the
+low-level API.
 
 ## 7. Sandbox protections
 
@@ -112,8 +138,16 @@ is real and tested against a synthetic `REVERSIBLE_WRITE` capability
   any path escaping the allowed workspace.
 - Per-job ephemeral temp directory, always cleaned up (`finally:
   shutil.rmtree`).
-- `timeout_seconds` enforced per capability.
-- Output capped at 64 KB (`MAX_OUTPUT_BYTES`), truncated with a marker.
+- **`timeout_seconds` is now a real, enforced deadline** (independent-
+  review fix): each handler runs in a forked child process; a missed
+  deadline terminates the child (SIGTERM then SIGKILL) and fails closed
+  -- not the prior post-return elapsed-time check, which could not
+  actually stop a hung or CPU-bound handler.
+- **The full result is bounded, not just `stdout_summary`** (independent-
+  review fix): `stdout_summary` is still truncated at 64 KB
+  (`MAX_OUTPUT_BYTES`), but the structured `output` dict is now refused
+  (not silently truncated, which would corrupt it) above `MAX_RESULT_BYTES`
+  (64 KB), and `evidence_files` is refused above `MAX_EVIDENCE_FILES` (20).
 - Errors sanitized: sandbox root's absolute path stripped, message capped
   at 2000 chars, no raw traceback ever returned.
 - `pytest`/`static_analysis` invoke a fixed venv interpreter path, never
@@ -121,23 +155,31 @@ is real and tested against a synthetic `REVERSIBLE_WRITE` capability
 
 ## 8. Failure/adversarial test results
 
-All 24 required scenarios implemented and passing, plus 20 supporting
-capability/integration tests -- **44/44 passing**. Full list and output
-in `TEST_RESULTS.txt`. Four real defects were found and fixed while
-building this suite (not merely reproduced from a checklist) -- see
-`RUN_SUMMARY.json`'s `defects_found_and_fixed_this_workload`.
+All 24 required scenarios implemented and passing, plus supporting
+capability/integration tests and 18 fix-verification tests added after
+independent review -- **62/62 passing** (was 44/44). Full list and output
+in `TEST_RESULTS.txt`. Eight real defects have now been found and fixed
+across this workload (not merely reproduced from a checklist): 4 during
+initial build (see `RUN_SUMMARY.json`'s
+`defects_found_and_fixed_prior_to_independent_verification`) and 4
+blocking findings from independent verification, plus a real
+multiprocessing deadlock discovered while fixing the timeout issue (see
+`independent_verification_findings_and_fixes`).
 
 ## 9. M3 benchmark results
 
-See `BENCHMARK_RESULTS.json` (raw) -- summary:
+Re-run after the sandbox's fork-based real-timeout fix (each capability
+call now costs a small, fixed fork overhead vs. the prior in-process
+call -- visible below as a few ms of increase, not a meaningful
+regression). See `BENCHMARK_RESULTS.json` (raw) -- summary:
 - `resource_benchmark` (hash-loop CPU work): 100K iterations in ~7ms, 1M in
-  ~63ms, 5M (the enforced cap) in ~309ms.
-- `hash_verify` (real SHA-256 of the fixture file): <1ms.
+  ~57ms, 5M (the enforced cap) in ~280ms.
+- `hash_verify` (real SHA-256 of the fixture file): ~1.4ms.
 - `pytest` (real subprocess: interpreter startup + collect + run 2 tests):
-  ~144ms wall.
+  ~89ms wall.
 - `embedding_benchmark_test` (synthetic vector dot-products): 100 vectors
-  ~3ms, 1,000 ~27ms, 10,000 (cap) ~269ms.
-- `media_probe_test`: Metal 3 confirmed present (~212ms, dominated by
+  ~4ms, 1,000 ~34ms, 10,000 (cap) ~332ms.
+- `media_probe_test`: Metal 3 confirmed present (~124ms, dominated by
   `system_profiler` subprocess cost).
 - `local_model_probe`: MLX and Ollama both NOT_INSTALLED, as expected.
 
@@ -153,12 +195,18 @@ comparison against KARMO production is made, per explicit instruction.
 
 ## 10. Security findings
 
-Full threat-by-threat table in `SECURITY_REVIEW.md`. Five named open gaps,
-none exploitable within this workload's actual threat surface today
-(no network transport exists yet; capability set is deliberately
-low-consequence; no production credentials reachable): no cryptographic
-worker credential, no subprocess environment allowlisting, no
-symlink-escape-specific test, no result-authenticity binding beyond
+Full threat-by-threat table in `SECURITY_REVIEW.md` (22 threats, up from
+20 -- two new rows added for the approval-gates-execution and
+worker-health-separation fixes). Independent verification found and this
+workload fixed 4 blocking gaps (approval-gated-completion-not-execution,
+non-enforced timeout, unbounded structured result, heartbeat-settable
+scheduling state) -- see `SECURITY_REVIEW.md`'s preface for the full
+account. Five previously-named open gaps remain, unaffected by this
+round's fixes and none exploitable within this workload's actual threat
+surface today (no network transport exists yet; capability set is
+deliberately low-consequence; no production credentials reachable): no
+cryptographic worker credential, no subprocess environment allowlisting,
+no symlink-escape-specific test, no result-authenticity binding beyond
 internal-consistency digest, no coordinator persistence.
 
 ## 11. Future Tailscale/network plan
@@ -171,10 +219,13 @@ firewall, or Tailscale configuration was changed to produce this plan.
 
 ## 12. PRs/commits
 
-See the final chat report for the exact PR numbers/URLs opened at the end
-of this workload (branch: `worker-runtime/implementation`, based on
+PR #23 (implementation + tests, `worker-runtime/implementation`), PR #24
+(architecture/security/network docs, `worker-runtime/docs`), PR #25
+(evidence + PROJECT SAVE, `worker-runtime/evidence`) -- all against
 `core-v2/prototypes`, disclosed explicitly in the Invariant Impact
-Review).
+Review. Updated after independent verification: PR #23 at implementation
+commit `5906f61` (the 4-fix commit), PR #24 and PR #25 updated to match.
+None merged.
 
 ## 13. Production access: 0
 No SSH, no production database, no production Qdrant, no production
@@ -187,23 +238,35 @@ No Tailscale, firewall, or network configuration was changed.
 No branch was merged to `main` or to `core-v2/prototypes`.
 
 ## 16. PROJECT SAVE status
-See the final chat report for the exact PROJECT SAVE confirmation
-(files updated, commit hash, stopping point, next action).
+See `docs/project-state/{CURRENT_STATE.md,NEXT_STEPS.md,CHANGE_LOG.md}`
+(updated this round) and the final chat report for the exact PROJECT
+SAVE confirmation (files updated, commit hash, stopping point, next
+action).
 
 ## 17. Independent verification commands
-`VERIFICATION_CHECKLIST.md` -- 10 commands, all executed live during this
-workload with output matching what's documented there.
+`VERIFICATION_CHECKLIST.md` -- 11 commands (10 original + 1 new, proving
+the approval-gates-execution fix), all re-executed live against the
+fixed code with output matching what's documented there.
 
 ## 18. Blockers
-None. All 15 phases were completed within the explicit scope and
-prohibitions of this workload.
+None -- but only as of this update. Independent (ChatGPT) verification
+of PRs #23-#25 found 4 real blocking findings before merge (see section
+10 and `RUN_SUMMARY.json`); all 4 are now fixed, tested (62/62 passing),
+and re-verified live via the updated `VERIFICATION_CHECKLIST.md`. PRs
+remain open, unmerged, awaiting re-verification. All 15 phases were
+completed within the explicit scope and prohibitions of this workload;
+no new prohibited action (production access, network/firewall change,
+merge, new PR) was taken while fixing these findings.
 
 ## 19. Recommendation for a future controlled KARMO-AI <-> M3 integration test
 
 Once (a) a real network transport implementing `WorkerTransport` exists
-per the Phase 15 plan, (b) worker credentials are cryptographically
-verified (not just identity-consistency-checked), and (c) the coordinator
-has durable persistence -- run a controlled test where KARMO-AI (the real
+per the Phase 15 plan -- including the redesigned `execute()` (an
+execution-ticket exchange, not a callable-over-the-wire; see
+`KARMO_WORKER_RUNTIME_NETWORK_PLAN.md`'s new section on this), (b) worker
+credentials are cryptographically verified (not just
+identity-consistency-checked), and (c) the coordinator has durable
+persistence -- run a controlled test where KARMO-AI (the real
 coordinator) submits exactly one `hash_verify` or `pytest` job against a
 synthetic, explicitly-scoped test file, and KARMO-DEV01 polls, executes,
 and returns a result over the real network path, with a human (Natalie)

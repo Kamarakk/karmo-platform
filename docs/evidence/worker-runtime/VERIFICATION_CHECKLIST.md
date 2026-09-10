@@ -9,8 +9,10 @@ configuration.
 # 1. Set up the venv (already created this workload; safe to re-run).
 cd worker-runtime && python3 -m venv venv && venv/bin/pip install -q pytest
 
-# 2. All tests pass (44 tests: the 24 required scenarios + 20 supporting
-#    capability/integration tests).
+# 2. All tests pass (62 tests: the 24 required scenarios + supporting
+#    capability/integration tests + the 18 fix-verification tests added
+#    after independent review -- approval-gates-execution, real timeout
+#    kill, bounded result, worker health separation).
 venv/bin/python -m pytest tests/ -v
 
 # 3. Worker registers.
@@ -106,6 +108,35 @@ print('same job_id:', j1.job_id == j2.job_id)
 # 10. Full regression: the reused core-v2 job_model/approval_engine/tool_registry
 #     prototypes still pass after this workload's WAITING_FOR_APPROVAL->FAILED fix.
 cd ../core-v2-prototypes && venv/bin/python -m pytest -q
+cd ../worker-runtime
+
+# 11. Approval gates EXECUTION, not merely completion (independent-review
+#     fix). A capability requiring approval must refuse to run its
+#     action at all until approved -- the action must never be invoked.
+venv/bin/python -c "
+import sys; sys.path.insert(0, 'app')
+from coordinator import Coordinator, CoordinatorError
+from capability_manifest import SAFE_CAPABILITIES
+from tool_registry_reuse import CapabilityClass
+synthetic = dict(SAFE_CAPABILITIES['hash_verify'])
+synthetic['capability_id'] = 'synthetic_check'
+synthetic['authority_class'] = CapabilityClass.REVERSIBLE_WRITE
+SAFE_CAPABILITIES['synthetic_check'] = synthetic
+c = Coordinator()
+c.register_worker(worker_id='dev01', hostname='h', worker_version='0.1.0', platform='Darwin',
+    architecture='arm64', capabilities=[{'capability_id': 'synthetic_check'}], resource_limits={})
+c.heartbeat('dev01')
+worker_job = c.submit_job(capability_id='synthetic_check', payload={'path': 'x'}, idempotency_key='k1')
+c.jobs.lease(worker_job.job_id, worker_id='dev01', presented_payload=worker_job.payload)
+executed = []
+try:
+    c.execute_job(worker_job.job_id, executor_identity='dev01', presented_payload=worker_job.payload,
+        action=lambda: executed.append(True))
+    print('FAIL: executed without approval')
+except CoordinatorError as e:
+    print('correctly refused:', e)
+print('action ran:', len(executed) > 0)
+"
 ```
 
 Expected results are recorded verbatim in `TEST_RESULTS.txt` and
