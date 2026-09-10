@@ -272,6 +272,124 @@ MASTER_INDEX.md for status-tag definitions.
   phase, Natalie's scope choice, not invented.
 - **KARMO FOUNDATION v1 — COMPLETE.**
 
+## Post-Foundation Overnight Readiness Program (2026-09-09, same day)
+
+- **VERIFIED** — Natalie authorized one large, repository-only autonomous
+  program, explicitly prohibiting all production access, to remove
+  engineering friction ahead of post-foundation capability work without
+  choosing or implementing any capability.
+- **Workstream 1**: independent re-audit of `docs/evidence/foundation-v1/`
+  — no claim found false; two evidence-quality gaps disclosed (raw
+  production command output never saved as a file); three circular
+  `VERIFICATION_CHECKLIST.md` items corrected in place, `MANIFEST.sha256`
+  regenerated and reverified. PR #14, opened, not merged.
+- **Workstream 2**: fixed the recorded H0.4 auditor gap
+  (`reconciliation.check_active_version_state`'s Qdrant-active definition
+  disagreed with `document_memory.search_documents`'s own documented
+  definition). One-line-shape fix, proven bidirectional (removes a
+  false-positive, adds detection of a previously-missed real gap) by 2 new
+  tests; 15/15 existing tests unchanged; `auditor.py` untouched. PR #15,
+  opened, not merged.
+- **Workstream 3**: Tool/Capability Registry designed (not implemented) —
+  built on I-09's existing classification, `financial_action`/
+  `destructive_action` structurally force `EXPLICIT_PER_CALL`, computed
+  not declarable. Spec-Kit-shaped proposal + phased implementation
+  proposal produced.
+- **Workstream 4**: repository-wide adversarial review — 2 MEDIUM findings
+  tied to already-established invariants (pagination ceiling, no
+  connection pooling, no embedding provenance, config drift), several
+  categories checked with no credible issue (named explicitly), one
+  candidate invariant proposed (configuration single-sourcing) —
+  **not adopted**.
+- **Workstream 5**: post-foundation capability roadmap — dependency graph,
+  shared Core requirements, per-domain analysis for all 6 named domains,
+  3 sequencing alternatives. **Does not choose Natalie's first
+  capability.**
+- Workstreams 3–5 committed together: PR #16, opened, not merged.
+- **Production access: zero.** No SSH, no database/Qdrant/container/file/
+  credential/service/log/network access of any kind. **Merges: zero.**
+  No governance modified. No capability implementation begun.
+
+## Core v2 Engineering Blueprint Program (2026-09-09, same day)
+
+- **VERIFIED** — Natalie authorized one large, repository-only autonomous
+  planning/prototyping/validation program, explicitly prohibiting all
+  production access and any merge, to prepare KARMO Core so future
+  post-foundation capability implementation can proceed in large batches.
+  Did not merge or duplicate the prior Post-Foundation Overnight
+  Readiness Program's PRs (#14–#17).
+- 15 workstreams, grouped into 4 PRs per explicit PR-discipline
+  instruction: **PR #18** (architecture map; observability, security
+  threat model, test strategy designs; run-verification system design),
+  **PR #19** (isolated prototypes — Tool/Capability Registry, Approval
+  Engine, Job/Event model, configuration single-sourcing POC,
+  failure-injection framework, run-evidence validator; **160/160 tests
+  pass** — updated from 154 after the KARMO Large Autonomous Review
+  found and fixed 4 real defects, see
+  `docs/evidence/core-v2/ADVERSARIAL_REVIEW_FIXES.md` —
+  nothing wired into production), **PR #20** (BloomBoss,
+  Voice/Media, and Finance/Trading readiness specs; implementation
+  dependency graph with 6 candidate batches; consolidated Core v2
+  specification separating EXISTING/PROPOSED/FUTURE), **PR #21** (this
+  PROJECT SAVE).
+- Core guarantee proven by the Tool Registry + Approval Engine
+  prototypes together: a tool's required human-approval level is
+  computed, never independently declarable, and `financial_action`/
+  `destructive_action` can only raise it, never lower it — verified
+  across every `capability_class` × flag combination, and specifically
+  for trade execution (Workstream 11), which is structurally forced to
+  `EXPLICIT_PER_CALL` with exact-parameter binding, making a generic
+  "trade for me today" approval unrepresentable under the design.
+  Voice's wake/listen and streaming needs were identified as genuinely
+  new Core abstractions not yet covered by any prototype built.
+- Two candidate governance additions proposed (configuration
+  single-sourcing, carried from the prior program; tool-registration
+  review, new this program) — **neither adopted**, governance unchanged.
+- **Production access: zero. Merges: zero.** No capability chosen or
+  started.
+
+## KARMO Large Autonomous Review of PR #14–#21 (2026-09-09, same day)
+
+- **VERIFIED** — Natalie authorized an independent merge-readiness and
+  cross-compatibility review of all 8 open PRs from the two prior
+  programs, explicitly prohibiting production access, merges, and new
+  capability implementation.
+- Every test claim reproduced fresh (not trusted from stored output),
+  including the H0.4 fix's full 17-test suite against a freshly-created
+  isolated stack and the Core v2 prototype suite from a freshly-rebuilt
+  virtualenv.
+- Adversarial re-review of the Core v2 prototypes found and fixed **4
+  real defects** in PR #19 (154 → 160 tests): the run-evidence verifier
+  never actually checked `evidence`/`test_results` at all; the Trust
+  Score's placeholder components let obviously-fabricated evidence score
+  ~0.58 instead of low; the Approval Engine had no executor-identity
+  binding at all (a stolen/leaked `approval_id` could be used by anyone);
+  the Tool Registry silently accepted unknown manifest fields. Full
+  detail: `docs/evidence/core-v2/ADVERSARIAL_REVIEW_FIXES.md`.
+- Cross-PR conflict analysis (real `git merge` simulation, not
+  prediction) found PR #17 and PR #21 conflict on the same 3
+  `docs/project-state/` files — both independently rewrote overlapping
+  narrative sections from the same pre-#17 base. No other conflict found
+  among any of the 8 PRs. Recommended merge order and resolution
+  guidance: `docs/evidence/autonomous-review/MERGE_SEQUENCE.md`.
+- Spec/prototype conformance table produced — 23 requirements checked;
+  the most significant PARTIAL finding: the Tool Registry and Approval
+  Engine prototypes were never actually exercised together end to end
+  (every test hardcodes `authority_class` rather than deriving it from a
+  real registry lookup).
+- Stale "154" test-count references found and fixed in PR #20 and #21
+  (existing PRs updated in place, no new PR created for these fixes).
+- One new PR created (`review/pr14-21-merge-readiness`, per explicit
+  permission to create at most one, for the review's own cross-cutting
+  evidence that does not belong to any single existing branch):
+  `docs/evidence/autonomous-review/` — the merge-readiness packet, merge
+  sequence, spec/prototype conformance table, deduplicated findings
+  triage, and capability decision matrix (Tool Registry vs. Voice vs.
+  BloomBoss first, plus a hybrid option) — **does not choose Natalie's
+  first capability**.
+- **Production access: zero. Merges: zero.** No PR marked merged. No
+  capability marked implemented.
+
 ## KARMO Worker Runtime v0.1 — implemented, isolated prototype (2026-09-09)
 
 - **VERIFIED (repo)** — Natalie authorized a 15-phase Large Autonomous
@@ -499,3 +617,28 @@ MASTER_INDEX.md for status-tag definitions.
 - **Blockers: None** — but only as of this third fix round; the finding
   above was a genuine blocker until fixed and re-tested. PRs #23–#25
   remain open and unmerged, awaiting a fourth round of re-verification.
+
+## Worker Runtime v0.1 merge closeout — PRs #22, #23, #24 merged; PR #25 pending (2026-09-10)
+
+- **VERIFIED (repo)** — Natalie's approved KARMO merge sequence proceeded:
+  PR #22 (`review/pr14-21-merge-readiness`) merged into `main`; PR #23
+  (Worker Runtime implementation + tests) merged into `main` at merge
+  commit `11d4f86e04d22aae0072923ec387a11f0e205cbc`; PR #24
+  (architecture/security/network docs) merged into `main` at merge commit
+  `9f3215ecd3be31d2096273be4afb389edbcbf9f8`. Both commits independently
+  confirmed as ancestors of `origin/main` via `git merge-base
+  --is-ancestor` before this entry was written.
+- PR #25 (evidence + PROJECT SAVE) was retargeted to `main` and, at the
+  time of this merge, was **not mergeable due to the expected conflicts**
+  in these same three `docs/project-state/` files — this commit resolves
+  those conflicts on the `worker-runtime/evidence` branch. **PR #25
+  itself remains OPEN and NOT merged** as of this entry; it is not
+  self-merged here.
+- Authoritative Worker Runtime verification remains **68/68** tests
+  passing (`worker-runtime/tests/test_worker_runtime.py`, all 24 required
+  scenarios plus three rounds of fix-verification tests) and **161/161**
+  core-v2-prototypes regression — unchanged by this merge-conflict
+  resolution; no executable code was touched, so the suite was not
+  rerun.
+- **Production access: zero. Network/Tailscale/firewall changes: zero.
+  Deployment: zero.** No new PR created. PR #25 not merged.
