@@ -272,6 +272,82 @@ MASTER_INDEX.md for status-tag definitions.
   phase, Natalie's scope choice, not invented.
 - **KARMO FOUNDATION v1 — COMPLETE.**
 
+## Post-Foundation Overnight Readiness Program (2026-09-09, same day)
+
+- **VERIFIED** — Natalie authorized one large, repository-only autonomous
+  program, explicitly prohibiting all production access, to remove
+  engineering friction ahead of post-foundation capability work without
+  choosing or implementing any capability.
+- **Workstream 1**: independent re-audit of `docs/evidence/foundation-v1/`
+  — no claim found false; two evidence-quality gaps disclosed (raw
+  production command output never saved as a file); three circular
+  `VERIFICATION_CHECKLIST.md` items corrected in place, `MANIFEST.sha256`
+  regenerated and reverified. PR #14, opened, not merged.
+- **Workstream 2**: fixed the recorded H0.4 auditor gap
+  (`reconciliation.check_active_version_state`'s Qdrant-active definition
+  disagreed with `document_memory.search_documents`'s own documented
+  definition). One-line-shape fix, proven bidirectional (removes a
+  false-positive, adds detection of a previously-missed real gap) by 2 new
+  tests; 15/15 existing tests unchanged; `auditor.py` untouched. PR #15,
+  opened, not merged.
+- **Workstream 3**: Tool/Capability Registry designed (not implemented) —
+  built on I-09's existing classification, `financial_action`/
+  `destructive_action` structurally force `EXPLICIT_PER_CALL`, computed
+  not declarable. Spec-Kit-shaped proposal + phased implementation
+  proposal produced.
+- **Workstream 4**: repository-wide adversarial review — 2 MEDIUM findings
+  tied to already-established invariants (pagination ceiling, no
+  connection pooling, no embedding provenance, config drift), several
+  categories checked with no credible issue (named explicitly), one
+  candidate invariant proposed (configuration single-sourcing) —
+  **not adopted**.
+- **Workstream 5**: post-foundation capability roadmap — dependency graph,
+  shared Core requirements, per-domain analysis for all 6 named domains,
+  3 sequencing alternatives. **Does not choose Natalie's first
+  capability.**
+- Workstreams 3–5 committed together: PR #16, opened, not merged.
+- **Production access: zero.** No SSH, no database/Qdrant/container/file/
+  credential/service/log/network access of any kind. **Merges: zero.**
+  No governance modified. No capability implementation begun.
+
+## Core v2 Engineering Blueprint Program (2026-09-09, same day)
+
+- **VERIFIED** — Natalie authorized one large, repository-only autonomous
+  planning/prototyping/validation program, explicitly prohibiting all
+  production access and any merge, to prepare KARMO Core so future
+  post-foundation capability implementation can proceed in large batches.
+  Did not merge or duplicate the prior Post-Foundation Overnight
+  Readiness Program's PRs (#14–#17).
+- 15 workstreams, grouped into 4 PRs per explicit PR-discipline
+  instruction: **PR #18** (architecture map; observability, security
+  threat model, test strategy designs; run-verification system design),
+  **PR #19** (isolated prototypes — Tool/Capability Registry, Approval
+  Engine, Job/Event model, configuration single-sourcing POC,
+  failure-injection framework, run-evidence validator; **160/160 tests
+  pass** — updated from 154 after the KARMO Large Autonomous Review
+  found and fixed 4 real defects, see
+  `docs/evidence/core-v2/ADVERSARIAL_REVIEW_FIXES.md` —
+  nothing wired into production), **PR #20** (BloomBoss,
+  Voice/Media, and Finance/Trading readiness specs; implementation
+  dependency graph with 6 candidate batches; consolidated Core v2
+  specification separating EXISTING/PROPOSED/FUTURE), **PR #21** (this
+  PROJECT SAVE).
+- Core guarantee proven by the Tool Registry + Approval Engine
+  prototypes together: a tool's required human-approval level is
+  computed, never independently declarable, and `financial_action`/
+  `destructive_action` can only raise it, never lower it — verified
+  across every `capability_class` × flag combination, and specifically
+  for trade execution (Workstream 11), which is structurally forced to
+  `EXPLICIT_PER_CALL` with exact-parameter binding, making a generic
+  "trade for me today" approval unrepresentable under the design.
+  Voice's wake/listen and streaming needs were identified as genuinely
+  new Core abstractions not yet covered by any prototype built.
+- Two candidate governance additions proposed (configuration
+  single-sourcing, carried from the prior program; tool-registration
+  review, new this program) — **neither adopted**, governance unchanged.
+- **Production access: zero. Merges: zero.** No capability chosen or
+  started.
+
 ## KARMO Large Autonomous Review of PR #14–#21 (2026-09-09, same day)
 
 - **VERIFIED** — Natalie authorized an independent merge-readiness and

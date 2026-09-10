@@ -1,23 +1,52 @@
 # KARMO Current State
 
-Last reconciled: 2026-09-09 (KARMO Large Autonomous Review of PR #14–#21).
-See MASTER_INDEX.md for status-tag definitions.
+Last reconciled: 2026-09-09 (KARMO Large Autonomous Review of PR #14–#21,
+following the Post-Foundation Overnight Readiness Program and Core v2
+Engineering Blueprint Program passes earlier the same day). See
+MASTER_INDEX.md for status-tag definitions.
 
 **KARMO FOUNDATION v1: DECLARED COMPLETE, 2026-09-09.** See
 `docs/evidence/foundation-v1/FOUNDATION_V1_CLOSEOUT_REPORT.md` for the full
 closeout report and `docs/evidence/foundation-v1/` for the complete
 independent-verification evidence package.
 
+**Post-Foundation Overnight Readiness Program run 2026-09-09** (same day,
+repository-only, zero production access): independent re-verification of
+the Foundation v1 evidence (one checklist correction), a fix for the
+recorded H0.4 auditor gap (PR open, not merged), a repository-wide
+adversarial architecture review, a Tool/Capability Registry design
+(design only, not implemented), and a post-foundation capability roadmap
+(no capability chosen). See "Post-Foundation Overnight Readiness Program"
+section below and PRs #14, #15, #16.
+
+**Core v2 Engineering Blueprint Program run 2026-09-09** (same day,
+repository-only, zero production access, zero merges): a full
+architecture map of Foundation v1, a Tool/Capability Registry + Approval
+Engine + Job/Event model + configuration single-sourcing + failure-
+injection framework + autonomous-run evidence validator — all designed
+and prototyped in isolation (160/160 tests passing) — a security threat
+model, a Core v2 test strategy, and readiness specs for BloomBoss,
+Voice/Media, and Finance/Trading, consolidated into a proposed KARMO Core
+v2 specification. **No Core v2 component is implemented in production; no
+domain capability is chosen or started.** See "Core v2 Engineering
+Blueprint Program" section below and PRs #18, #19, #20, #21.
+
 **Independent merge-readiness review of PRs #14–#21 completed 2026-09-09**
-(same day, repository-only, zero production access, zero merges): fresh
-reproduction of every test claim, a real cross-PR conflict found and
-documented (PR #17 vs. #21, both editing the same `docs/project-state/`
-files), and an adversarial security re-review of the Core v2 prototypes
-that found and fixed **4 real defects** in PR #19 (154 → 160 tests) plus
-2 stale test-count references in PR #20/#21 — all fixed **in the existing
-PRs**, no new PR created for fixes. Full detail:
-`docs/evidence/autonomous-review/KARMO_PR14_21_MERGE_READINESS.md`. **No
-PR was merged. No capability was implemented or chosen.**
+(same day, repository-only, zero production access): fresh reproduction
+of every test claim, a real cross-PR conflict found and documented (PR
+#17 vs. #21, both editing the same `docs/project-state/` files), and an
+adversarial security re-review of the Core v2 prototypes that found and
+fixed **4 real defects** in PR #19 (154 → 160 tests) plus 2 stale
+test-count references in PR #20/#21 — all fixed **in the existing PRs**,
+no new PR created for fixes (`review/pr14-21-merge-readiness` was opened
+only for the review's own cross-cutting evidence). Full detail:
+`docs/evidence/autonomous-review/KARMO_PR14_21_MERGE_READINESS.md`, plus
+`MERGE_SEQUENCE.md`, `OPEN_FINDINGS_TRIAGE.md`,
+`SPEC_PROTOTYPE_CONFORMANCE.md`, and `CAPABILITY_DECISION_MATRIX.md` in
+the same directory. **PRs #14–#21 have since been merged into `main` by a
+separate, later approved merge sequence** — the findings above reflect
+the review's own conclusions as they stood at review time, before that
+merge sequence ran.
 
 ## Top-line
 
@@ -334,6 +363,124 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
   H0.1/H0.2/H0.4 production cutover history (I-01: those predate this gate
   and remain VERIFIED as recorded); it governs future production access
   only.
+
+## Post-Foundation Overnight Readiness Program (2026-09-09)
+
+**VERIFIED** — Natalie authorized one large, repository-only autonomous
+program the same night Foundation v1 was declared complete, explicitly
+prohibiting any production access. Five workstreams:
+
+- **Workstream 1 (Foundation verification review): complete.** Independent
+  claim-by-claim audit of `docs/evidence/foundation-v1/` — no claim found
+  false; two evidence-quality gaps named plainly (raw production command
+  output was never saved as a file, consistent with existing
+  operator-attestation precedent). Three circular checks in
+  `VERIFICATION_CHECKLIST.md` (items 4, 5, 10 — verified the closeout
+  session's own documents against themselves, not independent ground
+  truth) corrected in place; `MANIFEST.sha256` regenerated and reverified.
+  Full review: `docs/evidence/post-foundation-readiness/WORKSTREAM1_FOUNDATION_VERIFICATION_REVIEW.md`.
+  PR #14, open, not merged.
+- **Workstream 2 (H0.4 auditor gap): fixed, PR open.** Root cause
+  determined from evidence (`docs/handoff/h04/document_memory.py`'s own
+  documented definition of "active" disagreed with
+  `reconciliation.check_active_version_state`'s narrower one).
+  One-comparison fix (`is True` → `is not False`), proven in both
+  directions by two new targeted tests (removes a false-positive, adds
+  detection of a previously-missed real gap); 15/15 existing tests
+  unchanged; `auditor.py` untouched. Full evidence:
+  `docs/evidence/h04/H04_ACTIVE_STATE_LEGACY_FIX_REPORT.md`. PR #15, open,
+  not merged.
+- **Workstream 3 (Tool/Capability Registry): designed, not implemented.**
+  Built directly on I-09's existing classification; `financial_action`/
+  `destructive_action` structurally force `EXPLICIT_PER_CALL` approval,
+  computed, never independently declarable. Architecture:
+  `docs/architecture/KARMO_TOOL_CAPABILITY_REGISTRY.md`. Spec-Kit-shaped
+  proposal (not an approved H0.5 scope): `specs/001-tool-capability-registry/spec.md`.
+  Phased implementation proposal:
+  `docs/plans/KARMO_TOOL_CAPABILITY_REGISTRY_IMPLEMENTATION_PROPOSAL.md`.
+- **Workstream 4 (adversarial architecture review): complete.**
+  Repository-wide review grounded in code actually read this session.
+  Findings: a live-production pagination ceiling in
+  `document_memory.get_document_history` (MEDIUM, same bug class already
+  fixed elsewhere in H0.4, never applied here); its dead-code echo in the
+  superseded `h02/app/document_ingest.py` (LOW/INFORMATIONAL); no
+  connection pooling anywhere in the codebase (MEDIUM); no
+  embedding-model provenance on `karmo_semantic_memory` (MEDIUM);
+  configuration drift — Qdrant/Postgres endpoints duplicated across ~10
+  files (LOW–MEDIUM); two further LOW/INFORMATIONAL findings; several
+  categories checked with no credible issue found, named explicitly (race
+  conditions, TOCTOU, swallowed exceptions, secret persistence, backup/
+  restore assumptions, irreversible operations, implicit authority
+  escalation). One candidate invariant proposed (configuration
+  single-sourcing) — **not adopted**, governance unchanged. Full review:
+  `docs/evidence/post-foundation-readiness/WORKSTREAM4_ADVERSARIAL_ARCHITECTURE_REVIEW.md`.
+- **Workstream 5 (post-foundation capability roadmap): complete.**
+  Dependency graph, shared Core requirements (tying to Workstream 4's
+  findings), per-domain complexity/risk/prerequisites for Voice, Media,
+  BloomBoss, KarmoLab, Personal Productivity, and Finance/Trading, and
+  three sequencing alternatives.  **Does not choose Natalie's first
+  capability.** `docs/plans/POST_FOUNDATION_CAPABILITY_ROADMAP.md`.
+
+Workstreams 3–5 committed together: PR #16, open, not merged.
+
+**Production access this program: zero.** No SSH to `karmo-ai01`, no
+database/Qdrant/container/file/credential/service/log/network access of
+any kind — verified by this session's own command history (every action
+was a local repository read, edit, test, or `git`/`gh` operation).
+**Merges this program: zero.** No governance modified. No financial
+transaction. No external post. No Voice/Media/BloomBoss/KarmoLab/Finance
+capability implementation begun.
+
+## Core v2 Engineering Blueprint Program (2026-09-09)
+
+**VERIFIED** — Natalie authorized one large, repository-only autonomous
+planning/prototyping/validation program the same day Foundation v1 was
+declared complete and the Post-Foundation Overnight Readiness Program ran
+(that program's PRs #14–#17 remain open, not touched or merged by this
+program, per explicit instruction). No production access authorized or
+performed. 15 workstreams, grouped into 4 PRs per explicit PR-discipline
+instruction (max 4):
+
+- **PR #18** — architecture map (Workstream 1: PostgreSQL/Qdrant/Ollama/
+  semantic memory/document memory/outbox/integrity-auditing/recovery/
+  configuration/governance/Spec Kit/service boundaries, VERIFIED/INFERRED/
+  PROPOSED labeled, Mermaid diagrams), observability design (Workstream
+  6), Core v2 security/threat model (Workstream 8: 16 threats, 12 mapped
+  to existing invariants, 1 genuine gap with a proposed-not-adopted
+  addition), Core v2 test strategy (Workstream 13), and the autonomous-run
+  verification system design (Workstream 14 design portion: evidence
+  schema, independent checklist, a Trust Score explicitly proven never to
+  grant permissions).
+- **PR #19** — isolated, non-production prototypes (Workstreams 2–5, 7,
+  14 prototype portion): Tool/Capability Registry (manifest validation,
+  computed-never-declarable approval requirements, all 7 required worked
+  examples), Approval Engine (state machine, arguments-digest binding,
+  all 8 required scenarios), a minimal Job/Event model (deterministic
+  identity, idempotency, claim-token crash recovery reusing the H0.1
+  outbox relay's pattern), a configuration single-sourcing proof of
+  concept, a failure-injection framework covering all 12 named
+  categories applied against the other prototypes, and the run-evidence
+  schema/validator prototype. **160/160 tests pass** — see
+  `docs/evidence/core-v2/core-v2-prototypes-run.txt` and
+  `-junit.xml`. Nothing here is wired into any KARMO production path.
+- **PR #20** — BloomBoss readiness spec (Workstream 9: 14-entity model,
+  multi-channel sales, READ/BUSINESS MUTATION/EXTERNAL COMMUNICATION
+  separation), Voice/Media readiness spec (Workstream 10: identifies
+  wake/listen and streaming as genuinely new Core abstractions not yet
+  designed), Finance/Trading safety spec (Workstream 11: 8 capability
+  tiers, the propose→approve→bind→execute flow specified against the
+  Approval Engine's own proven test behavior), the implementation
+  dependency graph (Workstream 12: 6 candidate batches for a future
+  autonomous run), and the consolidated Core v2 specification (Workstream
+  15: EXISTING/PROPOSED/FUTURE separated explicitly, plus
+  `specs/002-core-v2-platform/spec.md`).
+- **PR #21** — this PROJECT SAVE.
+
+**No capability was chosen. No Core v2 component was implemented in
+production. No governance was modified** (one candidate invariant —
+configuration single-sourcing, carried over from the prior program — and
+one new candidate — tool-registration review — both proposed, neither
+adopted). **Production access: zero. Merges: zero.**
 
 ## Confirmed data-state baselines (for reference, HISTORICAL unless restated)
 

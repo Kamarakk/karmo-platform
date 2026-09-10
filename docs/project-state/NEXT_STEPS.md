@@ -1,9 +1,10 @@
 # KARMO Next Steps
 
 See MASTER_INDEX.md for status-tag definitions. **KARMO FOUNDATION v1 was
-declared COMPLETE on 2026-09-09** — see
-`docs/evidence/foundation-v1/FOUNDATION_V1_CLOSEOUT_REPORT.md` for the full
-closeout report.
+declared COMPLETE on 2026-09-09.** Two further repository-only,
+zero-production-access programs ran the same day: the Post-Foundation
+Overnight Readiness Program (PRs #14–#17) and the Core v2 Engineering
+Blueprint Program (PRs #18–#21).
 
 **An independent merge-readiness review of PRs #14–#21 completed
 2026-09-09** — see
@@ -16,88 +17,98 @@ adversarial-review fixes (154 → 160 tests); PR #20 and #21 were updated
 in place to correct the resulting stale test-count references. No new PR
 was created for these fixes — existing PRs were updated directly.
 
-The primary next action is now **Natalie choosing the first
-post-foundation capability phase** — see
-`docs/evidence/autonomous-review/CAPABILITY_DECISION_MATRIX.md` for a
-fresh A/B/C comparison (Tool/Capability Registry first, Voice first,
-BloomBoss first, plus a hybrid option) — there is no outstanding
-foundation-blocking work.
+The primary next action is now **Natalie's set of decisions listed
+below** — there is no outstanding foundation-blocking work, and nothing
+in either program requires an urgent response.
 
-## 1. Keep the two ambiguous legacy hashes unresolved (no action required, active constraint)
+## Items requiring Natalie's decision
+
+### From the Post-Foundation Overnight Readiness Program
+1. Merge/reject PR #14 (Foundation v1 verification review + checklist
+   correction) — docs-only.
+2. Merge/reject PR #15 (H0.4 `check_active_version_state` legacy-
+   definition fix) — isolated code fix, 17/17 tests (2 new + 15
+   existing), not yet deployed to production even if merged.
+3. Merge/reject PR #16 (Tool/Capability Registry design v1, adversarial
+   review, post-foundation roadmap v1) — design/planning only.
+4. Merge/reject PR #17 (PROJECT SAVE for that program).
+
+### From the Core v2 Engineering Blueprint Program
+5. Merge/reject PR #18 (architecture map, observability design, Core v2
+   security threat model, test strategy, run-verification system design)
+   — design/documentation only.
+6. Merge/reject PR #19 (Core v2 prototypes: Tool Registry, Approval
+   Engine, Job/Event model, config POC, failure injection, run-evidence
+   validator) — 160/160 tests pass, nothing wired into production.
+7. Merge/reject PR #20 (BloomBoss/Voice-Media/Finance readiness specs,
+   implementation dependency graph, consolidated Core v2 spec) —
+   design/planning only.
+8. Merge/reject PR #21 (PROJECT SAVE for this program).
+
+### Choices, not just merges
+9. **Choose the first post-foundation capability track**, or a
+   sequencing alternative (registry-first / domain-first / KarmoLab-
+   proving-ground) — see
+   `docs/plans/POST_FOUNDATION_CAPABILITY_ROADMAP.md` and
+   `docs/plans/CORE_V2_IMPLEMENTATION_DEPENDENCY_GRAPH.md`'s 6 candidate
+   batches. Still entirely open; nothing in either program narrows this
+   choice, only informs it.
+10. **Weigh the two proposed (not adopted) invariant candidates**:
+    configuration single-sourcing (prior program) and tool-registration
+    review (this program).
+11. **Decide whether/when to build any Core v2 component for real** — every
+    design and prototype from this program is isolated and unimplemented
+    in production; Batch 1 of the dependency graph is the lowest-risk
+    starting point if/when Natalie chooses to proceed. This includes the
+    specific Workstream 3 question carried from the prior program —
+    whether/when to build the Tool/Capability Registry itself — for which
+    only a design exists and no phase is authorized to start.
+
+## Recommended (non-blocking) follow-ups, in rough priority order
+
+12. Workstream 4's MEDIUM findings from the prior program — live
+    pagination ceiling in `document_memory.get_document_history` (same bug
+    class already fixed elsewhere in H0.4), no connection pooling
+    anywhere, no embedding-model provenance on `karmo_semantic_memory`,
+    configuration drift across ~10 files. None urgent at current scale;
+    all worth addressing before the capability that would first stress
+    them. Full detail:
+    `docs/evidence/post-foundation-readiness/WORKSTREAM4_ADVERSARIAL_ARCHITECTURE_REVIEW.md`.
+    This program's dependency graph
+    (`docs/plans/CORE_V2_IMPLEMENTATION_DEPENDENCY_GRAPH.md`, Batch 1)
+    already scopes fixes for the first two as small, standalone,
+    parallelizable items.
+13. `SOFTWARE_INVENTORY.md`/`NETWORK_INVENTORY.md` can be updated from the
+    2026-09-09 production evidence (routine, not blocking, unchanged).
+
+## Keep the two ambiguous legacy hashes unresolved (no action required, active constraint)
 
 `karmo-v05-new.html` hashes
 `23646203eed7e187ce2fe0de12c82d5cf83d0a97893a6bdcd2ed30ae3855af9c` and
 `5f98126d41381a8a0a4c5034b3402b9a4b763fa043bcfa63f27bdefeb7414c78` remain
 **intentionally unresolved** (`AMBIGUOUS_MULTIPLE_HASHES_FOR_SOURCE_FILE`),
-reconfirmed present as `ORPHAN_VECTOR` in the 2026-09-09 production audit —
-exactly as expected, not touched. Resolution requires a human decision on
-which hash is the correct `document_version` ordering for that source file
-— `bootstrap_legacy_registry.py` will not and should not guess. Do not mark
-these resolved without that explicit decision recorded. Standing
-constraint until Natalie decides; does not block Foundation v1 or any
-future phase.
+reconfirmed present as `ORPHAN_VECTOR` in both the 2026-09-09 production
+audit and (structurally) untouched by the Workstream 2 fix. Resolution
+requires a human decision on version ordering —
+`bootstrap_legacy_registry.py` will not and should not guess. Do not mark
+resolved without that explicit decision recorded. Untouched by either
+program.
 
-## 2. Foundation Completion Workload 1 — Repository hygiene & evidence durability (MERGED, COMPLETE)
+## Completed, no further action
 
-Merged 2026-09-08 (PR #7, `db4ff2f`). No further action.
-
-## 3. Foundation Completion Workload 2 — Production verification closeout (COMPLETE, PASS)
-
-Executed 2026-09-09 under Natalie's temporary, session-scoped, task-specific
-Production Access Authorization, per the Mandatory Production Access
-Authorization Gate. Both defined checks passed: H01-T01 (manifest
-presence/hash) and H01-T18 (baseline counts, every value either an exact
-match or a fully-explained delta from an already-recorded event). Full
-detail: `docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`.
-No further action required for Foundation v1.
-
-## 4. Foundation Completion Workload 3 — Registry integrity repair tool (MERGED, COMPLETE)
-
-Merged 2026-09-09 (PR #8, `06ab726`). Still isolated-only — no production
-execution performed or authorized; a separate, future, explicitly-authorized
-action if ever pursued (not currently planned).
-
-## 5. Foundation Completion Workload 4 — Spec Kit brownfield adoption (MERGED, COMPLETE)
-
-Merged 2026-09-09 (PR #9, `cd72938`).
-
-## 6. Choose the first post-foundation capability phase (the actual next action)
-
-H0.5's specific scope remains **NEEDS VERIFICATION** — not defined, and
-explicitly not invented by this or any prior pass. The Foundation Closeout
-consolidation review's extensibility-review-derived observation (a
-tool/capability registry as a strong first candidate, since every planned
-domain depends on it) is a suggestion for Natalie to weigh, not a decision
-made on her behalf. This is the primary open item now that Foundation v1
-is complete.
-
-## 7. Recommended (non-blocking) follow-up: H0.4 auditor legacy-active-state gap
-
-Discovered during the 2026-09-09 closeout's production audit:
-`reconciliation.check_active_version_state` has no legacy-aware carve-out
-for a legacy-bootstrapped registry row (unlike `check_provenance`'s
-existing `LEGACY_PROVENANCE_UNVERIFIED` handling), so it permanently
-reports `ACTIVE_STATE_MISMATCH` for the 3 documents
-`bootstrap_legacy_registry.py` already registered — correct data, an
-auditor blind spot, not a data-integrity problem. Full detail:
-`docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`. Worth a
-small, separately-scoped fix at some point; does not block anything.
-
-## 8. Confirm current live data counts (routine, low urgency — now closed out)
-
-`SOFTWARE_INVENTORY.md` and `NETWORK_INVENTORY.md` flagged several current
-counts as **NEEDS VERIFICATION**; all were reconfirmed during the
-2026-09-09 Workload 2 closeout — see
-`docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`. Those
-two inventory files can be updated from that evidence in a future pass if
-desired (routine, not blocking).
+- Foundation Completion Workloads 1–4 (PRs #7, #8, #9, #10) — merged.
+- Production Access Authorization Gate (PR #12) — merged, exercised
+  successfully the same night.
+- Foundation v1 closeout evidence package (PR #13) — merged.
+- H0.3 remains NO-PROMOTION — not promoted, not touched by either program.
 
 ## Not next steps (explicitly out of scope, unchanged)
 
-- H0.3 remains NO-PROMOTION — not promoted, not touched.
-- The two ambiguous H0.4 legacy hashes were not resolved (see #1).
-- No H0.5 spec/plan/tasks were written — Workload 5 remains Natalie's
-  scope choice (see #6).
-- No production write, restart, deployment, or configuration change was
-  ever performed — all production actions across the Foundation Closeout
-  Program were read-only, per every authorization granted.
+- No production access occurred in either program tonight — zero SSH,
+  zero database/Qdrant/container/credential/log/network access.
+- No PR was merged by either program (PRs #14–#21 all opened, none
+  merged).
+- No governance was modified by either program.
+- No Voice/Media/BloomBoss/KarmoLab/Personal-Productivity/Finance
+  capability was implemented or started.
+- No first-capability scope was chosen on Natalie's behalf.
