@@ -4,7 +4,7 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
-from .analytics import summarize_business, summarize_suppliers
+from .analytics import summarize_batches, summarize_business, summarize_suppliers
 from .data_quality import summarize_history_quality
 from .ingest import load_history_csv
 from .models import PlantUnit, PurchaseBatch, Sale
@@ -28,6 +28,7 @@ class HistoricalImportSnapshot:
     relationship_issues: tuple[ValidationIssue, ...]
     business_summary: dict
     supplier_summary: dict
+    batch_summary: dict
     quality_summary: dict
 
 
@@ -59,5 +60,6 @@ def inspect_history_csv(path: str | Path) -> HistoricalImportSnapshot:
         relationship_issues=tuple(issues),
         business_summary=summarize_business(units, sales),
         supplier_summary=summarize_suppliers(batches, units, sales),
+        batch_summary=summarize_batches(batches, units, sales),
         quality_summary=summarize_history_quality(batches, units, sales),
     )
