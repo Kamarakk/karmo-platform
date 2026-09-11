@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Iterable
 
-from .models import PlantStatus, PlantUnit, PurchaseBatch, Sale
+from .models import ListingHistoryEvent, PlantStatus, PlantUnit, PurchaseBatch, Sale
 
 
 def _ratio(known: int, total: int) -> Decimal | None:
@@ -17,39 +17,27 @@ def summarize_history_quality(
     units: Iterable[PlantUnit],
     sales: Iterable[Sale],
 ) -> dict:
-    """Report historical-data completeness without filling missing values.
-
-    Coverage metrics are intentionally separate from business analytics so a
-    partially reconstructed history cannot look more complete than it is.
-    """
+    """Report historical-data completeness without filling missing values."""
     batches = list(batches)
     units = list(units)
     sales = list(sales)
-
     sold_units = {sale.unit_id for sale in sales}
 
     batch_supplier_known = sum(1 for batch in batches if batch.supplier)
     batch_purchase_date_known = sum(1 for batch in batches if batch.purchase_date is not None)
     batch_quantity_known = sum(1 for batch in batches if batch.quantity is not None)
     batch_landed_cost_known = sum(1 for batch in batches if batch.known_landed_cost_total is not None)
-
     unit_cost_known = sum(1 for unit in units if unit.allocated_landed_cost is not None)
     unit_acquired_date_known = sum(1 for unit in units if unit.acquired_date is not None)
     unit_status_known = sum(1 for unit in units if unit.status != PlantStatus.UNKNOWN)
-
     sale_date_known = sum(1 for sale in sales if sale.sale_date is not None)
     sale_fees_known = sum(1 for sale in sales if sale.selling_fees is not None)
     sale_shipping_known = sum(1 for sale in sales if sale.shipping_cost is not None)
     sale_net_revenue_known = sum(1 for sale in sales if sale.known_net_revenue is not None)
-
-    sold_units_with_cost = sum(
-        1 for unit in units if unit.unit_id in sold_units and unit.allocated_landed_cost is not None
-    )
+    sold_units_with_cost = sum(1 for unit in units if unit.unit_id in sold_units and unit.allocated_landed_cost is not None)
 
     return {
-        "batch_count": len(batches),
-        "unit_count": len(units),
-        "sale_count": len(sales),
+        "batch_count": len(batches), "unit_count": len(units), "sale_count": len(sales),
         "coverage": {
             "batch_supplier": _ratio(batch_supplier_known, len(batches)),
             "batch_purchase_date": _ratio(batch_purchase_date_known, len(batches)),
@@ -77,5 +65,27 @@ def summarize_history_quality(
             "sale_outbound_shipping": len(sales) - sale_shipping_known,
             "sale_net_revenue": len(sales) - sale_net_revenue_known,
             "sold_unit_cost_basis": len(sold_units) - sold_units_with_cost,
+        },
+    }
+
+
+def summarize_listing_quality(listings: Iterable[ListingHistoryEvent]) -> dict:
+    """Report completeness of optional listing evidence without inference."""
+    listings = list(listings)
+    listed_date_known = sum(1 for item in listings if item.listed_date is not None)
+    unlisted_date_known = sum(1 for item in listings if item.unlisted_date is not None)
+    asking_price_known = sum(1 for item in listings if item.asking_price is not None)
+    total = len(listings)
+    return {
+        "listing_count": total,
+        "coverage": {
+            "listed_date": _ratio(listed_date_known, total),
+            "unlisted_date": _ratio(unlisted_date_known, total),
+            "asking_price": _ratio(asking_price_known, total),
+        },
+        "missing_counts": {
+            "listed_date": total - listed_date_known,
+            "unlisted_date": total - unlisted_date_known,
+            "asking_price": total - asking_price_known,
         },
     }
