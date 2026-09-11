@@ -4,7 +4,7 @@ from collections import defaultdict
 from decimal import Decimal
 from typing import Iterable
 
-from .models import PlantStatus, PlantUnit, Sale
+from .models import PlantStatus, PlantUnit, PurchaseBatch, Sale
 
 
 def _money_sum(values):
@@ -76,3 +76,57 @@ def summarize_business(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dic
         "by_channel": dict(by_channel),
         "by_cultivar": dict(by_cultivar),
     }
+
+
+def summarize_suppliers(
+    batches: Iterable[PurchaseBatch], units: Iterable[PlantUnit], sales: Iterable[Sale]
+) -> dict:
+    """Summarize realized outcomes by supplier without inventing missing costs."""
+    batches = list(batches)
+    units = list(units)
+    sales = list(sales)
+    batch_by_id = {batch.batch_id: batch for batch in batches}
+    sale_by_unit = {sale.unit_id: sale for sale in sales}
+
+    suppliers = defaultdict(
+        lambda: {
+            "units": 0,
+            "sold": 0,
+            "lost": 0,
+            "revenue": Decimal("0"),
+            "known_unit_cost": Decimal("0"),
+            "units_with_known_cost": 0,
+            "realized_profit_on_known_costs": Decimal("0"),
+            "sold_units_with_known_cost": 0,
+        }
+    )
+
+    for unit in units:
+        batch = batch_by_id.get(unit.batch_id)
+        supplier = batch.supplier if batch and batch.supplier else "UNKNOWN"
+        bucket = suppliers[supplier]
+        bucket["units"] += 1
+        if unit.status == PlantStatus.LOST:
+            bucket["lost"] += 1
+        if unit.allocated_landed_cost is not None:
+            bucket["known_unit_cost"] += unit.allocated_landed_cost
+            bucket["units_with_known_cost"] += 1
+        sale = sale_by_unit.get(unit.unit_id)
+        if sale:
+            bucket["sold"] += 1
+            bucket["revenue"] += sale.sale_price
+            if unit.allocated_landed_cost is not None:
+                bucket["realized_profit_on_known_costs"] += sale.sale_price - unit.allocated_landed_cost
+                bucket["sold_units_with_known_cost"] += 1
+
+    result = {}
+    for supplier, bucket in suppliers.items():
+        units_count = bucket["units"]
+        bucket["sell_through_rate"] = (
+            Decimal(bucket["sold"]) / Decimal(units_count) if units_count else None
+        )
+        bucket["loss_rate"] = (
+            Decimal(bucket["lost"]) / Decimal(units_count) if units_count else None
+        )
+        result[supplier] = bucket
+    return result
