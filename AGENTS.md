@@ -1,5 +1,7 @@
 # KARMO agent rules
 
+Before consequential KARMO work, read `AI_START_HERE.md` and follow its bootstrap/read order. It is the durable context entry point; authoritative state and governance remain in the files it references.
+
 ## Required short status block
 
 Start each response with:
