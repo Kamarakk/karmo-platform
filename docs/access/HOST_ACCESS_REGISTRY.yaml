@@ -16,9 +16,10 @@ hosts:
         status: VERIFIED
         last_verified: 2026-09-11
       tailscale:
-        ip: null
-        status: NEEDS_VERIFICATION
-        note: Direct Tailscale enrollment approved 2026-09-11; populate only after successful install/authentication and verification.
+        ip: 100.75.239.44
+        status: VERIFIED
+        last_verified: 2026-09-11
+        note: Official Tailscale client enrolled successfully with production DNS acceptance disabled. Direct OpenSSH-over-Tailscale smoke from KARMO-DEV01 remains a separate client-side verification item.
     ssh:
       port: 22
       alias: karmo-ai01
@@ -40,7 +41,9 @@ hosts:
       vscode_remote_ssh:
         status: NEEDS_VERIFICATION
     notes:
-      - Do not enable Tailscale SSH merely to gain direct networking; preserve existing OpenSSH/key authentication unless separately approved.
+      - Tailscale provides direct network reachability only; preserve existing OpenSSH/key authentication.
+      - Tailscale SSH is not enabled.
+      - No subnet routes or exit-node capability were configured.
       - Existing production services and data must not be restarted or modified by access-only changes unless explicitly required and approved.
 
   kve02:
@@ -57,8 +60,8 @@ hosts:
         ip: null
         status: NEEDS_VERIFICATION
     access_role:
-      - current remote bridge from tailnet to karmo-ai01 home LAN
-      - fallback path after direct karmo-ai01 Tailscale enrollment
+      - former primary remote bridge from tailnet to karmo-ai01 home LAN
+      - retained verified fallback path after direct karmo-ai01 Tailscale enrollment
 
   karmo-dev01:
     role: development-workstation
