@@ -26,11 +26,20 @@ def summarize_business(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dic
     landed_cost = _money_sum(u.allocated_landed_cost for u in units)
 
     realized_profit_values = []
+    realized_revenue_on_known_costs = Decimal("0")
+    matched_sales_with_known_cost = 0
     for unit in units:
         sale = sales_by_unit.get(unit.unit_id)
         if sale and unit.allocated_landed_cost is not None:
             realized_profit_values.append(sale.sale_price - unit.allocated_landed_cost)
+            realized_revenue_on_known_costs += sale.sale_price
+            matched_sales_with_known_cost += 1
     realized_gross_profit = _money_sum(realized_profit_values)
+    realized_gross_margin = (
+        realized_gross_profit / realized_revenue_on_known_costs
+        if realized_gross_profit is not None and realized_revenue_on_known_costs != 0
+        else None
+    )
 
     sold_count = sum(1 for u in units if u.status == PlantStatus.SOLD or u.unit_id in sales_by_unit)
     lost_count = sum(1 for u in units if u.status == PlantStatus.LOST)
@@ -47,9 +56,6 @@ def summarize_business(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dic
             days_to_sale.append((sale.sale_date - unit.acquired_date).days)
     avg_days_to_sale = (sum(days_to_sale) / len(days_to_sale)) if days_to_sale else None
 
-    # Capital tied up means known landed cost still sitting in inventory rather
-    # than already sold, lost, or intentionally given away. Unknown costs remain
-    # unknown and are reported separately instead of being treated as zero.
     active_inventory = [
         unit
         for unit in units
@@ -84,7 +90,11 @@ def summarize_business(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dic
         "sale_count": len(sales),
         "total_revenue": revenue,
         "known_landed_cost": landed_cost,
+        "realized_revenue_on_known_costs": (
+            realized_revenue_on_known_costs if matched_sales_with_known_cost else None
+        ),
         "realized_gross_profit_on_known_costs": realized_gross_profit,
+        "realized_gross_margin_on_known_costs": realized_gross_margin,
         "sell_through_rate": sell_through,
         "loss_rate": loss_rate,
         "average_realized_sale_price": avg_sale_price,
@@ -148,4 +158,77 @@ def summarize_suppliers(
             Decimal(bucket["lost"]) / Decimal(units_count) if units_count else None
         )
         result[supplier] = bucket
+    return result
+
+
+def summarize_batches(
+    batches: Iterable[PurchaseBatch], units: Iterable[PlantUnit], sales: Iterable[Sale]
+) -> dict:
+    """Expose purchase-level outcomes so losing batches are visible without imputation."""
+    batches = list(batches)
+    units = list(units)
+    sales = list(sales)
+    batch_by_id = {batch.batch_id: batch for batch in batches}
+    sale_by_unit = {sale.unit_id: sale for sale in sales}
+
+    result = {}
+    for batch_id, batch in batch_by_id.items():
+        batch_units = [unit for unit in units if unit.batch_id == batch_id]
+        revenue = Decimal("0")
+        realized_profit = Decimal("0")
+        realized_revenue_on_known_costs = Decimal("0")
+        lost_known_cost = Decimal("0")
+        sold = 0
+        lost = 0
+        sold_with_known_cost = 0
+        lost_with_known_cost = 0
+        days_to_sale = []
+
+        for unit in batch_units:
+            sale = sale_by_unit.get(unit.unit_id)
+            if unit.status == PlantStatus.LOST:
+                lost += 1
+                if unit.allocated_landed_cost is not None:
+                    lost_known_cost += unit.allocated_landed_cost
+                    lost_with_known_cost += 1
+            if sale:
+                sold += 1
+                revenue += sale.sale_price
+                if unit.allocated_landed_cost is not None:
+                    realized_profit += sale.sale_price - unit.allocated_landed_cost
+                    realized_revenue_on_known_costs += sale.sale_price
+                    sold_with_known_cost += 1
+                if unit.acquired_date and sale.sale_date:
+                    days_to_sale.append((sale.sale_date - unit.acquired_date).days)
+
+        unit_count = len(batch_units)
+        result[batch_id] = {
+            "cultivar": batch.cultivar,
+            "supplier": batch.supplier,
+            "units": unit_count,
+            "sold": sold,
+            "lost": lost,
+            "revenue": revenue,
+            "sell_through_rate": Decimal(sold) / Decimal(unit_count) if unit_count else None,
+            "loss_rate": Decimal(lost) / Decimal(unit_count) if unit_count else None,
+            "known_landed_cost_total": batch.known_landed_cost_total,
+            "sold_units_with_known_cost": sold_with_known_cost,
+            "realized_revenue_on_known_costs": (
+                realized_revenue_on_known_costs if sold_with_known_cost else None
+            ),
+            "realized_profit_on_known_costs": (
+                realized_profit if sold_with_known_cost else None
+            ),
+            "realized_gross_margin_on_known_costs": (
+                realized_profit / realized_revenue_on_known_costs
+                if sold_with_known_cost and realized_revenue_on_known_costs != 0
+                else None
+            ),
+            "lost_units_with_known_cost": lost_with_known_cost,
+            "known_cost_lost": lost_known_cost if lost_with_known_cost else None,
+            "average_days_to_sale": (
+                sum(days_to_sale) / len(days_to_sale) if days_to_sale else None
+            ),
+        }
+
     return result
