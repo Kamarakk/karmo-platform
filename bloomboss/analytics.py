@@ -110,7 +110,7 @@ def summarize_business(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dic
 def summarize_suppliers(
     batches: Iterable[PurchaseBatch], units: Iterable[PlantUnit], sales: Iterable[Sale]
 ) -> dict:
-    """Summarize realized outcomes by supplier without inventing missing costs."""
+    """Summarize supplier outcomes without inventing unknown cost or loss facts."""
     batches = list(batches)
     units = list(units)
     sales = list(sales)
@@ -125,8 +125,13 @@ def summarize_suppliers(
             "revenue": Decimal("0"),
             "known_unit_cost": Decimal("0"),
             "units_with_known_cost": 0,
+            "realized_revenue_on_known_costs": Decimal("0"),
+            "realized_known_cost_basis": Decimal("0"),
             "realized_profit_on_known_costs": Decimal("0"),
             "sold_units_with_known_cost": 0,
+            "known_cost_lost": Decimal("0"),
+            "lost_units_with_known_cost": 0,
+            "days_to_sale": [],
         }
     )
 
@@ -135,27 +140,80 @@ def summarize_suppliers(
         supplier = batch.supplier if batch and batch.supplier else "UNKNOWN"
         bucket = suppliers[supplier]
         bucket["units"] += 1
-        if unit.status == PlantStatus.LOST:
-            bucket["lost"] += 1
         if unit.allocated_landed_cost is not None:
             bucket["known_unit_cost"] += unit.allocated_landed_cost
             bucket["units_with_known_cost"] += 1
+        if unit.status == PlantStatus.LOST:
+            bucket["lost"] += 1
+            if unit.allocated_landed_cost is not None:
+                bucket["known_cost_lost"] += unit.allocated_landed_cost
+                bucket["lost_units_with_known_cost"] += 1
         sale = sale_by_unit.get(unit.unit_id)
         if sale:
             bucket["sold"] += 1
             bucket["revenue"] += sale.sale_price
             if unit.allocated_landed_cost is not None:
+                bucket["realized_revenue_on_known_costs"] += sale.sale_price
+                bucket["realized_known_cost_basis"] += unit.allocated_landed_cost
                 bucket["realized_profit_on_known_costs"] += sale.sale_price - unit.allocated_landed_cost
                 bucket["sold_units_with_known_cost"] += 1
+            if unit.acquired_date and sale.sale_date:
+                bucket["days_to_sale"].append((sale.sale_date - unit.acquired_date).days)
 
     result = {}
     for supplier, bucket in suppliers.items():
         units_count = bucket["units"]
+        sold_with_cost = bucket["sold_units_with_known_cost"]
+        lost_with_cost = bucket["lost_units_with_known_cost"]
+        matched_revenue = bucket["realized_revenue_on_known_costs"]
+        matched_cost = bucket["realized_known_cost_basis"]
+        matched_profit = bucket["realized_profit_on_known_costs"]
+        lost_cost = bucket["known_cost_lost"]
+        days_to_sale = bucket.pop("days_to_sale")
+
         bucket["sell_through_rate"] = (
             Decimal(bucket["sold"]) / Decimal(units_count) if units_count else None
         )
         bucket["loss_rate"] = (
             Decimal(bucket["lost"]) / Decimal(units_count) if units_count else None
+        )
+        bucket["realized_revenue_on_known_costs"] = matched_revenue if sold_with_cost else None
+        bucket["realized_known_cost_basis"] = matched_cost if sold_with_cost else None
+        bucket["realized_profit_on_known_costs"] = matched_profit if sold_with_cost else None
+        bucket["realized_gross_margin_on_known_costs"] = (
+            matched_profit / matched_revenue
+            if sold_with_cost and matched_revenue != 0
+            else None
+        )
+        bucket["realized_return_on_known_costs"] = (
+            matched_profit / matched_cost
+            if sold_with_cost and matched_cost != 0
+            else None
+        )
+        bucket["known_cost_lost"] = lost_cost if lost_with_cost else None
+
+        known_outcome_cost_basis = (
+            (matched_cost if sold_with_cost else Decimal("0"))
+            + (lost_cost if lost_with_cost else Decimal("0"))
+        )
+        known_outcome_net_profit = (
+            (matched_profit if sold_with_cost else Decimal("0"))
+            - (lost_cost if lost_with_cost else Decimal("0"))
+        )
+        has_known_outcome = bool(sold_with_cost or lost_with_cost)
+        bucket["known_outcome_cost_basis"] = (
+            known_outcome_cost_basis if has_known_outcome else None
+        )
+        bucket["known_outcome_net_profit"] = (
+            known_outcome_net_profit if has_known_outcome else None
+        )
+        bucket["known_outcome_return_on_cost"] = (
+            known_outcome_net_profit / known_outcome_cost_basis
+            if has_known_outcome and known_outcome_cost_basis != 0
+            else None
+        )
+        bucket["average_days_to_sale"] = (
+            sum(days_to_sale) / len(days_to_sale) if days_to_sale else None
         )
         result[supplier] = bucket
     return result
@@ -177,6 +235,7 @@ def summarize_batches(
         revenue = Decimal("0")
         realized_profit = Decimal("0")
         realized_revenue_on_known_costs = Decimal("0")
+        realized_known_cost_basis = Decimal("0")
         lost_known_cost = Decimal("0")
         sold = 0
         lost = 0
@@ -197,11 +256,22 @@ def summarize_batches(
                 if unit.allocated_landed_cost is not None:
                     realized_profit += sale.sale_price - unit.allocated_landed_cost
                     realized_revenue_on_known_costs += sale.sale_price
+                    realized_known_cost_basis += unit.allocated_landed_cost
                     sold_with_known_cost += 1
                 if unit.acquired_date and sale.sale_date:
                     days_to_sale.append((sale.sale_date - unit.acquired_date).days)
 
         unit_count = len(batch_units)
+        known_outcome_cost_basis = (
+            (realized_known_cost_basis if sold_with_known_cost else Decimal("0"))
+            + (lost_known_cost if lost_with_known_cost else Decimal("0"))
+        )
+        known_outcome_net_profit = (
+            (realized_profit if sold_with_known_cost else Decimal("0"))
+            - (lost_known_cost if lost_with_known_cost else Decimal("0"))
+        )
+        has_known_outcome = bool(sold_with_known_cost or lost_with_known_cost)
+
         result[batch_id] = {
             "cultivar": batch.cultivar,
             "supplier": batch.supplier,
@@ -216,6 +286,9 @@ def summarize_batches(
             "realized_revenue_on_known_costs": (
                 realized_revenue_on_known_costs if sold_with_known_cost else None
             ),
+            "realized_known_cost_basis": (
+                realized_known_cost_basis if sold_with_known_cost else None
+            ),
             "realized_profit_on_known_costs": (
                 realized_profit if sold_with_known_cost else None
             ),
@@ -224,8 +297,24 @@ def summarize_batches(
                 if sold_with_known_cost and realized_revenue_on_known_costs != 0
                 else None
             ),
+            "realized_return_on_known_costs": (
+                realized_profit / realized_known_cost_basis
+                if sold_with_known_cost and realized_known_cost_basis != 0
+                else None
+            ),
             "lost_units_with_known_cost": lost_with_known_cost,
             "known_cost_lost": lost_known_cost if lost_with_known_cost else None,
+            "known_outcome_cost_basis": (
+                known_outcome_cost_basis if has_known_outcome else None
+            ),
+            "known_outcome_net_profit": (
+                known_outcome_net_profit if has_known_outcome else None
+            ),
+            "known_outcome_return_on_cost": (
+                known_outcome_net_profit / known_outcome_cost_basis
+                if has_known_outcome and known_outcome_cost_basis != 0
+                else None
+            ),
             "average_days_to_sale": (
                 sum(days_to_sale) / len(days_to_sale) if days_to_sale else None
             ),
