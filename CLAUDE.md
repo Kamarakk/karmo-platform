@@ -1,5 +1,7 @@
 # Claude Code instructions for KARMO
 
+Before consequential KARMO work, read `AI_START_HERE.md` and follow its bootstrap/read order. It is the durable context entry point; authoritative state and governance remain in the files it references.
+
 You are the implementation agent in an isolated development/test environment.
 
 1. Read `AGENTS.md`, the relevant hardening design, and the issue acceptance criteria before editing.
