@@ -1,6 +1,8 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from bloomboss.analytics import summarize_business
 from bloomboss.ingest import load_history_csv
 from bloomboss.models import PlantStatus, PlantUnit, Sale
@@ -35,3 +37,38 @@ def test_summary_uses_realized_values():
     assert summary["loss_rate"] == Decimal("0.5")
     assert summary["average_days_to_sale"] == 10
     assert summary["by_channel"]["Palmstreet"]["sales"] == 1
+
+
+def test_duplicate_unit_id_fails_visibly(tmp_path):
+    path = tmp_path / "history.csv"
+    path.write_text(
+        "batch_id,unit_id,cultivar,status\n"
+        "B1,U1,Pink Plumbea,growing\n"
+        "B1,U1,Pink Plumbea,growing\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate unit_id"):
+        load_history_csv(path)
+
+
+def test_conflicting_repeated_batch_facts_fail(tmp_path):
+    path = tmp_path / "history.csv"
+    path.write_text(
+        "batch_id,unit_id,cultivar,status,supplier\n"
+        "B1,U1,Pink Plumbea,growing,Supplier A\n"
+        "B1,U2,Pink Plumbea,growing,Supplier B\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="conflicting repeated facts"):
+        load_history_csv(path)
+
+
+def test_negative_money_fails_instead_of_becoming_history(tmp_path):
+    path = tmp_path / "history.csv"
+    path.write_text(
+        "batch_id,unit_id,cultivar,status,allocated_landed_cost\n"
+        "B1,U1,Pink Plumbea,growing,-20\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="negative money"):
+        load_history_csv(path)
