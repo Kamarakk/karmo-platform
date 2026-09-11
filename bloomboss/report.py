@@ -59,6 +59,7 @@ def snapshot_report(snapshot: HistoricalImportSnapshot) -> dict[str, Any]:
             "size_bytes": snapshot.listing_source_size_bytes,
         }
         report["listing_quality_summary"] = _json_value(snapshot.listing_quality_summary)
+        report["listing_activity_summary"] = _json_value(snapshot.listing_activity_summary)
         report["listing_relationship_issues"] = _json_value(snapshot.listing_relationship_issues)
     return report
 
