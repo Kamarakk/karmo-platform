@@ -7,6 +7,7 @@ from pathlib import Path
 from .analytics import summarize_batches, summarize_business, summarize_suppliers
 from .data_quality import summarize_history_quality
 from .ingest import load_history_csv
+from .inventory import summarize_inventory_exposure
 from .models import PlantUnit, PurchaseBatch, Sale
 from .outcomes import summarize_channels, summarize_cultivars
 from .validation import ValidationIssue, validate_history_relationships
@@ -32,6 +33,7 @@ class HistoricalImportSnapshot:
     batch_summary: dict
     cultivar_summary: dict
     channel_summary: dict
+    inventory_exposure_summary: dict
     quality_summary: dict
 
 
@@ -66,5 +68,6 @@ def inspect_history_csv(path: str | Path) -> HistoricalImportSnapshot:
         batch_summary=summarize_batches(batches, units, sales),
         cultivar_summary=summarize_cultivars(units, sales),
         channel_summary=summarize_channels(units, sales),
+        inventory_exposure_summary=summarize_inventory_exposure(units, sales),
         quality_summary=summarize_history_quality(batches, units, sales),
     )
