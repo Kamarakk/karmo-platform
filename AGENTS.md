@@ -20,6 +20,14 @@ Do not repeat full logs in chat. Put evidence in the pull request or `docs/evide
 - Do not change the H0 phase order or frozen acceptance criteria without a documented decision approved by Natalie.
 - Never merge a pull request, deploy, delete data, alter production schema, restart production services, or weaken access controls.
 
+## Mandatory System-Fit & Reuse Review
+
+Before recommending or implementing a meaningful new tool, package, service, daemon, integration, worker, access method, datastore, network path, or production configuration change, read and follow `docs/governance/KARMO_SYSTEM_FIT_REVIEW.md`.
+
+Do not simply agree with a proposed implementation. First determine whether it advances KARMO's whole-system goal, whether the existing stack can satisfy the need, what current system facts materially affect the decision, what lifecycle/security burden it adds, and whether a simpler reusable alternative exists. Unknown material facts must be marked `NEEDS_VERIFICATION` before consequential implementation.
+
+For access/routing/login work, read `docs/access/README.md` and its registries before troubleshooting or changing credentials.
+
 ## Change standard
 
 Every change must state: purpose, files changed, tests run, results, risk, verification, and rollback. A failing test blocks promotion.
