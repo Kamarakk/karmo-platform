@@ -47,6 +47,22 @@ def summarize_business(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dic
             days_to_sale.append((sale.sale_date - unit.acquired_date).days)
     avg_days_to_sale = (sum(days_to_sale) / len(days_to_sale)) if days_to_sale else None
 
+    # Capital tied up means known landed cost still sitting in inventory rather
+    # than already sold, lost, or intentionally given away. Unknown costs remain
+    # unknown and are reported separately instead of being treated as zero.
+    active_inventory = [
+        unit
+        for unit in units
+        if unit.unit_id not in sales_by_unit
+        and unit.status not in (PlantStatus.SOLD, PlantStatus.LOST, PlantStatus.GIVEAWAY)
+    ]
+    known_capital_tied_up = _money_sum(
+        unit.allocated_landed_cost for unit in active_inventory
+    )
+    active_inventory_with_unknown_cost = sum(
+        1 for unit in active_inventory if unit.allocated_landed_cost is None
+    )
+
     by_channel = defaultdict(lambda: {"sales": 0, "revenue": Decimal("0")})
     for sale in sales:
         by_channel[sale.channel]["sales"] += 1
@@ -73,6 +89,9 @@ def summarize_business(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dic
         "loss_rate": loss_rate,
         "average_realized_sale_price": avg_sale_price,
         "average_days_to_sale": avg_days_to_sale,
+        "active_inventory_units": len(active_inventory),
+        "known_capital_tied_up": known_capital_tied_up,
+        "active_inventory_units_with_unknown_cost": active_inventory_with_unknown_cost,
         "by_channel": dict(by_channel),
         "by_cultivar": dict(by_cultivar),
     }
