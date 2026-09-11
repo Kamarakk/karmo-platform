@@ -41,6 +41,53 @@ def _finalize(bucket: dict) -> dict:
     return bucket
 
 
+def summarize_units(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dict:
+    """Expose unit-level realized outcomes without inventing missing economics.
+
+    This is the narrowest truthful answer to "which plants made the most money?":
+    profit is only reported when a realized sale can be matched to a known
+    allocated landed cost. Selling fees and shipping remain separate facts and
+    are not silently subtracted unless both are known, in which case
+    ``known_net_profit`` is also reported.
+    """
+    units = list(units)
+    sale_by_unit = {sale.unit_id: sale for sale in sales}
+    result = {}
+
+    for unit in units:
+        sale = sale_by_unit.get(unit.unit_id)
+        realized_profit = None
+        realized_return = None
+        known_net_profit = None
+        days_to_sale = None
+
+        if sale and unit.allocated_landed_cost is not None:
+            realized_profit = sale.sale_price - unit.allocated_landed_cost
+            if unit.allocated_landed_cost != 0:
+                realized_return = realized_profit / unit.allocated_landed_cost
+            if sale.known_net_revenue is not None:
+                known_net_profit = sale.known_net_revenue - unit.allocated_landed_cost
+
+        if sale and unit.acquired_date and sale.sale_date:
+            days_to_sale = (sale.sale_date - unit.acquired_date).days
+
+        result[unit.unit_id] = {
+            "cultivar": unit.cultivar,
+            "batch_id": unit.batch_id,
+            "status": unit.status.value,
+            "sale_id": sale.sale_id if sale else None,
+            "sale_channel": sale.channel if sale else None,
+            "sale_price": sale.sale_price if sale else None,
+            "allocated_landed_cost": unit.allocated_landed_cost,
+            "realized_profit_on_known_cost": realized_profit,
+            "realized_return_on_known_cost": realized_return,
+            "known_net_profit": known_net_profit,
+            "days_to_sale": days_to_sale,
+        }
+
+    return result
+
+
 def summarize_cultivars(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dict:
     """Compare cultivar economics using only matched known cost facts."""
     units = list(units)
