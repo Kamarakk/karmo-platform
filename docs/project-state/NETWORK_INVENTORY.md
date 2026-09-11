@@ -13,6 +13,35 @@ session's operator attestation added; it does not itself re-probe production.
 | OS user | `lofason` | **VERIFIED** (H0.1 handoff doc; also the user for whom `karmo-h01-relay` and linger were configured) |
 | Tailscale | Not installed as of the 2026-09-04 H0.1 handoff checkpoint. Do not use the Wazuh Tailscale address for KARMO. | **HISTORICAL** as stated; current status **NEEDS VERIFICATION** (not reconfirmed since). |
 
+## Verified remote access path
+
+When KARMO-DEV01 is away from the KARMO home LAN, the established remote path is:
+
+`KARMO-DEV01 -> KVE02 over Tailscale -> KARMO-AI01 over the home LAN`
+
+Current verified values for that path:
+
+| Hop | Address / user | Status |
+|---|---|---|
+| KVE02 | `root@100.75.39.34` | **VERIFIED** working Tailscale jump host path, 2026-09-11 |
+| KARMO-AI01 from KVE02 | `lofason@192.168.1.235` | **VERIFIED** intended second-hop path, 2026-09-11 |
+
+Normal commands from KARMO-DEV01:
+
+```bash
+ssh root@100.75.39.34
+```
+
+Then from KVE02:
+
+```bash
+ssh lofason@192.168.1.235
+```
+
+Do not interpret a direct timeout from KARMO-DEV01 to `192.168.1.235` as a password/key failure when KARMO-DEV01 is on another subnet. The connection can fail before SSH authentication begins.
+
+Durable operational procedure and recovery rules: `docs/operations/KARMO_REMOTE_ACCESS_RUNBOOK.md`.
+
 ## Production ports / connection defaults
 
 | Service | Value | Status |
