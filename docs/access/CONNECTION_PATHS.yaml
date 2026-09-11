@@ -24,6 +24,23 @@ paths:
     auth_method: karmo-admin-ssh
     status: VERIFIED
 
+  karmo-ai01-direct-tailscale:
+    target: karmo-ai01
+    contexts: [OFFICE, TRAVEL_REMOTE, AGENT_REMOTE]
+    route:
+      - transport: tailscale
+        destination_host: karmo-ai01
+        destination_ip: 100.75.239.44
+        ssh_user: lofason
+    auth_method: karmo-admin-ssh
+    status: VERIFIED
+    verification_note: Tailscale enrollment and node reachability verified 2026-09-11; direct client-side OpenSSH smoke from KARMO-DEV01 remains recommended at next remote-use opportunity.
+    security_notes:
+      - Use standard OpenSSH over the Tailscale interface.
+      - Tailscale SSH is not enabled.
+      - No subnet routes or exit-node capability are configured.
+      - Production DNS acceptance remains disabled for Tailscale.
+
   karmo-ai01-office-via-kve02:
     target: karmo-ai01
     contexts: [OFFICE, TRAVEL_REMOTE]
@@ -37,24 +54,7 @@ paths:
         destination_ip: 192.168.1.235
         ssh_user: lofason
     status: VERIFIED
-    note: Current fallback/bridge path. Do not remove until direct karmo-ai01 Tailscale access is verified.
-
-  karmo-ai01-direct-tailscale:
-    target: karmo-ai01
-    contexts: [OFFICE, TRAVEL_REMOTE, AGENT_REMOTE]
-    route:
-      - transport: tailscale
-        destination_host: karmo-ai01
-        destination_ip: null
-        ssh_user: lofason
-    auth_method: karmo-admin-ssh
-    status: NEEDS_VERIFICATION
-    activation_condition: Populate Tailscale IP and mark VERIFIED only after install, enrollment, direct SSH smoke, and PROJECT SAVE.
-    security_notes:
-      - Use standard OpenSSH over the Tailscale interface first.
-      - Do not enable Tailscale SSH unless separately reviewed and approved.
-      - Do not advertise subnet routes or exit-node capability unless separately approved.
-      - Prefer accept-dns=false on first production enrollment to avoid changing production DNS behavior without a separate need.
+    note: Retained fallback/bridge path. Do not delete while it remains useful as recovery access.
 
 fallback_order:
   karmo-ai01:
