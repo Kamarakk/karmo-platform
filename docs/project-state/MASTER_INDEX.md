@@ -19,11 +19,15 @@ the files listed here.
 | [KARMO_DASHBOARD.md](KARMO_DASHBOARD.md) | Human-facing Mission Control view of the current stage, task, blocker, next gate, and near-term direction; refreshed during meaningful PROJECT SAVE updates. |
 | [CHANGE_LOG.md](CHANGE_LOG.md) | Chronological record of merged work and production actions. |
 | [SOFTWARE_INVENTORY.md](SOFTWARE_INVENTORY.md) | Services/software installed or running, isolated vs. production. |
-| [NETWORK_INVENTORY.md](NETWORK_INVENTORY.md) | Hosts, addresses, ports known for KARMO. |
+| [NETWORK_INVENTORY.md](NETWORK_INVENTORY.md) | Hosts, addresses, ports known for KARMO, including the verified KVE02 Tailscale jump path to KARMO-AI01. |
 | [DASHBOARD_INVENTORY.md](DASHBOARD_INVENTORY.md) | Monitoring/dashboard surfaces (currently none established). |
 | [COMMAND_LOG.md](COMMAND_LOG.md) | Commands materially necessary to reproduce or undo H0.1–H0.4. |
 | [ROLLBACK_AND_REMOVAL.md](ROLLBACK_AND_REMOVAL.md) | Backup/rollback locations and procedures per phase. |
 | [NEXT_STEPS.md](NEXT_STEPS.md) | Outstanding/blocked items and the next authorized action. |
+
+## Operational runbooks
+
+- `docs/operations/KARMO_REMOTE_ACCESS_RUNBOOK.md` — durable remote-access procedure for reaching KARMO-AI01 from KARMO-DEV01 through KVE02 over Tailscale, including routing-vs-authentication diagnosis and Remote Desktop Commander reconnection. Read this before changing SSH credentials or networking during a remote-access failure.
 
 ## Authoritative governance (not duplicated here)
 
@@ -106,3 +110,7 @@ without committing anything. See CHANGE_LOG.md for detail.
 2026-09-10 — Worker Runtime v0.1 source merge closeout completed and the
 human-facing `KARMO_DASHBOARD.md` Mission Control view added to keep project
 stage/task/gate orientation visible during long engineering sessions.
+
+2026-09-11 — durable remote-access runbook added and the verified KVE02
+Tailscale jump path to KARMO-AI01 recorded in `NETWORK_INVENTORY.md` so new
+agents can recover remote access without reconstructing the topology from chat.

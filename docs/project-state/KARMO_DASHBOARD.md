@@ -10,8 +10,8 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - KARMO Control & Approval Layer (Core v2 prototypes) — ✅ MERGED
 - Trusted Computer Worker System (Worker Runtime v0.1) — ✅ SOURCE MERGE CLOSEOUT COMPLETE
 - BloomBoss Historical Data Intelligence (Phase 1) — 🟡 PR #32 BUILD GATE READY; NOT MERGED OR DEPLOYED
-- Production deployment of Core/Worker/BloomBoss — ⛔ NOT PART OF THIS BLOOMBOSS WORKLOAD
-- Real Worker Runtime network transport — ⛔ NOT ENABLED
+- Production deployment of the Trusted Computer Worker System — ⛔ NOT STARTED
+- Real network connection for trusted worker computers (Worker Runtime network transport) — ⛔ NOT ENABLED
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -21,40 +21,25 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Integrity & Consistency Checker (H0.4 Integrity/Reconciliation) — compares expected KARMO state with database/vector-store state and reports mismatches.
 - KARMO Control & Approval Layer (Core v2 prototypes) — defines tool permissions, approval rules, jobs, configuration patterns, and execution evidence.
 - Trusted Computer Worker System (Worker Runtime v0.1) — lets approved computers register, advertise safe capabilities, pull bounded jobs, execute them in a sandbox, and return results/evidence.
-- BloomBoss Historical Data Intelligence — normalizes BloomBoss purchase/sales/listing history, preserves unknowns and provenance, validates contradictions, fingerprints raw evidence, and calculates reproducible business/quality metrics.
+- BloomBoss Historical Data Intelligence — normalizes purchase, sales, and listing history; preserves unknowns and provenance; validates contradictions; fingerprints raw evidence; and calculates reproducible business/quality metrics.
 
 ## CURRENT TASK
 
-Close the first BloomBoss Historical Data Intelligence build gate on PR #32 without crossing the merge/deployment approval boundary.
+Keep BloomBoss Phase 1 synchronized with current `main`, validate the refreshed PR #32 merge candidate, and preserve the existing high-level merge approval gate.
 
 ## CURRENT ISSUE
 
-No active Phase 1 code blocker. The latest realized-return implementation/test commit `7b69483102e9f07cf829e35d90b07b91d6ff223b` passed GitHub Actions run #91 using the automatic targeted BloomBoss suite.
-
-Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, cultivar/channel outcomes, deterministic inventory-exposure analysis, and historical listing evidence are present.
-
-Supplier and purchase-batch intelligence now separates **gross margin** from **return on known cost** and adds a stricter **known-outcome return** that subtracts explicitly known plant-loss cost. This prevents profitable surviving units from hiding known supplier/batch losses. Unknown cost remains unknown, and active unsold inventory remains capital exposure rather than being mislabeled as a realized loss.
-
-Supplier summaries now also expose average days-to-sale when dates are known, allowing later comparison of return and capital velocity without inventing dates.
-
-Known purchase-quantity reconstruction gaps are reported without inventing missing units or converting incomplete reconstruction into assumed plant loss.
-
-Listing validation reports broken inventory references, listings dated before known acquisition, and listings dated after a known sale without repairing or inventing missing facts.
-
-Historical listing-activity analytics report listing volume, unique units listed, known asking-price averages, and completed listing durations overall and by channel. They intentionally do not infer that an unlisting was a sale or guess a realized sale/listing relationship.
-
-Inventory exposure identifies active unsold units, known capital tied up, unknown-cost exposure, and days held measured to the latest date represented in the historical source rather than today's date.
+PR #32 diverged from `main` after newer Core/Worker work landed. The BloomBoss implementation itself had previously passed its isolated targeted suite; branch synchronization is required before the merge gate can be trusted again.
 
 ## NEXT GATE
 
-High-level approval to merge PR #32 when Kamara chooses to promote this Phase 1 slice. Merge is not authorized by the autonomous build instruction.
+After synchronization, rerun the targeted BloomBoss validation and confirm PR #32 is mergeable. A successful refreshed gate returns the decision to Kamara: merge or decline PR #32. Merge remains outside this workload's authority.
 
 ## AFTER THIS
 
 - Use the real BloomBoss historical worksheet/export as the first source dataset in approved non-production scope.
-- Measure field completeness, relationship findings, listing-history contradictions, listing activity, inventory exposure, realized return, and known-outcome return before trusting supplier/purchase conclusions.
-- Use loss-aware batch/supplier results to identify purchases that actually destroyed or retained capital instead of ranking only successful survivors.
-- Implement durable local/dev persistence only after the persistence design is reviewed at the next approved build slice.
+- Measure completeness, relationship findings, listing activity, inventory exposure, realized return, and known-outcome return before trusting supplier/purchase conclusions.
+- Implement durable local/dev persistence only after the next approved build slice.
 - Continue the approved BloomBoss phase order; do not start marketplace write automation or external customer actions.
 - Production remains separately approval-gated.
 
