@@ -29,13 +29,19 @@ Close the first BloomBoss Historical Data Intelligence build gate on PR #32 with
 
 ## CURRENT ISSUE
 
-No active Phase 1 code blocker. GitHub Actions run #78 passed on validated code commit `fc559b266a9baac6ebf706b4cb276f429e7b183b`; the automatic targeted suite now includes **34 BloomBoss tests**.
+No active Phase 1 code blocker. The latest realized-return implementation/test commit `7b69483102e9f07cf829e35d90b07b91d6ff223b` passed GitHub Actions run #91 using the automatic targeted BloomBoss suite.
 
 Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, cultivar/channel outcomes, deterministic inventory-exposure analysis, and historical listing evidence are present.
 
+Supplier and purchase-batch intelligence now separates **gross margin** from **return on known cost** and adds a stricter **known-outcome return** that subtracts explicitly known plant-loss cost. This prevents profitable surviving units from hiding known supplier/batch losses. Unknown cost remains unknown, and active unsold inventory remains capital exposure rather than being mislabeled as a realized loss.
+
+Supplier summaries now also expose average days-to-sale when dates are known, allowing later comparison of return and capital velocity without inventing dates.
+
+Known purchase-quantity reconstruction gaps are reported without inventing missing units or converting incomplete reconstruction into assumed plant loss.
+
 Listing validation reports broken inventory references, listings dated before known acquisition, and listings dated after a known sale without repairing or inventing missing facts.
 
-Historical listing-activity analytics now report listing volume, unique units listed, known asking-price averages, and completed listing durations overall and by channel. They intentionally do not infer that an unlisting was a sale or guess a realized sale/listing relationship.
+Historical listing-activity analytics report listing volume, unique units listed, known asking-price averages, and completed listing durations overall and by channel. They intentionally do not infer that an unlisting was a sale or guess a realized sale/listing relationship.
 
 Inventory exposure identifies active unsold units, known capital tied up, unknown-cost exposure, and days held measured to the latest date represented in the historical source rather than today's date.
 
@@ -46,8 +52,8 @@ High-level approval to merge PR #32 when Kamara chooses to promote this Phase 1 
 ## AFTER THIS
 
 - Use the real BloomBoss historical worksheet/export as the first source dataset in approved non-production scope.
-- Measure field completeness, relationship findings, listing-history contradictions, listing activity, and inventory exposure before trusting margin/supplier conclusions.
-- Use batch-level loss/outcome results to identify purchases that actually destroyed or retained capital instead of inferring from supplier averages alone.
+- Measure field completeness, relationship findings, listing-history contradictions, listing activity, inventory exposure, realized return, and known-outcome return before trusting supplier/purchase conclusions.
+- Use loss-aware batch/supplier results to identify purchases that actually destroyed or retained capital instead of ranking only successful survivors.
 - Implement durable local/dev persistence only after the persistence design is reviewed at the next approved build slice.
 - Continue the approved BloomBoss phase order; do not start marketplace write automation or external customer actions.
 - Production remains separately approval-gated.
