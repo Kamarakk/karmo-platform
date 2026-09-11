@@ -5,7 +5,7 @@ Status: **VERIFIED IN ISOLATED GITHUB/DEV SCOPE — MERGE NOT AUTHORIZED**
 Date: 2026-09-11
 PR: #32
 Branch: `feat/bloomboss-historical-intelligence`
-Validated code commit: `8bb18bcae24a5770d4f8332d4122b08522afe8c4`
+Validated code commit: `c796a852a48a3c11343b7dd01be2b2394b18e124`
 
 ## Purpose
 
@@ -19,14 +19,18 @@ Record the first meaningful build gate for BloomBoss Historical Data Intelligenc
 - duplicate/conflicting identity checks;
 - relationship contradiction validation;
 - baseline business, supplier, cultivar, channel, capital-tied-up, and completeness analytics;
+- gross margin computed only across sold units with known matched cost basis, so unknown costs are never treated as zero;
+- purchase-batch outcome analytics exposing sell-through, loss rate, known cost lost, matched realized profit/margin, and average days to sale;
 - streaming SHA-256 raw-source fingerprinting;
-- reproducible `HistoricalImportSnapshot` combining source identity, normalized records, relationship findings, analytics, supplier results, and quality coverage;
+- reproducible `HistoricalImportSnapshot` combining source identity, normalized records, relationship findings, business/supplier/batch analytics, and quality coverage;
+- read-only JSON report/CLI exposing the same source-fingerprinted snapshot without modifying raw evidence;
 - design-only durable persistence boundary preserving raw evidence and defining replay/idempotency, transaction, mixed-state, observability, and rollback expectations;
 - isolated read-only GitHub Actions validation workflow.
 
 ## Validation
 
 GitHub Actions workflow: `BloomBoss Phase 1`
+Run: #20
 Runner: Ubuntu 24.04
 Python: 3.12.14
 Pytest: 9.1.1
@@ -35,13 +39,13 @@ Secrets used by BloomBoss code/tests: none
 
 Targeted command:
 
-`python -m pytest -q tests/test_bloomboss_phase1.py tests/test_bloomboss_history_snapshot.py tests/test_bloomboss_import_errors.py`
+`python -m pytest -q tests/test_bloomboss_phase1.py tests/test_bloomboss_history_snapshot.py tests/test_bloomboss_import_errors.py tests/test_bloomboss_report.py`
 
 Result:
 
-`16 passed in 0.08s`
+`19 passed in 0.10s`
 
-Both the push-triggered run and PR-triggered run for validated commit `8bb18bca` completed successfully.
+Validated commit `c796a852` completed successfully in GitHub Actions.
 
 ## Invariant/authority check
 
@@ -50,13 +54,15 @@ Both the push-triggered run and PR-triggered run for validated commit `8bb18bca`
 - I-04: persistence design defines replay identity as source digest + parser/schema version; no durable replay implementation yet.
 - I-05: source hashing is chunked; production-scale streaming remains deferred.
 - I-06: raw evidence remains separable/rebuildable; future mixed-state behavior is explicit in the persistence design.
-- I-07: row failures, validation issue codes, quality coverage, and source identity are visible.
+- I-07: row failures, validation issue codes, quality coverage, source identity, matched-margin coverage, and batch outcomes are visible.
 - I-08: only targeted Phase 1 validation was run.
 - I-09: no production, external marketplace/customer action, financial write, OBS, deployment, or secret use occurred.
 
 ## Risk
 
 This remains an in-memory historical-intelligence slice. It has not yet been exercised against the real BloomBoss reconstructed history and has no durable database implementation. Passing synthetic/targeted tests does not establish the completeness of real business history.
+
+Matched gross margin is intentionally narrower than total-revenue margin: only sales whose inventory units have known allocated landed cost are included in that denominator. This prevents incomplete historical cost data from overstating profitability.
 
 ## Rollback
 
