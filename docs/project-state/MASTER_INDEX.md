@@ -19,15 +19,22 @@ the files listed here.
 | [KARMO_DASHBOARD.md](KARMO_DASHBOARD.md) | Human-facing Mission Control view of the current stage, task, blocker, next gate, and near-term direction; refreshed during meaningful PROJECT SAVE updates. |
 | [CHANGE_LOG.md](CHANGE_LOG.md) | Chronological record of merged work and production actions. |
 | [SOFTWARE_INVENTORY.md](SOFTWARE_INVENTORY.md) | Services/software installed or running, isolated vs. production. |
-| [NETWORK_INVENTORY.md](NETWORK_INVENTORY.md) | Hosts, addresses, ports known for KARMO, including the verified KVE02 Tailscale jump path to KARMO-AI01. |
+| [NETWORK_INVENTORY.md](NETWORK_INVENTORY.md) | Hosts, addresses, ports known for KARMO, including verified/fallback access paths. |
 | [DASHBOARD_INVENTORY.md](DASHBOARD_INVENTORY.md) | Monitoring/dashboard surfaces (currently none established). |
 | [COMMAND_LOG.md](COMMAND_LOG.md) | Commands materially necessary to reproduce or undo H0.1–H0.4. |
 | [ROLLBACK_AND_REMOVAL.md](ROLLBACK_AND_REMOVAL.md) | Backup/rollback locations and procedures per phase. |
 | [NEXT_STEPS.md](NEXT_STEPS.md) | Outstanding/blocked items and the next authorized action. |
 
-## Operational runbooks
+## Access & connection knowledge system
 
-- `docs/operations/KARMO_REMOTE_ACCESS_RUNBOOK.md` — durable remote-access procedure for reaching KARMO-AI01 from KARMO-DEV01 through KVE02 over Tailscale, including routing-vs-authentication diagnosis and Remote Desktop Commander reconnection. Read this before changing SSH credentials or networking during a remote-access failure.
+- `docs/access/README.md` — front door for access/routing/login work.
+- `docs/access/HOST_ACCESS_REGISTRY.yaml` — machine-readable host identity, role, addresses, SSH context, and alternate-access metadata.
+- `docs/access/AUTH_METHOD_REGISTRY.yaml` — machine-readable authentication/privilege method references; never stores secret values.
+- `docs/access/CONNECTION_PATHS.yaml` — context-aware HOME/OFFICE/TRAVEL/AGENT route selection and fallback paths.
+- `docs/access/ACCESS_RECOVERY.md` — routing → transport → SSH → authentication → authorization → application recovery order.
+- `docs/operations/KARMO_REMOTE_ACCESS_RUNBOOK.md` — historical/current detailed KVE02 jump-host procedure; retained as a specific runbook beneath the structured registry.
+
+Agents must resolve context and consult this access system before changing credentials or networking during a connectivity failure.
 
 ## Authoritative governance (not duplicated here)
 
@@ -36,6 +43,7 @@ the files listed here.
 - `docs/governance/KARMO_ENGINEERING_INVARIANTS.md` — I-01 through I-09,
   single source of truth for permanent engineering invariants; governs over
   this record set if the two ever disagree.
+- `docs/governance/KARMO_SYSTEM_FIT_REVIEW.md` — mandatory whole-system fit + reuse review before meaningful new tools/services/workers/access paths/configuration; prevents local fixes from adding avoidable architecture/lifecycle burden.
 - `docs/governance/KARMO_VALIDATION_LADDER.md` — reusable 10-rung validation
   sequence for future workloads; operationalizes I-08, does not replace it.
 - `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md` — defines what
@@ -49,8 +57,8 @@ the files listed here.
   and `CLAUDE.md`. Extended the same day with a **ChatGPT Session
   Persistence** subsection (same rule, not a second rule): a ChatGPT
   planning-session handoff only counts as recorded once a repository-capable
-  agent reconciles it against `docs/project-state/` and commits the result —
-  ChatGPT conversation history itself is not the authoritative record.
+  agent reconciles it against `docs/project-state/` and commits the
+  result — ChatGPT conversation history itself is not the authoritative record.
 - `KARMO_DASHBOARD.md` is the concise human-facing cockpit for that same
   record set, not a competing source of truth. During a meaningful PROJECT
   SAVE, refresh it whenever the current stage, current task, blocker/issue,
@@ -65,6 +73,7 @@ the files listed here.
   architecture against the product vision; no credible blocker found for
   any future domain, with forward design recommendations for what gets
   built next.
+- `docs/plans/KARMO_SYSTEM_STEWARDSHIP_PLAN.md` — approved direction for QA, Security, Reliability/Maintenance, Housekeeping/Data-Hygiene, and Agent Governance roles implemented as one shared stewardship capability over existing Core/Worker infrastructure rather than separate always-on daemons.
 - `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md` — the 5 remaining
   foundation workloads, each with its own scope, invariant impact,
   approval boundaries, and autonomy boundaries.
@@ -111,6 +120,6 @@ without committing anything. See CHANGE_LOG.md for detail.
 human-facing `KARMO_DASHBOARD.md` Mission Control view added to keep project
 stage/task/gate orientation visible during long engineering sessions.
 
-2026-09-11 — durable remote-access runbook added and the verified KVE02
-Tailscale jump path to KARMO-AI01 recorded in `NETWORK_INVENTORY.md` so new
-agents can recover remote access without reconstructing the topology from chat.
+2026-09-11 — initial remote-access runbook and KVE02 Tailscale jump path recorded.
+
+2026-09-11 — structured Access & Connection Registry, Mandatory System-Fit & Reuse Review, and System Stewardship design added on the feature branch so future agents evaluate whole-system fit before adding tools and can recover access from durable structured project knowledge.

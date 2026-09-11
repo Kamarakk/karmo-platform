@@ -1,0 +1,99 @@
+version: 1
+updated: 2026-09-11
+status_vocabulary: [VERIFIED, HISTORICAL, NEEDS_VERIFICATION, RETIRED]
+
+hosts:
+  karmo-ai01:
+    role: production-ai-host
+    environment: production
+    hostname: karmo-ai01
+    os: Ubuntu 24.04.4
+    primary_user: lofason
+    addresses:
+      home_lan:
+        ip: 192.168.1.235
+        subnet: 192.168.1.0/24
+        status: VERIFIED
+        last_verified: 2026-09-11
+      tailscale:
+        ip: 100.75.239.44
+        status: VERIFIED
+        last_verified: 2026-09-11
+        note: Official Tailscale client enrolled successfully with production DNS acceptance disabled. Direct OpenSSH-over-Tailscale smoke from KARMO-DEV01 remains a separate client-side verification item.
+    ssh:
+      port: 22
+      alias: karmo-ai01
+      identity_reference: karmo_admin_ed25519
+    privilege:
+      sudo_required_for_system_changes: true
+    known_runtime:
+      systemd: true
+      docker: true
+      postgres: true
+      qdrant: true
+      ollama: true
+    other_access_methods:
+      remote_desktop_commander:
+        status: VERIFIED
+        mode: foreground-session
+      local_console:
+        status: VERIFIED
+      vscode_remote_ssh:
+        status: NEEDS_VERIFICATION
+    notes:
+      - Tailscale provides direct network reachability only; preserve existing OpenSSH/key authentication.
+      - Tailscale SSH is not enabled.
+      - No subnet routes or exit-node capability were configured.
+      - Existing production services and data must not be restarted or modified by access-only changes unless explicitly required and approved.
+
+  kve02:
+    role: proxmox-jump-host
+    environment: infrastructure
+    hostname: kve02
+    primary_user: root
+    addresses:
+      tailscale:
+        ip: 100.75.39.34
+        status: VERIFIED
+        last_verified: 2026-09-11
+      home_lan:
+        ip: null
+        status: NEEDS_VERIFICATION
+    access_role:
+      - former primary remote bridge from tailnet to karmo-ai01 home LAN
+      - retained verified fallback path after direct karmo-ai01 Tailscale enrollment
+
+  karmo-dev01:
+    role: development-workstation
+    environment: development
+    hostname: abcds-MacBook-Pro
+    primary_user: sdcity
+    addresses:
+      tailscale:
+        ip: 100.109.176.0
+        status: VERIFIED
+      current_lan:
+        ip: dynamic
+        status: NEEDS_VERIFICATION
+    tools:
+      - Claude Code
+      - GitHub CLI
+      - VS Code
+      - OpenSSH
+
+  cia103a1:
+    role: office-workstation
+    environment: operator-client
+    addresses:
+      tailscale:
+        ip: 100.117.202.20
+        status: VERIFIED
+
+  lofa1:
+    role: unknown-or-separate-device
+    environment: unknown
+    addresses:
+      tailscale:
+        ip: 100.90.64.51
+        status: VERIFIED
+    note: Never assume this is karmo-ai01. Identity remains NEEDS_VERIFICATION.
