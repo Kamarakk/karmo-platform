@@ -24,4 +24,5 @@ jobs:
       - name: Install pytest
         run: python -m pip install --disable-pip-version-check pytest
       - name: Run Core targeted suite
-        run: python -m pytest -q core-service/tests/test_core_service.py
+        working-directory: core-service
+        run: python -m pytest -q tests/test_core_service.py
