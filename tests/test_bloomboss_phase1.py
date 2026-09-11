@@ -3,9 +3,9 @@ from decimal import Decimal
 
 import pytest
 
-from bloomboss.analytics import summarize_business
+from bloomboss.analytics import summarize_business, summarize_suppliers
 from bloomboss.ingest import load_history_csv
-from bloomboss.models import PlantStatus, PlantUnit, Sale
+from bloomboss.models import PlantStatus, PlantUnit, PurchaseBatch, Sale
 
 
 def test_unknown_money_stays_unknown(tmp_path):
@@ -72,3 +72,28 @@ def test_negative_money_fails_instead_of_becoming_history(tmp_path):
     )
     with pytest.raises(ValueError, match="negative money"):
         load_history_csv(path)
+
+
+def test_supplier_summary_keeps_unknown_supplier_separate():
+    batches = [
+        PurchaseBatch("B1", "Pink Plumbea", "Supplier A"),
+        PurchaseBatch("B2", "Pink Plumbea", None),
+    ]
+    units = [
+        PlantUnit("U1", "B1", "Pink Plumbea", PlantStatus.SOLD, Decimal("80")),
+        PlantUnit("U2", "B1", "Pink Plumbea", PlantStatus.LOST, Decimal("80")),
+        PlantUnit("U3", "B2", "Pink Plumbea", PlantStatus.SOLD, None),
+    ]
+    sales = [
+        Sale("S1", "U1", "Palmstreet", Decimal("185")),
+        Sale("S2", "U3", "Etsy", Decimal("150")),
+    ]
+
+    summary = summarize_suppliers(batches, units, sales)
+    assert summary["Supplier A"]["units"] == 2
+    assert summary["Supplier A"]["sold"] == 1
+    assert summary["Supplier A"]["lost"] == 1
+    assert summary["Supplier A"]["realized_profit_on_known_costs"] == Decimal("105")
+    assert summary["Supplier A"]["sell_through_rate"] == Decimal("0.5")
+    assert summary["UNKNOWN"]["units"] == 1
+    assert summary["UNKNOWN"]["units_with_known_cost"] == 0
