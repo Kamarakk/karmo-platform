@@ -1,8 +1,11 @@
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
 from bloomboss.listing_history import load_listing_history_csv
+from bloomboss.models import ListingHistoryEvent, PlantStatus, PlantUnit, Sale
+from bloomboss.validation import validate_listing_relationships
 
 
 def _write(tmp_path, body):
@@ -55,3 +58,47 @@ def test_listing_history_rejects_negative_asking_price(tmp_path):
     )
     with pytest.raises(ValueError, match="row 2: negative money value"):
         load_listing_history_csv(path)
+
+
+def test_listing_relationships_report_missing_unit_without_repair():
+    listings = [ListingHistoryEvent("L1", "MISSING", "Palmstreet", listed_date=date(2026, 1, 2))]
+    issues = validate_listing_relationships(listings, [], [])
+    assert [(issue.code, issue.entity_id) for issue in issues] == [("LISTING_UNIT_MISSING", "L1")]
+
+
+def test_listing_relationships_report_listing_before_acquisition():
+    units = [
+        PlantUnit(
+            unit_id="U1",
+            batch_id="B1",
+            cultivar="Pink Cuprea",
+            status=PlantStatus.LISTED,
+            acquired_date=date(2026, 1, 10),
+        )
+    ]
+    listings = [ListingHistoryEvent("L1", "U1", "Palmstreet", listed_date=date(2026, 1, 9))]
+    issues = validate_listing_relationships(listings, units, [])
+    assert [issue.code for issue in issues] == ["LISTING_BEFORE_ACQUISITION"]
+
+
+def test_listing_relationships_report_listing_after_known_sale():
+    units = [
+        PlantUnit(
+            unit_id="U1",
+            batch_id="B1",
+            cultivar="Pink Cuprea",
+            status=PlantStatus.SOLD,
+            acquired_date=date(2026, 1, 1),
+        )
+    ]
+    sales = [Sale("S1", "U1", "Palmstreet", Decimal("200"), sale_date=date(2026, 1, 15))]
+    listings = [ListingHistoryEvent("L1", "U1", "Etsy", listed_date=date(2026, 1, 16))]
+    issues = validate_listing_relationships(listings, units, sales)
+    assert [issue.code for issue in issues] == ["LISTING_AFTER_SALE"]
+
+
+def test_listing_relationships_do_not_invent_unknown_date_conflicts():
+    units = [PlantUnit("U1", "B1", "Pink Cuprea", status=PlantStatus.UNKNOWN)]
+    listings = [ListingHistoryEvent("L1", "U1", "Palmstreet")]
+    sales = [Sale("S1", "U1", "Palmstreet", Decimal("200"))]
+    assert validate_listing_relationships(listings, units, sales) == []
