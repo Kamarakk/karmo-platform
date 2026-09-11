@@ -29,9 +29,9 @@ Close the first BloomBoss Historical Data Intelligence build gate on PR #32 with
 
 ## CURRENT ISSUE
 
-No active Phase 1 code blocker. The targeted GitHub Actions suite passes **16/16** on Python 3.12 for the current build commit.
+No active Phase 1 code blocker. The targeted GitHub Actions suite passes **19/19** on Python 3.12 for validated code commit `c796a852`.
 
-Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, and a design-only durable persistence boundary are now present.
+Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, and a design-only durable persistence boundary are now present.
 
 ## NEXT GATE
 
@@ -41,6 +41,7 @@ High-level approval to merge PR #32 when Kamara chooses to promote this Phase 1 
 
 - Use the real BloomBoss historical worksheet/export as the first source dataset in approved non-production scope.
 - Measure field completeness and relationship findings before trusting margin/supplier conclusions.
+- Use batch-level loss/outcome results to identify purchases that actually destroyed or retained capital instead of inferring from supplier averages alone.
 - Implement durable local/dev persistence only after the persistence design is reviewed at the next approved build slice.
 - Continue the approved BloomBoss phase order; do not start marketplace write automation or external customer actions.
 - Production remains separately approval-gated.
