@@ -57,6 +57,24 @@ class PlantUnit:
 
 
 @dataclass(frozen=True)
+class ListingHistoryEvent:
+    """One historical listing period for a canonical inventory unit.
+
+    Listing history is separate from sale history because asking price/channel
+    evidence is not the same fact as a realized sale. Missing dates/prices stay
+    unknown rather than being inferred from sale records.
+    """
+
+    listing_id: str
+    unit_id: str
+    channel: str
+    listed_date: Optional[date] = None
+    unlisted_date: Optional[date] = None
+    asking_price: Optional[Decimal] = None
+    provenance: tuple[Provenance, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
 class Sale:
     sale_id: str
     unit_id: str
