@@ -1,0 +1,33 @@
+name: Worker Productionization
+
+on:
+  push:
+    branches:
+      - feat/worker-runtime-productionization
+  pull_request:
+    paths:
+      - 'worker-service/**'
+      - '.github/workflows/worker-productionization.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest
+        run: python -m pip install --disable-pip-version-check pytest
+      - name: Run Worker production-boundary suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}/core-service:${{ github.workspace }}/worker-service
+        run: python -m pytest -q worker-service/tests/test_worker_service.py
+      - name: Verify worker health CLI
+        env:
+          PYTHONPATH: ${{ github.workspace }}/core-service:${{ github.workspace }}/worker-service
+        run: python -m worker_service health
