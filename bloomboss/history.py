@@ -8,6 +8,7 @@ from .analytics import summarize_batches, summarize_business, summarize_supplier
 from .data_quality import summarize_history_quality
 from .ingest import load_history_csv
 from .models import PlantUnit, PurchaseBatch, Sale
+from .outcomes import summarize_channels, summarize_cultivars
 from .validation import ValidationIssue, validate_history_relationships
 
 
@@ -29,6 +30,8 @@ class HistoricalImportSnapshot:
     business_summary: dict
     supplier_summary: dict
     batch_summary: dict
+    cultivar_summary: dict
+    channel_summary: dict
     quality_summary: dict
 
 
@@ -61,5 +64,7 @@ def inspect_history_csv(path: str | Path) -> HistoricalImportSnapshot:
         business_summary=summarize_business(units, sales),
         supplier_summary=summarize_suppliers(batches, units, sales),
         batch_summary=summarize_batches(batches, units, sales),
+        cultivar_summary=summarize_cultivars(units, sales),
+        channel_summary=summarize_channels(units, sales),
         quality_summary=summarize_history_quality(batches, units, sales),
     )
