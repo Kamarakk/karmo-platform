@@ -7,50 +7,60 @@ Human-friendly working dashboard for keeping the active project stage visible du
 ## KARMO CURRENT STAGE
 
 - Foundation & Reliability Layer (Foundation v1) — ✅ COMPLETE
-- KARMO Control & Approval Layer (Core v2 prototypes) — ✅ MERGED
-- Trusted Computer Worker System (Worker Runtime v0.1) — ✅ SOURCE MERGE CLOSEOUT COMPLETE
-- Production deployment of the Trusted Computer Worker System — ⛔ NOT STARTED
-- Real network connection for trusted worker computers (Worker Runtime network transport) — ⛔ NOT ENABLED
+- KARMO Control & Approval Layer (Core) — ✅ DEPLOYED TO KARMO-AI01
+- Trusted Computer Worker System (Worker Runtime local service boundary) — ✅ DEPLOYED TO KARMO-AI01
+- Direct remote network path to KARMO-AI01 over Tailscale — ✅ ACTIVE (`100.75.239.44`)
+- Real Worker Runtime network transport / remote job execution — ⛔ NOT ENABLED
+- KARMO Access & Connection Registry — ✅ MERGED
+- KARMO System Stewardship design — ✅ MERGED; workers not yet implemented/deployed
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
-- Reliable Event Delivery (H0.1 Transactional Outbox) — makes sure important KARMO events are delivered reliably instead of being lost during failures.
-- Document Memory & Versioning (H0.2 Knowledge Lifecycle) — manages active document versions, lifecycle state, and provenance so old versions are not treated as current.
-- Experimental Hybrid Search (H0.3 Hybrid Retrieval) — combines semantic/vector search with keyword-style search. Evaluated, but intentionally NOT deployed to production.
-- Integrity & Consistency Checker (H0.4 Integrity/Reconciliation) — compares expected KARMO state with database/vector-store state and reports mismatches.
-- KARMO Control & Approval Layer (Core v2 prototypes) — defines tool permissions, approval rules, jobs, configuration patterns, and execution evidence.
-- Trusted Computer Worker System (Worker Runtime v0.1) — lets approved computers such as KARMO-DEV01 register, advertise safe capabilities, pull bounded jobs, execute them in a sandbox, and return results/evidence.
-- Real Worker Network Connection (Worker Runtime network transport) — future networking that would connect trusted worker computers to live KARMO. Not enabled yet.
+- Reliable Event Delivery (H0.1 Transactional Outbox) — protects event delivery across failures.
+- Document Memory & Versioning (H0.2 Knowledge Lifecycle) — manages active versions and provenance.
+- Experimental Hybrid Search (H0.3 Hybrid Retrieval) — evaluated and intentionally not promoted to production.
+- Integrity & Consistency Checker (H0.4 Integrity/Reconciliation) — detects state mismatches across KARMO data systems.
+- KARMO Control & Approval Layer (Core) — production control boundary for capability classes and approval requirements; local-only, no network listener.
+- Trusted Computer Worker System (Worker service boundary) — production-local Worker shell bound to Core; no network listener, no real worker transport, no capability execution, no persistent writes.
+- KARMO Access & Connection Registry — durable machine-readable host, route, authentication-reference, and recovery knowledge for humans and agents.
+- KARMO System Stewardship — planned QA, Security, Reliability/Maintenance, Housekeeping/Data-Hygiene, and Agent-Governance roles implemented over existing Core/Worker architecture rather than separate infrastructure stacks.
 
 ## CURRENT TASK
 
-Make KARMO project naming easier to understand by showing the plain-English purpose first and the engineering name in parentheses.
+Close the 2026-09-11 access + Core/Worker rollout with durable project-state records, then return focus to useful KARMO capabilities instead of more infrastructure churn.
 
 ## CURRENT ISSUE
 
-No active Worker Runtime code blocker.
+No active Core/Worker deployment blocker.
 
-The current usability issue is terminology: technical phase and component names such as H0.3 or Worker Runtime v0.1 do not immediately explain what the system does.
+One host-maintenance item is pending: Ubuntu installed kernel `6.8.0-139-generic` while KARMO-AI01 is currently running `6.8.0-138-generic`. A planned reboot is needed later to load the new kernel; no reboot was performed during this rollout.
+
+Direct OpenSSH over KARMO-AI01's new Tailscale address from KARMO-DEV01 remains a client-side verification item. The tailnet enrollment itself is verified and KARMO-AI01 is visible at `100.75.239.44`.
 
 ## NEXT GATE
 
-Merge this plain-English dashboard-label update, then keep using plain-English names first in active KARMO work while retaining technical names in parentheses for traceability.
+At the next convenient maintenance window:
+
+1. verify direct `ssh lofason@100.75.239.44` from KARMO-DEV01;
+2. schedule one controlled KARMO-AI01 reboot for the pending kernel update;
+3. after reboot, verify Tailscale, Core, Worker, and existing KARMO services once.
+
+These are maintenance/verification actions, not a reason to reopen architecture work.
 
 ## AFTER THIS
 
-- KARMO AI / Agent Engineering Course — Day 1
-- Continue applied Python + local-model learning
-- Review live production services before any new production deployment
-- Begin a directly useful capability, with BloomBoss as the leading practical candidate unless Kamara chooses another track
-- Do not restart infrastructure-heavy engineering by default; open a new engineering track only by explicit decision
+- Resume useful capability work, with BloomBoss still the leading practical domain unless Kamara chooses another track.
+- Use the new System-Fit & Reuse Review before adding new tools/services.
+- Build stewardship roles by reusing Core/Worker rather than creating separate daemons or platforms.
+- Keep real Worker network exposure deferred until the previously recorded security blockers are addressed.
 
 ## ACTIVE SAFETY / AUTHORITY BOUNDARY
 
-- Trusted Computer Worker System (Worker Runtime v0.1) is merged in source only
-- NOT deployed to production
-- NOT connected to production KARMO
-- No real worker network connection enabled
-- Production access remains approval-gated
+- Core is production-deployed, local-only, and has no network listener.
+- Worker service boundary is production-deployed, local-only, and has no real Worker network transport or capability execution enabled.
+- Tailscale provides direct network reachability only; Tailscale SSH is not enabled.
+- KVE02 remains the documented fallback remote path.
+- Production access remains task-specific and approval-gated.
 
 ## DEFERRED BEFORE ANY REAL WORKER NETWORK EXPOSURE
 
@@ -60,7 +70,7 @@ Merge this plain-English dashboard-label update, then keep using plain-English n
 4. Result-authenticity cryptographic binding
 5. Coordinator persistence
 
-These are deferred follow-ups, not active blockers for the merged isolated Trusted Computer Worker System (Worker Runtime v0.1).
+These are blockers for real Worker network exposure, not for the currently deployed local-only Worker boundary.
 
 ## SESSION STATUS FORMAT
 
@@ -69,8 +79,6 @@ For consequential KARMO work, ChatGPT should keep a compact orientation line nea
 `KARMO │ <plain-English current stage> (<technical name>) │ <current task> │ <step/gate> │ Next: <next action>`
 
 Plain-English purpose comes first. Engineering names remain in parentheses so Kamara can learn the real terminology without losing context.
-
-Claude Code should use this dashboard as the human-facing stage snapshot when beginning or closing a substantial KARMO workload.
 
 ## PROJECT SAVE REFRESH RULE
 
@@ -84,4 +92,4 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 
 Keep it short. Historical detail belongs in `CHANGE_LOG.md` and `CURRENT_STATE.md`, not here.
 
-Last refreshed: 2026-09-10
+Last refreshed: 2026-09-11
