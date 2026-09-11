@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from bloomboss.analytics import summarize_business, summarize_suppliers
+from bloomboss.analytics import summarize_batches, summarize_business, summarize_suppliers
 from bloomboss.data_quality import summarize_history_quality
 from bloomboss.ingest import load_history_csv
 from bloomboss.models import PlantStatus, PlantUnit, PurchaseBatch, Sale
@@ -34,7 +34,9 @@ def test_summary_uses_realized_values():
     summary = summarize_business(units, sales)
     assert summary["total_revenue"] == Decimal("185")
     assert summary["known_landed_cost"] == Decimal("160")
+    assert summary["realized_revenue_on_known_costs"] == Decimal("185")
     assert summary["realized_gross_profit_on_known_costs"] == Decimal("105")
+    assert summary["realized_gross_margin_on_known_costs"] == Decimal("105") / Decimal("185")
     assert summary["sell_through_rate"] == Decimal("0.5")
     assert summary["loss_rate"] == Decimal("0.5")
     assert summary["average_days_to_sale"] == 10
@@ -120,6 +122,36 @@ def test_supplier_summary_keeps_unknown_supplier_separate():
     assert summary["Supplier A"]["sell_through_rate"] == Decimal("0.5")
     assert summary["UNKNOWN"]["units"] == 1
     assert summary["UNKNOWN"]["units_with_known_cost"] == 0
+
+
+def test_batch_summary_exposes_purchase_losses_and_matched_margin():
+    batches = [
+        PurchaseBatch(
+            "B1",
+            "Pink Plumbea",
+            "Supplier A",
+            date(2026, 1, 1),
+            2,
+            Decimal("120"),
+            Decimal("30"),
+            Decimal("10"),
+        )
+    ]
+    units = [
+        PlantUnit("U1", "B1", "Pink Plumbea", PlantStatus.SOLD, Decimal("80"), date(2026, 1, 1)),
+        PlantUnit("U2", "B1", "Pink Plumbea", PlantStatus.LOST, Decimal("80"), date(2026, 1, 1)),
+    ]
+    sales = [Sale("S1", "U1", "Palmstreet", Decimal("200"), date(2026, 1, 21))]
+
+    summary = summarize_batches(batches, units, sales)["B1"]
+
+    assert summary["known_landed_cost_total"] == Decimal("160")
+    assert summary["known_cost_lost"] == Decimal("80")
+    assert summary["realized_revenue_on_known_costs"] == Decimal("200")
+    assert summary["realized_profit_on_known_costs"] == Decimal("120")
+    assert summary["realized_gross_margin_on_known_costs"] == Decimal("0.6")
+    assert summary["average_days_to_sale"] == 20
+    assert summary["loss_rate"] == Decimal("0.5")
 
 
 def test_history_quality_reports_coverage_without_imputing_missing_values():
