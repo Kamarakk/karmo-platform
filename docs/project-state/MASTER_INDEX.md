@@ -1,29 +1,23 @@
 # KARMO Master Index
 
-Status tags used throughout this record set: **VERIFIED** (confirmed by
-committed repo evidence, a merged PR, or explicit operator/Natalie
-attestation with concrete detail), **HISTORICAL** (was true, superseded or
-no longer the active state, kept for record), **NEEDS VERIFICATION**
-(stated but not independently confirmed by repo evidence or a read-only
-recheck).
+Status tags used throughout this record set: **VERIFIED** (confirmed by committed repo evidence, a merged PR, or explicit operator attestation with concrete detail), **HISTORICAL** (was true, superseded or no longer the active state, kept for record), **NEEDS VERIFICATION** (stated but not independently confirmed by repo evidence or a read-only recheck).
 
-This is the single index for KARMO's persistent project-record set. Do not
-create a competing set of these files elsewhere in the repository — update
-the files listed here.
+This is the single index for KARMO's persistent project-record set. Do not create a competing set of these files elsewhere in the repository — update the files listed here.
 
 ## Record set
 
 | File | Purpose |
 |---|---|
-| [CURRENT_STATE.md](CURRENT_STATE.md) | Snapshot of what is true right now across phases, production, and workflow decisions. |
-| [KARMO_DASHBOARD.md](KARMO_DASHBOARD.md) | Human-facing Mission Control view of the current stage, task, blocker, next gate, and near-term direction; refreshed during meaningful PROJECT SAVE updates. |
+| [CURRENT_STATE.md](CURRENT_STATE.md) | Detailed historical/current state record. **Important 2026-09-11 note:** it still contains older pre-rollout deployment wording; use `PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md`, the refreshed dashboard, and inventories for the latest rollout delta until that large file is fully reconciled. |
+| [KARMO_DASHBOARD.md](KARMO_DASHBOARD.md) | Human-facing Mission Control view of current stage, task, blocker, next gate, and near-term direction. |
 | [CHANGE_LOG.md](CHANGE_LOG.md) | Chronological record of merged work and production actions. |
 | [SOFTWARE_INVENTORY.md](SOFTWARE_INVENTORY.md) | Services/software installed or running, isolated vs. production. |
-| [NETWORK_INVENTORY.md](NETWORK_INVENTORY.md) | Hosts, addresses, ports known for KARMO, including verified/fallback access paths. |
-| [DASHBOARD_INVENTORY.md](DASHBOARD_INVENTORY.md) | Monitoring/dashboard surfaces (currently none established). |
-| [COMMAND_LOG.md](COMMAND_LOG.md) | Commands materially necessary to reproduce or undo H0.1–H0.4. |
+| [NETWORK_INVENTORY.md](NETWORK_INVENTORY.md) | Hosts, addresses, ports, and verified/fallback access paths. |
+| [DASHBOARD_INVENTORY.md](DASHBOARD_INVENTORY.md) | Monitoring/dashboard surfaces. |
+| [COMMAND_LOG.md](COMMAND_LOG.md) | Commands materially necessary to reproduce or undo hardening work. |
 | [ROLLBACK_AND_REMOVAL.md](ROLLBACK_AND_REMOVAL.md) | Backup/rollback locations and procedures per phase. |
-| [NEXT_STEPS.md](NEXT_STEPS.md) | Outstanding/blocked items and the next authorized action. |
+| [NEXT_STEPS.md](NEXT_STEPS.md) | Outstanding/blocked items and next authorized action. |
+| [PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md](PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md) | Latest durable delta for direct Tailscale enrollment, Core/Worker production deployment, PR #34/#35 merge, maintenance finding, and remaining verification. |
 
 ## Access & connection knowledge system
 
@@ -32,94 +26,42 @@ the files listed here.
 - `docs/access/AUTH_METHOD_REGISTRY.yaml` — machine-readable authentication/privilege method references; never stores secret values.
 - `docs/access/CONNECTION_PATHS.yaml` — context-aware HOME/OFFICE/TRAVEL/AGENT route selection and fallback paths.
 - `docs/access/ACCESS_RECOVERY.md` — routing → transport → SSH → authentication → authorization → application recovery order.
-- `docs/operations/KARMO_REMOTE_ACCESS_RUNBOOK.md` — historical/current detailed KVE02 jump-host procedure; retained as a specific runbook beneath the structured registry.
+- `docs/operations/KARMO_REMOTE_ACCESS_RUNBOOK.md` — KVE02 jump-host procedure retained as fallback/recovery documentation.
 
 Agents must resolve context and consult this access system before changing credentials or networking during a connectivity failure.
 
-## Authoritative governance (not duplicated here)
+## Authoritative governance
 
 - `AGENTS.md` — agent authority and boundaries.
 - `CLAUDE.md` — Claude Code implementer instructions.
-- `docs/governance/KARMO_ENGINEERING_INVARIANTS.md` — I-01 through I-09,
-  single source of truth for permanent engineering invariants; governs over
-  this record set if the two ever disagree.
-- `docs/governance/KARMO_SYSTEM_FIT_REVIEW.md` — mandatory whole-system fit + reuse review before meaningful new tools/services/workers/access paths/configuration; prevents local fixes from adding avoidable architecture/lifecycle burden.
-- `docs/governance/KARMO_VALIDATION_LADDER.md` — reusable 10-rung validation
-  sequence for future workloads; operationalizes I-08, does not replace it.
-- `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md` — defines what
-  Claude may execute autonomously within an approved workload and where it
-  must stop for Natalie.
-- `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`'s **Mandatory Project
-  Save Completion Rule** (added 2026-09-08, appended to that document, not
-  a separate file) — no major session/phase/workload is complete until
-  `docs/project-state/` is updated and durably committed (or explicitly
-  marked PROJECT SAVE PENDING). Referenced, not duplicated, from `AGENTS.md`
-  and `CLAUDE.md`. Extended the same day with a **ChatGPT Session
-  Persistence** subsection (same rule, not a second rule): a ChatGPT
-  planning-session handoff only counts as recorded once a repository-capable
-  agent reconciles it against `docs/project-state/` and commits the
-  result — ChatGPT conversation history itself is not the authoritative record.
-- `KARMO_DASHBOARD.md` is the concise human-facing cockpit for that same
-  record set, not a competing source of truth. During a meaningful PROJECT
-  SAVE, refresh it whenever the current stage, current task, blocker/issue,
-  next gate, or immediate post-task direction materially changes.
+- `docs/governance/KARMO_ENGINEERING_INVARIANTS.md` — I-01 through I-09 and production/project-save gates.
+- `docs/governance/KARMO_SYSTEM_FIT_REVIEW.md` — mandatory whole-system fit + reuse review before meaningful new tools/services/workers/access paths/configuration.
+- `docs/governance/KARMO_VALIDATION_LADDER.md` — reusable validation sequence.
+- `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md` — autonomous execution boundaries.
+- `KARMO_DASHBOARD.md` — concise human-facing cockpit for the same record set, not a competing source of truth.
 
-## Vision, architecture, and plans (not duplicated here)
+## Vision, architecture, and plans
 
-- `docs/vision/KARMO_PRODUCT_VISION.md` — current capabilities, planned
-  platform capabilities, and future (not-yet-approved) capability domains.
-  Documenting a future capability there does not authorize building it.
-- `docs/architecture/KARMO_EXTENSIBILITY_REVIEW.md` — review of H0.1–H0.4
-  architecture against the product vision; no credible blocker found for
-  any future domain, with forward design recommendations for what gets
-  built next.
-- `docs/plans/KARMO_SYSTEM_STEWARDSHIP_PLAN.md` — approved direction for QA, Security, Reliability/Maintenance, Housekeeping/Data-Hygiene, and Agent Governance roles implemented as one shared stewardship capability over existing Core/Worker infrastructure rather than separate always-on daemons.
-- `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md` — the 5 remaining
-  foundation workloads, each with its own scope, invariant impact,
-  approval boundaries, and autonomy boundaries.
-- `docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md` — the prepared (not executed)
-  Spec Kit initialization plan.
+- `docs/vision/KARMO_PRODUCT_VISION.md` — current/planned/future capabilities.
+- `docs/architecture/KARMO_EXTENSIBILITY_REVIEW.md` — architecture review against product vision.
+- `docs/plans/KARMO_SYSTEM_STEWARDSHIP_PLAN.md` — approved direction for QA, Security, Reliability/Maintenance, Housekeeping/Data-Hygiene, and Agent Governance roles implemented over existing Core/Worker infrastructure rather than separate always-on daemons.
+- `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md` — foundation completion planning record.
+- `docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md` — Spec Kit brownfield plan.
 
-## Phase evidence and handoff (not duplicated here)
+## Phase evidence and handoff
 
-- `docs/evidence/h01/`, `docs/evidence/h02/`, `docs/evidence/h04/` —
-  committed isolated-acceptance evidence.
-- `docs/evidence/h03/` — **untracked in git as of 2026-09-08**; now includes
-  `H03_EVALUATION_STATUS.md` documenting the NO-PROMOTION status and the
-  exact file set recommended for commit under Foundation Completion
-  Workload 1. See CURRENT_STATE.md conflict note.
-- `docs/handoff/h01/`, `docs/handoff/h02/`, `docs/handoff/h03/`,
-  `docs/handoff/h04/` — captured production references and frozen design.
-  `docs/handoff/h01/frozen-design/` is **untracked in git** as of
-  2026-09-08; see CURRENT_STATE.md conflict note.
+- `docs/evidence/h01/`, `docs/evidence/h02/`, `docs/evidence/h04/` — committed isolated-acceptance evidence.
+- `docs/evidence/h03/` — retained NO-PROMOTION research/evaluation evidence.
+- `docs/handoff/h01/`, `docs/handoff/h02/`, `docs/handoff/h03/`, `docs/handoff/h04/` — captured production references and frozen design.
 
 ## Prior external knowledge base (pre-repo, HISTORICAL)
 
-Per `docs/handoff/h01/KARMO_HANDOFF_2026-09-04_H01_BUILD_COMPLETE.md`, an
-earlier authoritative record lived outside this repository:
-`Karmo Knowledge Base/01_KARMO_HOME_LAB/{CURRENT_STATE.md, MASTER_BUILD_LOG.md,
-KARMO_FOUNDATION_HARDENING_PLAN.md}`. Those files are not present in this
-repository and are not superseded by this record set automatically — flagged
-**NEEDS VERIFICATION** whether they are still maintained separately or have
-been fully retired in favor of this repo's records.
+Per `docs/handoff/h01/KARMO_HANDOFF_2026-09-04_H01_BUILD_COMPLETE.md`, an earlier authoritative record lived outside this repository under `Karmo Knowledge Base/01_KARMO_HOME_LAB/`. Whether it is still maintained separately remains **NEEDS VERIFICATION**.
 
 ## Last reconciliation
 
-2026-09-08 — full reconciliation against H0.1–H0.4 evidence, the H0.4
-production cutover checkpoint, the legacy registry bootstrap stopping point,
-and the Spec Kit evaluation decision. See CHANGE_LOG.md for detail.
-
-2026-09-08 (same day, second pass) — foundation acceleration: product
-vision, extensibility review, foundation completion plan (5 workloads),
-validation ladder, autonomous execution contract, and Spec Kit brownfield
-plan created; two of three repository-hygiene issues partially addressed
-(migration comment corrected; H0.3 evidence given an explicit status note)
-without committing anything. See CHANGE_LOG.md for detail.
-
-2026-09-10 — Worker Runtime v0.1 source merge closeout completed and the
-human-facing `KARMO_DASHBOARD.md` Mission Control view added to keep project
-stage/task/gate orientation visible during long engineering sessions.
-
-2026-09-11 — initial remote-access runbook and KVE02 Tailscale jump path recorded.
-
-2026-09-11 — structured Access & Connection Registry, Mandatory System-Fit & Reuse Review, and System Stewardship design added on the feature branch so future agents evaluate whole-system fit before adding tools and can recover access from durable structured project knowledge.
+- 2026-09-08 — H0.1–H0.4 reconciliation and foundation acceleration records.
+- 2026-09-10 — Worker Runtime v0.1 source merge closeout and Mission Control dashboard.
+- 2026-09-11 — remote-access runbook and KVE02 jump path recorded.
+- 2026-09-11 — Access & Connection Registry, System-Fit & Reuse Review, and System Stewardship design merged.
+- 2026-09-11 — KARMO-AI01 joined Tailscale at `100.75.239.44`; Core and restricted local Worker services deployed/active; PR #34 and #35 merged; detailed rollout saved in `PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md`.
