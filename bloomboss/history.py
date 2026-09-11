@@ -8,6 +8,7 @@ from .analytics import summarize_batches, summarize_business, summarize_supplier
 from .data_quality import summarize_history_quality, summarize_listing_quality
 from .ingest import load_history_csv
 from .inventory import summarize_inventory_exposure
+from .listing_analytics import summarize_listing_activity
 from .listing_history import load_listing_history_csv
 from .models import ListingHistoryEvent, PlantUnit, PurchaseBatch, Sale
 from .outcomes import summarize_channels, summarize_cultivars
@@ -38,6 +39,7 @@ class HistoricalImportSnapshot:
     listing_source_size_bytes: int | None = None
     listing_relationship_issues: tuple[ValidationIssue, ...] = ()
     listing_quality_summary: dict | None = None
+    listing_activity_summary: dict | None = None
 
 
 def source_sha256(path: str | Path, *, chunk_size: int = 1024 * 1024) -> str:
@@ -95,4 +97,5 @@ def inspect_history_csv(
         listing_source_size_bytes=listing_size,
         listing_relationship_issues=tuple(listing_issues),
         listing_quality_summary=summarize_listing_quality(listings) if listing_path is not None else None,
+        listing_activity_summary=summarize_listing_activity(listings) if listing_path is not None else None,
     )
