@@ -25,11 +25,11 @@ methods:
 
   tailscale-device-identity:
     type: overlay-network-device-identity
-    targets: [kve02, karmo-dev01, cia103a1]
-    target_pending: [karmo-ai01]
+    targets: [kve02, karmo-dev01, cia103a1, karmo-ai01]
     secret_stored_in_repo: false
     status: VERIFIED
     notes:
+      - KARMO-AI01 enrolled 2026-09-11 at 100.75.239.44 with production DNS acceptance disabled.
       - Enrollment/authentication is performed through Tailscale's approved login flow.
       - Do not commit auth keys or reusable enrollment tokens.
       - Direct Tailscale networking does not require enabling Tailscale SSH.
