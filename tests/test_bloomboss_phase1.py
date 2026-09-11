@@ -37,7 +37,28 @@ def test_summary_uses_realized_values():
     assert summary["sell_through_rate"] == Decimal("0.5")
     assert summary["loss_rate"] == Decimal("0.5")
     assert summary["average_days_to_sale"] == 10
+    assert summary["active_inventory_units"] == 0
+    assert summary["known_capital_tied_up"] is None
+    assert summary["active_inventory_units_with_unknown_cost"] == 0
     assert summary["by_channel"]["Palmstreet"]["sales"] == 1
+
+
+def test_capital_tied_up_counts_only_active_unsold_known_costs():
+    units = [
+        PlantUnit("U1", "B1", "Pink Plumbea", PlantStatus.READY, Decimal("80")),
+        PlantUnit("U2", "B1", "Pink Plumbea", PlantStatus.GROWING, None),
+        PlantUnit("U3", "B1", "Pink Plumbea", PlantStatus.RETAINED, Decimal("55")),
+        PlantUnit("U4", "B1", "Pink Plumbea", PlantStatus.LOST, Decimal("40")),
+        PlantUnit("U5", "B1", "Pink Plumbea", PlantStatus.GIVEAWAY, Decimal("25")),
+        PlantUnit("U6", "B1", "Pink Plumbea", PlantStatus.SOLD, Decimal("60")),
+    ]
+    sales = [Sale("S1", "U6", "Palmstreet", Decimal("150"))]
+
+    summary = summarize_business(units, sales)
+
+    assert summary["active_inventory_units"] == 3
+    assert summary["known_capital_tied_up"] == Decimal("135")
+    assert summary["active_inventory_units_with_unknown_cost"] == 1
 
 
 def test_duplicate_unit_id_fails_visibly(tmp_path):
