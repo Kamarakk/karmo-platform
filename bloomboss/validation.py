@@ -31,9 +31,11 @@ def validate_history_relationships(
     issues: list[ValidationIssue] = []
     batch_by_id = {batch.batch_id: batch for batch in batches}
     unit_by_id = {unit.unit_id: unit for unit in units}
+    units_by_batch: dict[str, list[PlantUnit]] = {}
     sales_by_unit: dict[str, list[Sale]] = {}
 
     for unit in units:
+        units_by_batch.setdefault(unit.batch_id, []).append(unit)
         batch = batch_by_id.get(unit.batch_id)
         if batch is None:
             issues.append(
@@ -49,6 +51,22 @@ def validate_history_relationships(
                     "CULTIVAR_CONFLICT",
                     unit.unit_id,
                     f"unit cultivar {unit.cultivar!r} conflicts with batch cultivar {batch.cultivar!r}",
+                )
+            )
+
+    for batch in batches:
+        if batch.quantity is None:
+            continue
+        reconstructed_units = len(units_by_batch.get(batch.batch_id, []))
+        if reconstructed_units != batch.quantity:
+            issues.append(
+                ValidationIssue(
+                    "BATCH_QUANTITY_RECONSTRUCTION_GAP",
+                    batch.batch_id,
+                    (
+                        f"batch quantity is {batch.quantity}, but historical reconstruction "
+                        f"contains {reconstructed_units} inventory unit records"
+                    ),
                 )
             )
 
