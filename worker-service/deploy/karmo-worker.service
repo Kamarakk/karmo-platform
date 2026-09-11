@@ -1,0 +1,21 @@
+[Unit]
+Description=KARMO Trusted Computer Worker System
+After=karmo-core.service
+Requires=karmo-core.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/karmo/worker-service
+ExecStart=/usr/bin/python3 -m worker_service.runner
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/karmo/core-service:/opt/karmo/worker-service
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run
+
+[Install]
+WantedBy=multi-user.target
