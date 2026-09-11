@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from bloomboss.analytics import summarize_business, summarize_suppliers
+from bloomboss.data_quality import summarize_history_quality
 from bloomboss.ingest import load_history_csv
 from bloomboss.models import PlantStatus, PlantUnit, PurchaseBatch, Sale
 
@@ -97,3 +98,38 @@ def test_supplier_summary_keeps_unknown_supplier_separate():
     assert summary["Supplier A"]["sell_through_rate"] == Decimal("0.5")
     assert summary["UNKNOWN"]["units"] == 1
     assert summary["UNKNOWN"]["units_with_known_cost"] == 0
+
+
+def test_history_quality_reports_coverage_without_imputing_missing_values():
+    batches = [
+        PurchaseBatch(
+            "B1",
+            "Pink Plumbea",
+            "Supplier A",
+            date(2026, 1, 1),
+            2,
+            Decimal("100"),
+            Decimal("20"),
+            Decimal("10"),
+        ),
+        PurchaseBatch("B2", "Cuprea", None),
+    ]
+    units = [
+        PlantUnit("U1", "B1", "Pink Plumbea", PlantStatus.SOLD, Decimal("65"), date(2026, 1, 1)),
+        PlantUnit("U2", "B1", "Pink Plumbea", PlantStatus.GROWING, Decimal("65"), date(2026, 1, 1)),
+        PlantUnit("U3", "B2", "Cuprea", PlantStatus.UNKNOWN, None, None),
+    ]
+    sales = [
+        Sale("S1", "U1", "Palmstreet", Decimal("185"), date(2026, 1, 11), Decimal("10"), None)
+    ]
+
+    quality = summarize_history_quality(batches, units, sales)
+
+    assert quality["coverage"]["batch_supplier"] == Decimal("0.5")
+    assert quality["coverage"]["batch_full_landed_cost"] == Decimal("0.5")
+    assert quality["coverage"]["unit_allocated_landed_cost"] == Decimal(2) / Decimal(3)
+    assert quality["coverage"]["unit_status"] == Decimal(2) / Decimal(3)
+    assert quality["coverage"]["sale_selling_fees"] == Decimal("1")
+    assert quality["coverage"]["sale_outbound_shipping"] == Decimal("0")
+    assert quality["coverage"]["sale_net_revenue"] == Decimal("0")
+    assert quality["missing_counts"]["sold_unit_cost_basis"] == 0
