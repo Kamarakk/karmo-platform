@@ -16,6 +16,9 @@ def _matched_outcome_bucket() -> dict:
         "sold_units_with_known_cost": 0,
         "realized_revenue_on_known_costs": Decimal("0"),
         "realized_profit_on_known_costs": Decimal("0"),
+        "sold_units_with_known_net_profit": 0,
+        "known_net_revenue_on_known_costs": Decimal("0"),
+        "known_net_profit_on_known_costs": Decimal("0"),
         "known_cost_lost": Decimal("0"),
         "lost_units_with_known_cost": 0,
         "days_to_sale": [],
@@ -25,9 +28,12 @@ def _matched_outcome_bucket() -> dict:
 def _finalize(bucket: dict) -> dict:
     units = bucket["units"]
     sold_with_cost = bucket["sold_units_with_known_cost"]
+    sold_with_known_net = bucket["sold_units_with_known_net_profit"]
     lost_with_cost = bucket["lost_units_with_known_cost"]
     matched_revenue = bucket["realized_revenue_on_known_costs"]
     matched_profit = bucket["realized_profit_on_known_costs"]
+    known_net_revenue = bucket["known_net_revenue_on_known_costs"]
+    known_net_profit = bucket["known_net_profit_on_known_costs"]
     days = bucket.pop("days_to_sale")
     bucket["sell_through_rate"] = Decimal(bucket["sold"]) / Decimal(units) if units else None
     bucket["loss_rate"] = Decimal(bucket["lost"]) / Decimal(units) if units else None
@@ -35,6 +41,11 @@ def _finalize(bucket: dict) -> dict:
     bucket["realized_profit_on_known_costs"] = matched_profit if sold_with_cost else None
     bucket["realized_gross_margin_on_known_costs"] = (
         matched_profit / matched_revenue if sold_with_cost and matched_revenue != 0 else None
+    )
+    bucket["known_net_revenue_on_known_costs"] = known_net_revenue if sold_with_known_net else None
+    bucket["known_net_profit_on_known_costs"] = known_net_profit if sold_with_known_net else None
+    bucket["known_net_margin_on_known_costs"] = (
+        known_net_profit / known_net_revenue if sold_with_known_net and known_net_revenue != 0 else None
     )
     bucket["known_cost_lost"] = bucket["known_cost_lost"] if lost_with_cost else None
     bucket["average_days_to_sale"] = sum(days) / len(days) if days else None
@@ -110,6 +121,10 @@ def summarize_cultivars(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> di
                 bucket["sold_units_with_known_cost"] += 1
                 bucket["realized_revenue_on_known_costs"] += sale.sale_price
                 bucket["realized_profit_on_known_costs"] += sale.sale_price - unit.allocated_landed_cost
+                if sale.known_net_revenue is not None:
+                    bucket["sold_units_with_known_net_profit"] += 1
+                    bucket["known_net_revenue_on_known_costs"] += sale.known_net_revenue
+                    bucket["known_net_profit_on_known_costs"] += sale.known_net_revenue - unit.allocated_landed_cost
             if unit.acquired_date and sale.sale_date:
                 bucket["days_to_sale"].append((sale.sale_date - unit.acquired_date).days)
 
@@ -131,6 +146,10 @@ def summarize_channels(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dic
             bucket["sold_units_with_known_cost"] += 1
             bucket["realized_revenue_on_known_costs"] += sale.sale_price
             bucket["realized_profit_on_known_costs"] += sale.sale_price - unit.allocated_landed_cost
+            if sale.known_net_revenue is not None:
+                bucket["sold_units_with_known_net_profit"] += 1
+                bucket["known_net_revenue_on_known_costs"] += sale.known_net_revenue
+                bucket["known_net_profit_on_known_costs"] += sale.known_net_revenue - unit.allocated_landed_cost
         if unit and unit.acquired_date and sale.sale_date:
             bucket["days_to_sale"].append((sale.sale_date - unit.acquired_date).days)
 
