@@ -13,7 +13,7 @@ PR: #32 — `feat: start BloomBoss Historical Data Intelligence`
 
 ## Change completed
 
-Historical listing evidence is now integrated into the reproducible read-only import snapshot without collapsing it into sale facts:
+Historical listing evidence is integrated into the reproducible read-only import snapshot without collapsing it into sale facts:
 - optional listing CSV is independently SHA-256 fingerprinted and size-recorded;
 - canonical listing events are included in the snapshot while primary history remains backward-compatible;
 - listing-to-inventory/sale relationship issues are included in the snapshot;
@@ -21,28 +21,37 @@ Historical listing evidence is now integrated into the reproducible read-only im
 - the read-only report CLI accepts `--listings <path>` and reports both source identities;
 - both history and listing source files are proven unchanged by CLI tests.
 
+This session also added deterministic historical listing-activity analytics from listing evidence only:
+- total listing-event count and unique units listed;
+- count and average of known asking prices;
+- count and average duration of listings where both listed/unlisted dates are known;
+- the same measures grouped by sales channel;
+- no unlisting is treated as a sale, and no listing is matched to a realized sale by inference.
+
+The listing activity summary is now part of `HistoricalImportSnapshot` and the read-only JSON report whenever a listing source is explicitly supplied. Unknown asking prices and incomplete dates remain unknown and are excluded from averages rather than imputed.
+
 The existing contradiction checks remain in force: `LISTING_UNIT_MISSING`, `LISTING_BEFORE_ACQUISITION`, and `LISTING_AFTER_SALE`. Unknown values remain unknown; no asking price, date, or sale relationship is inferred.
 
 ## Validation
 
-Validated code commit: `b5478aa90075ce0fc6a4aef958fdec046c4c39e9`
+Validated code commit: `fc559b266a9baac6ebf706b4cb276f429e7b183b`
 GitHub Actions workflow: `BloomBoss Phase 1`
-Run: #69
-Runner: Ubuntu 24.04
-Python: 3.12.14
-Pytest: 9.1.1
-Result: **32 passed in 0.15s**
+Run: #78
+Runner: GitHub-hosted Ubuntu
+Result: **SUCCESS**; targeted BloomBoss suite passed, including the two new listing-activity tests.
 Repository permission: contents read-only
+
+The workflow automatically includes every `tests/test_bloomboss_*.py` file, so the two newly added tests extend the previously validated 32-test set to **34 targeted tests**.
 
 ## Risk and rollback
 
-Risk is limited to isolated historical import/reporting code and tests. The primary one-file history interface remains supported; optional listing evidence only activates when explicitly supplied.
+Risk is limited to isolated historical import/reporting code and tests. The primary one-file history interface remains supported; optional listing evidence and listing-activity analytics only activate when explicitly supplied.
 
-Rollback: revert the listing-evidence snapshot/report commits or close/remove PR #32 branch changes. No production rollback exists because production was untouched.
+Rollback: revert commits `d1b9553`, `07a3524`, `e91d643`, and `fc559b2`, or close/remove PR #32 branch changes. No production rollback exists because production was untouched.
 
 ## Current stopping point
 
-BloomBoss Phase 1 remains **BUILD GATE READY**. PR #32 is open and mergeable but intentionally unmerged.
+BloomBoss Phase 1 remains **BUILD GATE READY**. PR #32 is open and intentionally unmerged pending the high-level merge/promotion decision.
 
 ## Next action
 
