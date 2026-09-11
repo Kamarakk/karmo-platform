@@ -25,21 +25,25 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-Keep BloomBoss Phase 1 synchronized with current `main`, validate the refreshed PR #32 merge candidate, and preserve the existing high-level merge approval gate.
+Close the refreshed BloomBoss Historical Data Intelligence build gate on PR #32 without crossing the merge/deployment approval boundary.
 
 ## CURRENT ISSUE
 
-PR #32 diverged from `main` after newer Core/Worker work landed. The BloomBoss implementation itself had previously passed its isolated targeted suite; branch synchronization is required before the merge gate can be trusted again.
+No active Phase 1 code blocker. The branch is synchronized with current `main` and is 0 commits behind. Synchronization commit `bdad80ff1df4b01c4351aab355b8ce0848cab435` passed BloomBoss Phase 1 GitHub Actions run #97.
+
+Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, cultivar/channel outcomes, deterministic inventory-exposure analysis, and historical listing evidence remain present after synchronization.
+
+Supplier and purchase-batch intelligence separates gross margin from return on known cost and adds known-outcome return that subtracts explicitly known plant-loss cost. Unknown cost remains unknown, and active unsold inventory remains capital exposure rather than realized loss.
 
 ## NEXT GATE
 
-After synchronization, rerun the targeted BloomBoss validation and confirm PR #32 is mergeable. A successful refreshed gate returns the decision to Kamara: merge or decline PR #32. Merge remains outside this workload's authority.
+High-level approval to merge PR #32 when Kamara chooses to promote this Phase 1 slice. Merge is not authorized by the autonomous build instruction.
 
 ## AFTER THIS
 
 - Use the real BloomBoss historical worksheet/export as the first source dataset in approved non-production scope.
 - Measure completeness, relationship findings, listing activity, inventory exposure, realized return, and known-outcome return before trusting supplier/purchase conclusions.
-- Implement durable local/dev persistence only after the next approved build slice.
+- Implement durable local/dev persistence only after the persistence design is reviewed at the next approved build slice.
 - Continue the approved BloomBoss phase order; do not start marketplace write automation or external customer actions.
 - Production remains separately approval-gated.
 
