@@ -16,14 +16,22 @@ between the two PROJECT SAVE PRs). PR #19 was updated in place with 4
 adversarial-review fixes (154 → 160 tests); PR #20 and #21 were updated
 in place to correct the resulting stale test-count references. No new PR
 was created for these fixes — existing PRs were updated directly. **PRs
-#14–#24 have since merged into `main`** via the approved KARMO merge
-sequence (PR #23 at commit `11d4f86e04d22aae0072923ec387a11f0e205cbc`, PR
-#24 at commit `9f3215ecd3be31d2096273be4afb389edbcbf9f8`) — see "Worker
-Runtime v0.1 merge closeout" in `CURRENT_STATE.md`.
+#14–#25 have all merged into `main`** via the approved KARMO merge
+sequence (PR #22 at commit `4877aa967805bf540af0cc5645b2c82024ab11c9`, PR
+#23 at commit `11d4f86e04d22aae0072923ec387a11f0e205cbc`, PR #24 at commit
+`9f3215ecd3be31d2096273be4afb389edbcbf9f8`, PR #25 at commit
+`b95acb603e632855298cc0d454df00b2c3d22286`) — see "Worker Runtime v0.1
+final merged-main closeout" in `CURRENT_STATE.md`. **This merge-closeout
+thread is now complete — every PR from the Foundation-through-Worker-
+Runtime sequence is merged, decided, and closed.**
 
-The primary next action is now **Natalie's set of decisions listed
-below** — there is no outstanding foundation-blocking work, and nothing
-requires an urgent response.
+The primary next action is now **a future user decision on the next
+engineering capability** (see item 11 below) — there is no outstanding
+foundation-blocking work, no PR left to merge or reject, and nothing
+requires an urgent response. Per explicit direction: **infrastructure
+churn stops here.** Focus moves to the KARMO AI / Agent Engineering
+Learning Program and other directly useful capability work, unless
+Kamara explicitly chooses to open a new engineering track.
 
 ## Items requiring Natalie's decision
 
@@ -44,17 +52,16 @@ requires an urgent response.
 9. ~~Merge/reject PR #22~~ (`review/pr14-21-merge-readiness`) — **merged**
    into `main`.
 
-### From the Worker Runtime v0.1 workload (PENDING — the only open item left)
-10. **Merge/reject PR #25** (`worker-runtime/evidence`: evidence package +
-    PROJECT SAVE). PR #23 (implementation + tests, commit `11d4f86e`) and
-    PR #24 (architecture/security/network docs, commit `9f3215ec`) are
-    already merged into `main` — merged into the source tree, **not**
-    deployed or connected to production. PR #25 was retargeted to `main`
-    and, before this commit, was blocked by the expected conflicts in
-    these same three `docs/project-state/` files, now resolved here.
-    Authoritative verification: **68/68** worker-runtime tests, **161/161**
-    core-v2-prototypes regression — see
-    `docs/evidence/worker-runtime/RUN_SUMMARY.json`.
+### From the Worker Runtime v0.1 workload (MERGED)
+10. ~~Merge/reject PR #25~~ (`worker-runtime/evidence`: evidence package +
+    PROJECT SAVE) — **merged** into `main` at commit `b95acb603e632855298cc0d454df00b2c3d22286`.
+    PR #23 (implementation + tests, commit `11d4f86e`) and PR #24
+    (architecture/security/network docs, commit `9f3215ec`) are also
+    merged. All merged into the source tree, **not** deployed or
+    connected to production. Final merged-main verification (2026-09-10):
+    **68/68** worker-runtime tests, **161/161** core-v2-prototypes
+    regression — see `docs/evidence/worker-runtime/RUN_SUMMARY.json` and
+    "Worker Runtime v0.1 final merged-main closeout" in `CURRENT_STATE.md`.
 
 ### Choices, not just merges
 11. **Choose the first post-foundation capability track**, or a
@@ -131,11 +138,14 @@ program.
 - Core v2 Engineering Blueprint Program (PRs #18, #19, #20, #21) —
   merged. Nothing wired into production.
 - KARMO Large Autonomous Review of PR #14–#21 (PR #22) — merged.
-- Worker Runtime v0.1 implementation + tests (PR #23, commit `11d4f86e`)
-  and architecture/security/network docs (PR #24, commit `9f3215ec`) —
-  merged into `main`, **not deployed, not connected to production**. PR
-  #25 (evidence + PROJECT SAVE) is the one item still open — see item 10
-  above.
+- Worker Runtime v0.1 — implementation + tests (PR #23, commit
+  `11d4f86e`), architecture/security/network docs (PR #24, commit
+  `9f3215ec`), and evidence + PROJECT SAVE (PR #25, commit `b95acb6`) —
+  **all merged** into `main`, **not deployed, not connected to
+  production**. Final merged-main verification (2026-09-10): 68/68
+  worker-runtime tests, 161/161 core-v2-prototypes regression. This
+  closes the entire Worker Runtime v0.1 merge-closeout thread — no item
+  remains open in this workload.
 - `SOFTWARE_INVENTORY.md`/`NETWORK_INVENTORY.md` current counts —
   reconfirmed during the 2026-09-09 Workload 2 closeout; no further
   action required (routine update from existing evidence deferred, not
@@ -147,7 +157,7 @@ program.
   zero database/Qdrant/container/credential/log/network access.
 - No PR was merged *during* either program's own run (PRs #14–#21 were
   all opened, none merged, at that time) — historical, describing that
-  night's activity only. PRs #14–#24 have since merged via the separate,
+  night's activity only. PRs #14–#25 have since merged via the separate,
   later approved KARMO merge sequence; see "Completed, no further
   action" above.
 - No governance was modified by either program.

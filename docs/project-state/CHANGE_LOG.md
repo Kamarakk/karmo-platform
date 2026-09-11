@@ -618,7 +618,7 @@ MASTER_INDEX.md for status-tag definitions.
   above was a genuine blocker until fixed and re-tested. PRs #23–#25
   remain open and unmerged, awaiting a fourth round of re-verification.
 
-## Worker Runtime v0.1 merge closeout — PRs #22, #23, #24 merged; PR #25 pending (2026-09-10)
+## Worker Runtime v0.1 merge closeout — PRs #22, #23, #24 merged; PR #25 pending (2026-09-10, HISTORICAL — PR #25 has since merged, see the final closeout entry below)
 
 - **VERIFIED (repo)** — Natalie's approved KARMO merge sequence proceeded:
   PR #22 (`review/pr14-21-merge-readiness`) merged into `main`; PR #23
@@ -642,3 +642,62 @@ MASTER_INDEX.md for status-tag definitions.
   rerun.
 - **Production access: zero. Network/Tailscale/firewall changes: zero.
   Deployment: zero.** No new PR created. PR #25 not merged.
+
+## Worker Runtime v0.1 final merged-main closeout (2026-09-10)
+
+- **VERIFIED (repo)** — Kamara authorized "one final merged-main
+  verification + PROJECT SAVE closeout." PR #25 (`worker-runtime/evidence`)
+  has since merged into `main` at merge commit
+  `b95acb603e632855298cc0d454df00b2c3d22286`. **PRs #22, #23, #24, and #25
+  are now all merged** — PR #22 at `4877aa967805bf540af0cc5645b2c82024ab11c9`,
+  PR #23 at `11d4f86e04d22aae0072923ec387a11f0e205cbc`, PR #24 at
+  `9f3215ecd3be31d2096273be4afb389edbcbf9f8`, PR #25 at
+  `b95acb603e632855298cc0d454df00b2c3d22286` — each independently
+  confirmed an ancestor of `main` HEAD via `git merge-base
+  --is-ancestor`, after `git checkout main && git pull --ff-only origin
+  main` fast-forwarded cleanly from `3f61424` to `b95acb6`.
+- **One final integrated verification** was run directly against this
+  merged `main` HEAD. Initial result:
+  `worker-runtime/tests/` — 66 passed, 2 failed. Diagnosis: environment/
+  test-assumption drift, not a code defect. `resource_discovery.
+  discover_acceleration()` correctly, truthfully reported Ollama as
+  installed on KARMO-DEV01 — Ollama was separately and intentionally
+  installed for the unrelated KARMO AI / Agent Engineering Learning
+  Program (localhost-only; see `docs/learning/SETUP_VERIFICATION.md`).
+  Two tests had hardcoded the now-stale historical assumption that Ollama
+  was absent. Runtime discovery behavior itself was correct and was
+  **not** changed.
+- **Narrow, explicitly authorized test-only correction**: the two tests
+  (`test_capability_local_model_probe_reports_truthful_model_status`,
+  renamed from `..._reports_no_models_installed`, and
+  `test_resource_discovery_full_report_runs_without_error`) now validate
+  environment-independent, truthful detection — `X_installed` is a bool,
+  `X_status` is `VERIFIED` iff `X_installed` else `NOT_INSTALLED` — rather
+  than hardcoding absence. No mocking of real host detection; no change
+  to `resource_discovery.py`, `capabilities.py`, or any other Worker
+  Runtime source file. Only `worker-runtime/tests/test_worker_runtime.py`
+  was touched.
+- **Final result after correction**: `worker-runtime/venv/bin/python -m
+  pytest worker-runtime/tests/ -q` — **68 passed**.
+  `core-v2-prototypes/venv/bin/python -m pytest core-v2-prototypes/ -q`
+  — **161 passed**. Both run once, fresh, directly against merged `main`
+  plus this branch's one test correction — no repetitive rounds.
+- Static checks: `git diff --check` clean; conflict-marker scan clean;
+  secret scan of changed files clean; no unexpected tracked generated
+  files. **Production access: 0. Deployment: 0. Network/Tailscale/
+  firewall changes: 0.**
+- **MERGED ≠ DEPLOYED**, restated for this closeout: Worker Runtime v0.1
+  is fully merged into `main`'s source tree — implementation, tests,
+  architecture/security docs, and evidence — but remains **NOT deployed,
+  NOT connected to production KARMO**, with no real network transport
+  enabled (`LocalTransport`, in-process, is the only implementation that
+  exists).
+- The five previously-named deferred gaps (cryptographic worker
+  credential, subprocess environment allowlisting, dedicated
+  symlink-escape test, result-authenticity cryptographic binding,
+  coordinator persistence) remain accurately documented and **deferred,
+  not started** — follow-ups for a future real network transport, not
+  blockers for the merged isolated v0.1. No governance changed, no
+  capability added, no architecture churn introduced this closeout.
+- **Worker Runtime v0.1 source merge closeout: COMPLETE.** This is the
+  final entry in the Worker Runtime v0.1 merge-closeout thread.

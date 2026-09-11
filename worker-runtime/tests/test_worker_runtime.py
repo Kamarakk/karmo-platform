@@ -1102,10 +1102,22 @@ def test_capability_media_probe_reports_labeled_verified_status():
     assert isinstance(output["metal_available"], bool)
 
 
-def test_capability_local_model_probe_reports_no_models_installed():
+def test_capability_local_model_probe_reports_truthful_model_status():
+    # KARMO-DEV01 may legitimately gain approved local tooling over time
+    # (e.g. Ollama was later installed for the separate KARMO AI Learning
+    # Program); discovery tests must validate truthful detection rather
+    # than freeze a historical machine package state.
+    import resource_discovery
+
     output, summary, duration, evidence = run_capability("local_model_probe", {}, timeout_seconds=15)
-    assert output["mlx_installed"] is False
-    assert output["ollama_installed"] is False
+    assert isinstance(output["mlx_installed"], bool)
+    assert isinstance(output["ollama_installed"], bool)
+
+    # Cross-check against a direct resource_discovery call on the same
+    # host -- both must agree, since they're querying the same real state.
+    acceleration = resource_discovery.discover_acceleration()
+    assert output["mlx_installed"] == acceleration["mlx_installed"]
+    assert output["ollama_installed"] == acceleration["ollama_installed"]
 
 
 def test_capability_document_processing_synthetic_chunking():
@@ -1122,5 +1134,13 @@ def test_resource_discovery_full_report_runs_without_error():
     assert report["cpu"]["status"] == "VERIFIED"
     assert report["cpu"]["machine"] == "arm64"
     assert report["acceleration"]["apple_silicon"] is True
-    assert report["acceleration"]["mlx_installed"] is False
-    assert report["acceleration"]["ollama_installed"] is False
+
+    # KARMO-DEV01 may legitimately gain approved local tooling over time
+    # (e.g. Ollama was later installed for the separate KARMO AI Learning
+    # Program); discovery tests must validate truthful detection rather
+    # than freeze a historical machine package state.
+    for tool in ("mlx", "ollama"):
+        installed = report["acceleration"][f"{tool}_installed"]
+        status = report["acceleration"][f"{tool}_status"]
+        assert isinstance(installed, bool)
+        assert status == ("VERIFIED" if installed else "NOT_INSTALLED")

@@ -1,9 +1,10 @@
 # KARMO Current State
 
-Last reconciled: 2026-09-09 (KARMO Large Autonomous Review of PR #14–#21,
-following the Post-Foundation Overnight Readiness Program and Core v2
-Engineering Blueprint Program passes earlier the same day). See
-MASTER_INDEX.md for status-tag definitions.
+Last reconciled: 2026-09-10 (Worker Runtime v0.1 final merged-main
+closeout — PRs #22, #23, #24, and #25 all merged into `main`), following
+the KARMO Large Autonomous Review of PR #14–#21 and the Post-Foundation
+Overnight Readiness/Core v2 Engineering Blueprint programs earlier in
+this sequence. See MASTER_INDEX.md for status-tag definitions.
 
 **KARMO FOUNDATION v1: DECLARED COMPLETE, 2026-09-09.** See
 `docs/evidence/foundation-v1/FOUNDATION_V1_CLOSEOUT_REPORT.md` for the full
@@ -130,9 +131,12 @@ merge sequence ran.
   covered a job still `WAITING_FOR_APPROVAL` — fixed at commit `a2a1619`.
   **68/68 tests passing** (was 44/44 → 62/62 → 67/67 → 68/68), including
   all 24 required failure/adversarial scenarios plus all three
-  fix-verification suites. PRs #23 and #24 have since merged into `main`;
-  **PR #25 (evidence + PROJECT SAVE) remains open, not yet merged.** See
-  "KARMO Worker Runtime v0.1" and "Worker Runtime v0.1 merge closeout"
+  fix-verification suites. **PRs #22, #23, #24, and #25 are all merged
+  into `main`** (PR #25 at commit
+  `b95acb603e632855298cc0d454df00b2c3d22286`, 2026-09-10) — Worker Runtime
+  v0.1's full source, tests, docs, and evidence are now in `main`. **Still
+  NOT deployed, NOT connected to production KARMO.** See "KARMO Worker
+  Runtime v0.1" and "Worker Runtime v0.1 final merged-main closeout"
   sections below and `docs/evidence/worker-runtime/WORKER_RUNTIME_REPORT.md`.
 
 ## H0.1 — Transactional Outbox
@@ -628,7 +632,7 @@ KARMO merge sequence (see "Worker Runtime v0.1 merge closeout" below).
   to production KARMO. See "Next action" in NEXT_STEPS.md for what a
   future, separately-authorized controlled integration test would require.
 
-## Worker Runtime v0.1 merge closeout — PRs #22, #23, #24 merged; PR #25 pending (2026-09-10)
+## Worker Runtime v0.1 merge closeout — PRs #22, #23, #24 merged; PR #25 pending (2026-09-10, HISTORICAL — superseded by "final merged-main closeout" below; PR #25 has since merged)
 
 **VERIFIED (repo)** — the approved KARMO merge sequence proceeded: PR #22
 (`review/pr14-21-merge-readiness`) merged into `main`; PR #23 (Worker
@@ -655,6 +659,63 @@ core-v2-prototypes regression — unchanged by this merge-conflict
 resolution; no executable code was touched, so the suite was not rerun.
 **Production access: 0. Network/Tailscale/firewall changes: 0.
 Deployment: 0.**
+
+## Worker Runtime v0.1 final merged-main closeout (2026-09-10)
+
+**VERIFIED (repo) — current, authoritative status.** PR #25 (evidence +
+PROJECT SAVE, `worker-runtime/evidence`) has merged into `main` at merge
+commit `b95acb603e632855298cc0d454df00b2c3d22286`. **PRs #22, #23, #24,
+and #25 are now all merged.** Confirmed via `git checkout main && git
+pull --ff-only origin main` (fast-forwarded cleanly from `3f61424` to
+`b95acb6`) and `git merge-base --is-ancestor` for all four merge commits
+(`4877aa9`, `11d4f86e`, `9f3215ec`, `b95acb6`) against the resulting
+`main` HEAD.
+
+One final integrated verification was run directly against this merged
+`main` HEAD (not a stale branch):
+- `worker-runtime/venv/bin/python -m pytest worker-runtime/tests/ -q` —
+  initially **66 passed, 2 failed**. Diagnosis: not a Worker Runtime code
+  defect. `resource_discovery.discover_acceleration()` was working
+  correctly; two tests hardcoded the historical assumption that Ollama
+  was absent from KARMO-DEV01. That assumption is no longer true — Ollama
+  was separately and intentionally installed on this machine for the
+  unrelated KARMO AI / Agent Engineering Learning Program (localhost-only,
+  documented in `docs/learning/SETUP_VERIFICATION.md`). Runtime discovery
+  behavior itself was correct and was **not** changed.
+- **Fix applied**: the two tests
+  (`test_capability_local_model_probe_reports_truthful_model_status`,
+  renamed from `..._reports_no_models_installed`, and
+  `test_resource_discovery_full_report_runs_without_error`) were
+  corrected to validate environment-independent, truthful detection
+  (`X_installed` is a bool; `X_status` is `VERIFIED` iff `X_installed`,
+  else `NOT_INSTALLED`) instead of hardcoding absence. No mocking of real
+  host detection; no change to `resource_discovery.py` or any other
+  Worker Runtime source file.
+- After the fix: `worker-runtime/tests/` — **68/68 passed**.
+  `core-v2-prototypes/` regression — **161/161 passed**. Both run fresh,
+  directly against merged `main`.
+
+`git diff --check`: clean. Conflict-marker scan: clean. Secret scan of
+changed files: clean. No unexpected tracked generated files. **Production
+access: 0. Deployment: 0. Network/Tailscale/firewall changes: 0.**
+
+**MERGED ≠ DEPLOYED, restated one more time for this closeout**: Worker
+Runtime v0.1's full source, tests, docs, and evidence are merged into
+`main`'s repository tree. It remains **NOT deployed, NOT connected to
+production KARMO, NOT running anywhere outside this isolated,
+now-merged-but-inert prototype.** No real network transport is enabled —
+`LocalTransport` (in-process) is the only implementation that exists.
+
+The five previously-named deferred gaps remain accurately documented and
+**deferred, not started** (see `docs/evidence/worker-runtime/SECURITY_REVIEW.md`
+"Open findings" and `NEXT_STEPS.md`): (1) cryptographic worker credential,
+(2) subprocess environment allowlisting, (3) dedicated symlink-escape
+test, (4) result-authenticity cryptographic binding, (5) coordinator
+persistence. These are follow-ups for a future real network transport,
+not blockers for the merged isolated v0.1.
+
+This is the final entry for the Worker Runtime v0.1 merge-closeout
+thread. **Worker Runtime v0.1 source merge closeout: COMPLETE.**
 
 ## Confirmed data-state baselines (for reference, HISTORICAL unless restated)
 
