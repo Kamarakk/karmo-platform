@@ -1,5 +1,5 @@
 # KARMO AI / Agent Engineering Learning Program
-Version: 0.1
+Version: 0.2
 Owner: Natalie
 
 ## Goal
@@ -16,6 +16,34 @@ This is not a lecture course. Every topic follows:
 7. Decide whether KARMO should keep, change, or reject the design.
 
 The target is engineering judgment, not memorization.
+
+## Explanation Style (added 2026-09-11)
+
+The *material* stays fully real -- real Python, real local models, real KARMO
+concepts. Nothing is watered down in substance. What changes is how it's
+explained:
+
+- **Explain everything as basically as possible** -- assume no prior Python
+  knowledge and no unexplained jargon. Use plain language and everyday
+  analogies a 5th grader could follow (example: "a dictionary is like a
+  labeled box -- you write a label on it, like `model`, and put the answer
+  inside"). If a word like "argument," "dictionary," or "endpoint" shows up
+  for the first time, explain it in one plain sentence before using it.
+- **One complete explanation before any code is written.** Give the full
+  picture -- what this piece does, why it's shaped that way, and the exact
+  syntax involved -- in a single message. Then let Natalie write the whole
+  line or block once. Do not hand her a vague fill-in-the-blank and correct
+  it typo-by-typo across several back-and-forth messages -- that wastes her
+  time and feels like something is broken. If a mistake happens, point out
+  everything wrong in it at once, in one pass.
+- **Make it fun.** Playful analogies, calling out real wins ("that's it,
+  that line just talked to a real AI model running on your own Mac"), and
+  letting Natalie see and react to real model output -- not a dry textbook
+  tone. Fun lives in the delivery, never as a substitute for actually
+  understanding what the code does.
+- Natalie still writes every line of code herself (Learning Rule 1 below) --
+  this only changes how much is explained before she writes it, not who
+  writes it.
 
 ## Weekly Time Model
 - Monday-Friday anchor: 8:00 PM-9:30 PM.
