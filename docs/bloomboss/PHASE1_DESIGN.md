@@ -9,6 +9,7 @@ Turn 7–9 months of BloomBoss purchase/sales history into a canonical, auditabl
 - `bloomboss/models.py` — canonical domain records
 - `bloomboss/ingest.py` — canonical CSV ingestion
 - `bloomboss/analytics.py` — first reproducible business metrics
+- `bloomboss/data_quality.py` — completeness/coverage reporting for reconstructed history
 - `tests/test_bloomboss_phase1.py` — targeted acceptance tests
 
 ## Historical import format
@@ -19,13 +20,18 @@ Required columns: `batch_id`, `unit_id`, `cultivar`, `status`.
 ## Data authority
 For Phase 1, imported historical source rows are evidence. Canonical in-memory records are normalized representations. Production persistence is intentionally deferred.
 
+The system reports both business metrics and **coverage metrics**. This prevents a partially reconstructed history from appearing more complete than it is. Missing values remain missing; coverage tells us how much of each field is actually known.
+
+Current coverage reporting includes supplier, purchase date, quantity, full batch landed cost, unit cost basis, acquisition date, unit status, sale date, selling fees, outbound shipping, net revenue, and sold-unit cost basis.
+
 ## Acceptance criteria
 1. Missing historical financial values remain `None`/unknown.
 2. Invalid dates/decimals/statuses fail visibly.
 3. A sale cannot have a price without a channel.
 4. Analytics are reproducible from canonical records.
-5. Initial metrics cover revenue, known landed cost, realized gross profit on known costs, sell-through, loss rate, average sale price, average days-to-sale, channel performance, and cultivar performance.
-6. No production, marketplace writes, OBS, or external customer actions.
+5. Initial metrics cover revenue, known landed cost, realized gross profit on known costs, sell-through, loss rate, average sale price, average days-to-sale, channel performance, cultivar performance, and supplier performance.
+6. Historical-data completeness is measurable without imputing missing values.
+7. No production, marketplace writes, OBS, or external customer actions.
 
 ## Invariant Impact Review
 Phase: BloomBoss Historical Data Intelligence v1
@@ -36,7 +42,7 @@ Phase: BloomBoss Historical Data Intelligence v1
 - I-04 Idempotency/retry: AFFECTED — stable batch/unit/sale IDs are required before persistence/import replay.
 - I-05 Resources/scale: AFFECTED — current loader is bounded by file size; streaming/persistence review required before production-scale ingestion.
 - I-06 Migration/rollback: AFFECTED — raw source is preserved separately so normalization can be rebuilt.
-- I-07 Observability: AFFECTED — malformed rows fail with row-specific errors; provenance records source row.
+- I-07 Observability: AFFECTED — malformed rows fail with row-specific errors; provenance records source row; coverage metrics expose reconstruction gaps.
 - I-08 Validation scope: AFFECTED — targeted Phase 1 tests only.
 - I-09 Authority/permissions: AFFECTED — Phase 1 is READ/LOCAL NORMALIZATION only; no external writes/actions.
 
@@ -47,7 +53,7 @@ Transaction/failure boundaries: single local CSV parse; failed rows abort the lo
 Scale considerations: sufficient for initial 7–9 month reconstruction; production streaming/pagination deferred.
 Runtime/dependency requirements: Python standard library only.
 Migration/mixed-state requirements: none in production; canonical format remains rebuildable from raw source.
-Observability requirements: row-level provenance and explicit validation errors.
+Observability requirements: row-level provenance, explicit validation errors, and field-level completeness reporting.
 Authorization boundaries: no production, marketplace, financial write, customer communication, or external side effect.
-Validation plan: targeted unit tests for unknown-value preservation and reproducible analytics.
+Validation plan: targeted unit tests for unknown-value preservation, visible validation failures, reproducible analytics, supplier analysis, and coverage reporting.
 Rollback implications: delete the isolated feature branch; no production state exists.
