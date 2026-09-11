@@ -16,6 +16,7 @@ the files listed here.
 | File | Purpose |
 |---|---|
 | [CURRENT_STATE.md](CURRENT_STATE.md) | Snapshot of what is true right now across phases, production, and workflow decisions. |
+| [KARMO_DASHBOARD.md](KARMO_DASHBOARD.md) | Human-facing Mission Control view of the current stage, task, blocker, next gate, and near-term direction; refreshed during meaningful PROJECT SAVE updates. |
 | [CHANGE_LOG.md](CHANGE_LOG.md) | Chronological record of merged work and production actions. |
 | [SOFTWARE_INVENTORY.md](SOFTWARE_INVENTORY.md) | Services/software installed or running, isolated vs. production. |
 | [NETWORK_INVENTORY.md](NETWORK_INVENTORY.md) | Hosts, addresses, ports known for KARMO. |
@@ -46,6 +47,10 @@ the files listed here.
   planning-session handoff only counts as recorded once a repository-capable
   agent reconciles it against `docs/project-state/` and commits the result —
   ChatGPT conversation history itself is not the authoritative record.
+- `KARMO_DASHBOARD.md` is the concise human-facing cockpit for that same
+  record set, not a competing source of truth. During a meaningful PROJECT
+  SAVE, refresh it whenever the current stage, current task, blocker/issue,
+  next gate, or immediate post-task direction materially changes.
 
 ## Vision, architecture, and plans (not duplicated here)
 
@@ -97,3 +102,7 @@ validation ladder, autonomous execution contract, and Spec Kit brownfield
 plan created; two of three repository-hygiene issues partially addressed
 (migration comment corrected; H0.3 evidence given an explicit status note)
 without committing anything. See CHANGE_LOG.md for detail.
+
+2026-09-10 — Worker Runtime v0.1 source merge closeout completed and the
+human-facing `KARMO_DASHBOARD.md` Mission Control view added to keep project
+stage/task/gate orientation visible during long engineering sessions.
