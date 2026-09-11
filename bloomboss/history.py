@@ -11,7 +11,7 @@ from .inventory import summarize_inventory_exposure
 from .listing_analytics import summarize_listing_activity
 from .listing_history import load_listing_history_csv
 from .models import ListingHistoryEvent, PlantUnit, PurchaseBatch, Sale
-from .outcomes import summarize_channels, summarize_cultivars
+from .outcomes import summarize_channels, summarize_cultivars, summarize_units
 from .validation import ValidationIssue, validate_history_relationships, validate_listing_relationships
 
 
@@ -29,6 +29,7 @@ class HistoricalImportSnapshot:
     business_summary: dict
     supplier_summary: dict
     batch_summary: dict
+    unit_outcome_summary: dict
     cultivar_summary: dict
     channel_summary: dict
     inventory_exposure_summary: dict
@@ -87,6 +88,7 @@ def inspect_history_csv(
         business_summary=summarize_business(units, sales),
         supplier_summary=summarize_suppliers(batches, units, sales),
         batch_summary=summarize_batches(batches, units, sales),
+        unit_outcome_summary=summarize_units(units, sales),
         cultivar_summary=summarize_cultivars(units, sales),
         channel_summary=summarize_channels(units, sales),
         inventory_exposure_summary=summarize_inventory_exposure(units, sales),
