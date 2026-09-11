@@ -7,6 +7,7 @@ from bloomboss.analytics import summarize_business, summarize_suppliers
 from bloomboss.data_quality import summarize_history_quality
 from bloomboss.ingest import load_history_csv
 from bloomboss.models import PlantStatus, PlantUnit, PurchaseBatch, Sale
+from bloomboss.validation import validate_history_relationships
 
 
 def test_unknown_money_stays_unknown(tmp_path):
@@ -154,3 +155,34 @@ def test_history_quality_reports_coverage_without_imputing_missing_values():
     assert quality["coverage"]["sale_outbound_shipping"] == Decimal("0")
     assert quality["coverage"]["sale_net_revenue"] == Decimal("0")
     assert quality["missing_counts"]["sold_unit_cost_basis"] == 0
+
+
+def test_cross_record_validation_reports_broken_relationships():
+    batches = [PurchaseBatch("B1", "Pink Plumbea")]
+    units = [
+        PlantUnit("U1", "B1", "Cuprea", PlantStatus.LOST, acquired_date=date(2026, 2, 1)),
+        PlantUnit("U2", "MISSING", "Pink Plumbea", PlantStatus.GROWING),
+    ]
+    sales = [
+        Sale("S1", "U1", "Palmstreet", Decimal("100"), sale_date=date(2026, 1, 31)),
+        Sale("S2", "U1", "Etsy", Decimal("95"), sale_date=date(2026, 2, 2)),
+        Sale("S3", "UNKNOWN", "Palmstreet", Decimal("75")),
+    ]
+
+    issues = validate_history_relationships(batches, units, sales)
+    codes = {issue.code for issue in issues}
+
+    assert "CULTIVAR_CONFLICT" in codes
+    assert "UNIT_BATCH_MISSING" in codes
+    assert "SALE_STATUS_CONFLICT" in codes
+    assert "SALE_BEFORE_ACQUISITION" in codes
+    assert "MULTIPLE_SALES_FOR_UNIT" in codes
+    assert "SALE_UNIT_MISSING" in codes
+
+
+def test_cross_record_validation_accepts_unknowns_without_inventing_facts():
+    batches = [PurchaseBatch("B1", "Pink Plumbea")]
+    units = [PlantUnit("U1", "B1", "Pink Plumbea", PlantStatus.UNKNOWN)]
+    sales = [Sale("S1", "U1", "Palmstreet", Decimal("100"))]
+
+    assert validate_history_relationships(batches, units, sales) == []
