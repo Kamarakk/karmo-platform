@@ -25,7 +25,7 @@ def test_render_history_report_is_json_and_preserves_decimal_precision(tmp_path)
         "sales": 1,
         "relationship_issues": 0,
     }
-    assert payload["business_summary"]["revenue"] == "250"
+    assert payload["business_summary"]["total_revenue"] == "250"
     assert payload["business_summary"]["known_landed_cost"] == "120"
 
 
