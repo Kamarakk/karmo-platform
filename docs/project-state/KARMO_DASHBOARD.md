@@ -21,7 +21,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Integrity & Consistency Checker (H0.4 Integrity/Reconciliation) — compares expected KARMO state with database/vector-store state and reports mismatches.
 - KARMO Control & Approval Layer (Core v2 prototypes) — defines tool permissions, approval rules, jobs, configuration patterns, and execution evidence.
 - Trusted Computer Worker System (Worker Runtime v0.1) — lets approved computers register, advertise safe capabilities, pull bounded jobs, execute them in a sandbox, and return results/evidence.
-- BloomBoss Historical Data Intelligence — normalizes BloomBoss purchase/sales history, preserves unknowns and provenance, validates contradictions, fingerprints raw evidence, and calculates reproducible business/quality metrics.
+- BloomBoss Historical Data Intelligence — normalizes BloomBoss purchase/sales/listing history, preserves unknowns and provenance, validates contradictions, fingerprints raw evidence, and calculates reproducible business/quality metrics.
 
 ## CURRENT TASK
 
@@ -29,9 +29,11 @@ Close the first BloomBoss Historical Data Intelligence build gate on PR #32 with
 
 ## CURRENT ISSUE
 
-No active Phase 1 code blocker. The targeted GitHub Actions suite passes **23/23** on Python 3.12.14 for validated code commit `2eb6cafb`.
+No active Phase 1 code blocker. The targeted GitHub Actions suite passes **31/31** on Python 3.12.14 for validated code commit `3656d123`.
 
-Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, cultivar/channel outcomes, and deterministic inventory-exposure analysis are now present.
+Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, cultivar/channel outcomes, deterministic inventory-exposure analysis, and historical listing evidence are now present.
+
+Listing validation now reports broken inventory references, listings dated before known acquisition, and listings dated after a known sale without repairing or inventing missing facts.
 
 Inventory exposure identifies active unsold units, known capital tied up, unknown-cost exposure, and days held measured to the latest date represented in the historical source rather than today's date.
 
@@ -42,7 +44,7 @@ High-level approval to merge PR #32 when Kamara chooses to promote this Phase 1 
 ## AFTER THIS
 
 - Use the real BloomBoss historical worksheet/export as the first source dataset in approved non-production scope.
-- Measure field completeness, relationship findings, and inventory exposure before trusting margin/supplier conclusions.
+- Measure field completeness, relationship findings, listing-history contradictions, and inventory exposure before trusting margin/supplier conclusions.
 - Use batch-level loss/outcome results to identify purchases that actually destroyed or retained capital instead of inferring from supplier averages alone.
 - Implement durable local/dev persistence only after the persistence design is reviewed at the next approved build slice.
 - Continue the approved BloomBoss phase order; do not start marketplace write automation or external customer actions.
