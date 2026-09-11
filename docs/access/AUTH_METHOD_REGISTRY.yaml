@@ -1,0 +1,44 @@
+version: 1
+updated: 2026-09-11
+
+methods:
+  karmo-admin-ssh:
+    type: ssh-public-key
+    private_key_reference: ~/.ssh/karmo_admin_ed25519
+    public_identity_owner: KARMO-DEV01 operator
+    targets: [karmo-ai01]
+    secret_stored_in_repo: false
+    status: VERIFIED
+    notes:
+      - A connection timeout before SSH key exchange is a routing failure, not key rejection.
+      - Never print, paste, commit, or transmit the private key through chat.
+
+  karmo-ai01-sudo:
+    type: local-privilege-escalation
+    target: karmo-ai01
+    user: lofason
+    secret_stored_in_repo: false
+    status: VERIFIED
+    notes:
+      - Sudo password is entered only by the operator directly at the host/session prompt.
+      - Agents must never request or handle the password.
+
+  tailscale-device-identity:
+    type: overlay-network-device-identity
+    targets: [kve02, karmo-dev01, cia103a1]
+    target_pending: [karmo-ai01]
+    secret_stored_in_repo: false
+    status: VERIFIED
+    notes:
+      - Enrollment/authentication is performed through Tailscale's approved login flow.
+      - Do not commit auth keys or reusable enrollment tokens.
+      - Direct Tailscale networking does not require enabling Tailscale SSH.
+
+  remote-desktop-commander:
+    type: authorized-remote-management-session
+    target: karmo-ai01
+    status: VERIFIED
+    persistence: foreground-only
+    notes:
+      - Closing its terminal/process disconnects the session.
+      - Do not add autostart/persistence unless separately approved.
