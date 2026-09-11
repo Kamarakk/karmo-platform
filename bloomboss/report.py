@@ -13,7 +13,6 @@ from .history import HistoricalImportSnapshot, inspect_history_csv
 
 
 def _json_value(value: Any) -> Any:
-    """Convert a snapshot value to deterministic JSON-safe primitives."""
     if is_dataclass(value):
         return _json_value(asdict(value))
     if isinstance(value, Enum):
@@ -30,8 +29,7 @@ def _json_value(value: Any) -> Any:
 
 
 def snapshot_report(snapshot: HistoricalImportSnapshot) -> dict[str, Any]:
-    """Return a stable, human-inspectable report without changing source data."""
-    return {
+    report = {
         "source": {
             "name": snapshot.source_name,
             "sha256": snapshot.source_sha256,
@@ -42,6 +40,8 @@ def snapshot_report(snapshot: HistoricalImportSnapshot) -> dict[str, Any]:
             "units": len(snapshot.units),
             "sales": len(snapshot.sales),
             "relationship_issues": len(snapshot.relationship_issues),
+            "listings": len(snapshot.listings),
+            "listing_relationship_issues": len(snapshot.listing_relationship_issues),
         },
         "business_summary": _json_value(snapshot.business_summary),
         "supplier_summary": _json_value(snapshot.supplier_summary),
@@ -52,21 +52,28 @@ def snapshot_report(snapshot: HistoricalImportSnapshot) -> dict[str, Any]:
         "quality_summary": _json_value(snapshot.quality_summary),
         "relationship_issues": _json_value(snapshot.relationship_issues),
     }
+    if snapshot.listing_source_name is not None:
+        report["listing_source"] = {
+            "name": snapshot.listing_source_name,
+            "sha256": snapshot.listing_source_sha256,
+            "size_bytes": snapshot.listing_source_size_bytes,
+        }
+        report["listing_quality_summary"] = _json_value(snapshot.listing_quality_summary)
+        report["listing_relationship_issues"] = _json_value(snapshot.listing_relationship_issues)
+    return report
 
 
-def render_history_report(path: str | Path) -> str:
-    """Inspect a canonical CSV and render deterministic pretty JSON."""
-    report = snapshot_report(inspect_history_csv(path))
+def render_history_report(path: str | Path, *, listing_path: str | Path | None = None) -> str:
+    report = snapshot_report(inspect_history_csv(path, listing_path=listing_path))
     return json.dumps(report, indent=2, sort_keys=True)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Inspect BloomBoss historical CSV data without modifying it."
-    )
+    parser = argparse.ArgumentParser(description="Inspect BloomBoss historical CSV data without modifying it.")
     parser.add_argument("source", help="Path to the canonical BloomBoss history CSV")
+    parser.add_argument("--listings", help="Optional path to historical listing evidence CSV")
     args = parser.parse_args(argv)
-    print(render_history_report(args.source))
+    print(render_history_report(args.source, listing_path=args.listings))
     return 0
 
 
