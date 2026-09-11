@@ -1,0 +1,27 @@
+name: Core Productionization
+
+on:
+  push:
+    branches:
+      - feat/core-v2-productionization
+  pull_request:
+    paths:
+      - 'core-service/**'
+      - '.github/workflows/core-productionization.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest
+        run: python -m pip install --disable-pip-version-check pytest
+      - name: Run Core targeted suite
+        run: python -m pytest -q core-service/tests/test_core_service.py
