@@ -20,14 +20,22 @@ def _parse_decimal(value: str | None):
     if value is None:
         return None
     try:
-        return Decimal(value)
+        parsed = Decimal(value)
     except InvalidOperation as exc:
         raise ValueError(f"invalid decimal: {value}") from exc
+    if parsed < 0:
+        raise ValueError(f"negative money value is not allowed: {value}")
+    return parsed
 
 
 def _parse_int(value: str | None):
     value = _blank_to_none(value)
-    return int(value) if value is not None else None
+    if value is None:
+        return None
+    parsed = int(value)
+    if parsed < 0:
+        raise ValueError(f"negative integer value is not allowed: {value}")
+    return parsed
 
 
 def _parse_date(value: str | None):
@@ -35,15 +43,32 @@ def _parse_date(value: str | None):
     return date.fromisoformat(value) if value is not None else None
 
 
+def _batch_signature(row: dict[str, str]) -> tuple:
+    return (
+        row["cultivar"].strip(),
+        _blank_to_none(row.get("supplier")),
+        _parse_date(row.get("purchase_date")),
+        _parse_int(row.get("batch_quantity")),
+        _parse_decimal(row.get("batch_item_cost_total")),
+        _parse_decimal(row.get("batch_shipping_total")),
+        _parse_decimal(row.get("batch_duties_fees_total")),
+    )
+
+
 def load_history_csv(path: str | Path) -> tuple[list[PurchaseBatch], list[PlantUnit], list[Sale]]:
     """Load BloomBoss history from a canonical CSV.
 
     Blank cells remain unknown. The loader never substitutes zero for missing money.
+    Duplicate IDs and conflicting repeated batch facts fail visibly instead of being
+    silently overwritten.
     """
     path = Path(path)
     batches: dict[str, PurchaseBatch] = {}
+    batch_signatures: dict[str, tuple] = {}
     units: list[PlantUnit] = []
     sales: list[Sale] = []
+    seen_unit_ids: set[str] = set()
+    seen_sale_ids: set[str] = set()
 
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -59,6 +84,14 @@ def load_history_csv(path: str | Path) -> tuple[list[PurchaseBatch], list[PlantU
             cultivar = row["cultivar"].strip()
             if not batch_id or not unit_id or not cultivar:
                 raise ValueError(f"row {rownum}: batch_id, unit_id, and cultivar are required")
+            if unit_id in seen_unit_ids:
+                raise ValueError(f"row {rownum}: duplicate unit_id {unit_id!r}")
+            seen_unit_ids.add(unit_id)
+
+            signature = _batch_signature(row)
+            if batch_id in batch_signatures and batch_signatures[batch_id] != signature:
+                raise ValueError(f"row {rownum}: conflicting repeated facts for batch_id {batch_id!r}")
+            batch_signatures.setdefault(batch_id, signature)
 
             if batch_id not in batches:
                 batches[batch_id] = PurchaseBatch(
@@ -96,9 +129,13 @@ def load_history_csv(path: str | Path) -> tuple[list[PurchaseBatch], list[PlantU
                 channel = _blank_to_none(row.get("sale_channel"))
                 if not channel:
                     raise ValueError(f"row {rownum}: sale_channel required when sale_price is present")
+                sale_id = _blank_to_none(row.get("sale_id")) or f"sale:{unit_id}"
+                if sale_id in seen_sale_ids:
+                    raise ValueError(f"row {rownum}: duplicate sale_id {sale_id!r}")
+                seen_sale_ids.add(sale_id)
                 sales.append(
                     Sale(
-                        sale_id=_blank_to_none(row.get("sale_id")) or f"sale:{unit_id}",
+                        sale_id=sale_id,
                         unit_id=unit_id,
                         channel=channel,
                         sale_price=sale_price,
