@@ -1,0 +1,35 @@
+name: BloomBoss Phase 1
+
+on:
+  pull_request:
+    paths:
+      - "bloomboss/**"
+      - "tests/test_bloomboss_*.py"
+      - "docs/bloomboss/**"
+      - ".github/workflows/bloomboss-phase1.yml"
+  push:
+    branches:
+      - "feat/bloomboss-historical-intelligence"
+    paths:
+      - "bloomboss/**"
+      - "tests/test_bloomboss_*.py"
+      - "docs/bloomboss/**"
+      - ".github/workflows/bloomboss-phase1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install test dependency
+        run: python -m pip install --disable-pip-version-check pytest
+      - name: Run BloomBoss targeted suite
+        run: python -m pytest -q tests/test_bloomboss_phase1.py tests/test_bloomboss_history_snapshot.py tests/test_bloomboss_import_errors.py
