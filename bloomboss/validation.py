@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from .models import PlantStatus, PlantUnit, PurchaseBatch, Sale
+from .models import ListingHistoryEvent, PlantStatus, PlantUnit, PurchaseBatch, Sale
 
 
 @dataclass(frozen=True)
@@ -90,5 +90,67 @@ def validate_history_relationships(
                     f"unit has {len(unit_sales)} sale records",
                 )
             )
+
+    return issues
+
+
+def validate_listing_relationships(
+    listings: Iterable[ListingHistoryEvent],
+    units: Iterable[PlantUnit],
+    sales: Iterable[Sale],
+) -> list[ValidationIssue]:
+    """Validate listing evidence against canonical inventory/sale facts.
+
+    Listing history remains a separate evidence stream. This function only
+    reports unambiguous cross-record contradictions: broken unit references,
+    a listing that starts before a known acquisition date, or a listing that
+    starts after a known sale date. Unknown dates remain valid unknowns.
+    """
+    listings = list(listings)
+    units = list(units)
+    sales = list(sales)
+
+    issues: list[ValidationIssue] = []
+    unit_by_id = {unit.unit_id: unit for unit in units}
+    sale_dates_by_unit: dict[str, list] = {}
+    for sale in sales:
+        if sale.sale_date is not None:
+            sale_dates_by_unit.setdefault(sale.unit_id, []).append(sale.sale_date)
+
+    for listing in listings:
+        unit = unit_by_id.get(listing.unit_id)
+        if unit is None:
+            issues.append(
+                ValidationIssue(
+                    "LISTING_UNIT_MISSING",
+                    listing.listing_id,
+                    f"listing references missing unit {listing.unit_id!r}",
+                )
+            )
+            continue
+
+        if (
+            listing.listed_date is not None
+            and unit.acquired_date is not None
+            and listing.listed_date < unit.acquired_date
+        ):
+            issues.append(
+                ValidationIssue(
+                    "LISTING_BEFORE_ACQUISITION",
+                    listing.listing_id,
+                    "listing date is earlier than the unit acquisition date",
+                )
+            )
+
+        if listing.listed_date is not None:
+            known_sale_dates = sale_dates_by_unit.get(listing.unit_id, [])
+            if known_sale_dates and listing.listed_date > min(known_sale_dates):
+                issues.append(
+                    ValidationIssue(
+                        "LISTING_AFTER_SALE",
+                        listing.listing_id,
+                        "listing date is later than the unit's known sale date",
+                    )
+                )
 
     return issues
