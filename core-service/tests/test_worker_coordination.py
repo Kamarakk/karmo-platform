@@ -27,6 +27,12 @@ from core_service.worker_coordination import (  # noqa: E402
     WorkerCoordinationError,
     WorkerCoordinator,
 )
+from core_service.control import (  # noqa: E402
+    ApprovalEngine,
+    ApprovalState,
+    CapabilityClass,
+)
+from core_service.persistence import PostgresApprovalStore  # noqa: E402
 
 import os  # noqa: E402
 
@@ -95,11 +101,29 @@ def _crypto():
     )
 
 
-def _setup_leased_job(store, worker_auth, coordinator, *, arguments_digest="a" * 64):
+def _approve(*, tool_id="karmolab.host_health", tool_version="1", arguments=None, authorized_executor="worker-1"):
+    """Create a real APPROVED record in core_approval_records, backed by the
+    same ApprovalEngine/PostgresApprovalStore the direct-dispatch path uses.
+    Worker jobs must be authorized by a real approval -- never a bare
+    caller-supplied approval_id string."""
+    arguments = arguments if arguments is not None else {"host": "karmo-ai01"}
+    engine = ApprovalEngine(store=PostgresApprovalStore(_connection_factory))
+    pending = engine.request(
+        requester="kamara",
+        tool_id=tool_id,
+        tool_version=tool_version,
+        arguments=arguments,
+        authority_class=CapabilityClass.EXTERNAL_ACTION.value,
+    )
+    engine.approve(pending.approval_id, approver="kamara", authorized_executor=authorized_executor)
+    return engine, pending.approval_id, pending.arguments_digest
+
+
+def _setup_leased_job(store, worker_auth, coordinator, *, arguments=None, tool_id="karmolab.host_health", tool_version="1"):
     store.register_worker(
         worker_id="worker-1",
         key_id="worker-key-v1",
-        capabilities=["karmolab.host_health"],
+        capabilities=[tool_id],
         metadata={"transport": "outbound-only"},
     )
     credential = worker_auth.issue(worker_id="worker-1", key_id="worker-key-v1", ttl_seconds=300)
@@ -108,12 +132,15 @@ def _setup_leased_job(store, worker_auth, coordinator, *, arguments_digest="a" *
         worker_id="worker-1",
         lease_seconds=120,
     )
+    _engine, approval_id, digest = _approve(
+        tool_id=tool_id, tool_version=tool_version, arguments=arguments, authorized_executor="worker-1",
+    )
     job_id = store.enqueue_job(
         task_id=str(uuid.uuid4()),
-        approval_id=str(uuid.uuid4()),
-        tool_id="karmolab.host_health",
-        tool_version="1",
-        arguments_digest=arguments_digest,
+        approval_id=approval_id,
+        tool_id=tool_id,
+        tool_version=tool_version,
+        arguments_digest=digest,
     )
     lease = store.lease_job(job_id=job_id, worker_id="worker-1", lease_seconds=60)
     return credential, job_id, lease
@@ -197,7 +224,7 @@ def test_tampered_ticket_tool_binding_and_result_are_refused():
     store = PostgresWorkerCoordinatorStore(_connection_factory)
     worker_auth, tickets, results = _crypto()
     coordinator = WorkerCoordinator(store, worker_authenticator=worker_auth, ticket_authority=tickets, result_authenticator=results)
-    credential, job_id, lease = _setup_leased_job(store, worker_auth, coordinator, arguments_digest="b" * 64)
+    credential, job_id, lease = _setup_leased_job(store, worker_auth, coordinator, arguments={"host": "other-host"})
     token = coordinator.issue_execution_ticket(credential_token=credential, lease=lease)
 
     with pytest.raises(CryptoBoundaryError):
@@ -242,9 +269,10 @@ def test_expired_lease_moves_to_recovery_required_and_never_requeues_automatical
     store = PostgresWorkerCoordinatorStore(_connection_factory, clock=clock)
     store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
     store.heartbeat(worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=120)
+    _engine, approval_id, digest = _approve()
     job_id = store.enqueue_job(
-        task_id=str(uuid.uuid4()), approval_id=None, tool_id="karmolab.host_health",
-        tool_version="1", arguments_digest="c" * 64,
+        task_id=str(uuid.uuid4()), approval_id=approval_id, tool_id="karmolab.host_health",
+        tool_version="1", arguments_digest=digest,
     )
     store.lease_job(job_id=job_id, worker_id="worker-1", lease_seconds=5)
     clock.now += timedelta(seconds=6)
@@ -255,6 +283,200 @@ def test_expired_lease_moves_to_recovery_required_and_never_requeues_automatical
     assert "unknown execution outcome" in state["last_error"]
     with pytest.raises(WorkerCoordinationError):
         store.lease_job(job_id=job_id, worker_id="worker-1")
+
+
+def test_lease_job_refuses_missing_or_unapproved_authority():
+    """BLOCKER regression: a worker job must never be leasable without a
+    real, currently-APPROVED KARMO authority record matching it exactly."""
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    store.heartbeat(worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=120)
+
+    # No approval_id at all.
+    job_no_approval = store.enqueue_job(
+        task_id=str(uuid.uuid4()), approval_id=None,
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest="a" * 64,
+    )
+    with pytest.raises(WorkerCoordinationError, match="no approval_id"):
+        store.lease_job(job_id=job_no_approval, worker_id="worker-1")
+
+    # approval_id that does not exist in core_approval_records.
+    job_fake_approval = store.enqueue_job(
+        task_id=str(uuid.uuid4()), approval_id=str(uuid.uuid4()),
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest="a" * 64,
+    )
+    with pytest.raises(WorkerCoordinationError, match="no such approval"):
+        store.lease_job(job_id=job_fake_approval, worker_id="worker-1")
+
+    # A real approval that is still REQUESTED (never approved).
+    engine = ApprovalEngine(store=PostgresApprovalStore(_connection_factory))
+    requested = engine.request(
+        requester="kamara", tool_id="karmolab.host_health", tool_version="1",
+        arguments={"host": "karmo-ai01"}, authority_class=CapabilityClass.EXTERNAL_ACTION.value,
+    )
+    job_unapproved = store.enqueue_job(
+        task_id=str(uuid.uuid4()), approval_id=requested.approval_id,
+        tool_id="karmolab.host_health", tool_version="1",
+        arguments_digest=requested.arguments_digest,
+    )
+    with pytest.raises(WorkerCoordinationError, match="not APPROVED"):
+        store.lease_job(job_id=job_unapproved, worker_id="worker-1")
+
+    # A real APPROVED approval whose tool/arguments do not match the job.
+    _engine2, approval_id, _digest = _approve(arguments={"host": "karmo-ai01"})
+    job_mismatched_args = store.enqueue_job(
+        task_id=str(uuid.uuid4()), approval_id=approval_id,
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest="f" * 64,
+    )
+    with pytest.raises(WorkerCoordinationError, match="does not match"):
+        store.lease_job(job_id=job_mismatched_args, worker_id="worker-1")
+
+    # A real APPROVED approval authorized for a DIFFERENT worker.
+    _engine3, approval_id_2, digest_2 = _approve(authorized_executor="worker-2")
+    job_wrong_executor = store.enqueue_job(
+        task_id=str(uuid.uuid4()), approval_id=approval_id_2,
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest_2,
+    )
+    with pytest.raises(WorkerCoordinationError, match="not the approval's authorized executor"):
+        store.lease_job(job_id=job_wrong_executor, worker_id="worker-1")
+
+
+def test_lease_job_claims_the_approval_and_finalize_closes_it_out():
+    """A successful lease atomically claims the backing approval (mirroring
+    PostgresExecutionCoordinator.claim), and finalize_job closes it out to a
+    real terminal state instead of leaving it CLAIMED forever."""
+    approval_store = PostgresApprovalStore(_connection_factory)
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    worker_auth, tickets, results = _crypto()
+    coordinator = WorkerCoordinator(store, worker_authenticator=worker_auth, ticket_authority=tickets, result_authenticator=results)
+    credential, job_id, lease = _setup_leased_job(store, worker_auth, coordinator)
+
+    claimed = approval_store.get(lease.approval_id)
+    assert claimed.state == ApprovalState.CLAIMED
+    assert claimed.execution_binding is not None
+
+    # The same approval can never be claimed a second time by another job.
+    duplicate_job = store.enqueue_job(
+        task_id=str(uuid.uuid4()), approval_id=lease.approval_id,
+        tool_id=lease.tool_id, tool_version=lease.tool_version,
+        arguments_digest=lease.arguments_digest,
+    )
+    with pytest.raises(WorkerCoordinationError, match="not APPROVED"):
+        store.lease_job(job_id=duplicate_job, worker_id="worker-1")
+
+    token = coordinator.issue_execution_ticket(credential_token=credential, lease=lease)
+    coordinator.authorize_execution(token=token, lease=lease)
+    result = {"ok": True}
+    envelope = results.sign(
+        worker_id="worker-1", key_id="worker-key-v1", task_id=lease.task_id,
+        result=result, execution_ticket_digest=token_digest(token),
+    )
+    coordinator.accept_result(execution_ticket=token, lease=lease, result=result, envelope=envelope)
+    store.finalize_job(job_id=job_id, success=True)
+
+    finished = approval_store.get(lease.approval_id)
+    assert finished.state == ApprovalState.EXECUTED
+
+
+def test_register_worker_cannot_silently_rotate_existing_worker_key():
+    """HIGH regression: re-calling register_worker for an already-registered
+    worker must never change its key -- only a credential-proven rotation
+    may."""
+    def _keys_v2(key_id):
+        return {"worker-key-v1": WORKER_KEY, "worker-key-v2": b"n" * 32}.get(key_id)
+
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    worker_auth = WorkerAuthenticator(KeyResolver(_keys_v2))
+    tickets = ExecutionTicketAuthority(KeyResolver(_keys_v2), signing_key_id="coord-key-v1")
+    results = ResultAuthenticator(KeyResolver(_keys_v2))
+    coordinator = WorkerCoordinator(store, worker_authenticator=worker_auth, ticket_authority=tickets, result_authenticator=results)
+
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    with pytest.raises(WorkerCoordinationError, match="already registered"):
+        store.register_worker(worker_id="worker-1", key_id="attacker-key")
+
+    # The original key still authenticates; an attacker-supplied key never took effect.
+    credential = worker_auth.issue(worker_id="worker-1", key_id="worker-key-v1", ttl_seconds=60)
+    coordinator.authenticate_heartbeat(credential_token=credential, worker_id="worker-1")
+
+    # Rotation without proof of the current key is refused.
+    with pytest.raises(WorkerCoordinationError, match="does not match"):
+        store.rotate_key(worker_id="worker-1", current_key_id="wrong-key", new_key_id="worker-key-v2")
+
+    # Rotation proven with a credential signed by the CURRENT key succeeds.
+    rotation_credential = worker_auth.issue(worker_id="worker-1", key_id="worker-key-v1", ttl_seconds=60)
+    coordinator.rotate_worker_key(credential_token=rotation_credential, worker_id="worker-1", new_key_id="worker-key-v2")
+
+    # The old key no longer authenticates; the new one does.
+    with pytest.raises(WorkerCoordinationError):
+        coordinator.authenticate_heartbeat(credential_token=credential, worker_id="worker-1")
+    new_credential = worker_auth.issue(worker_id="worker-1", key_id="worker-key-v2", ttl_seconds=60)
+    coordinator.authenticate_heartbeat(credential_token=new_credential, worker_id="worker-1")
+
+
+def test_revoked_worker_cannot_consume_ticket_or_submit_result_midflight():
+    """HIGH regression: revocation must be effective against work already
+    leased/ticketed, not just against future heartbeats/leases."""
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    worker_auth, tickets, results = _crypto()
+    coordinator = WorkerCoordinator(store, worker_authenticator=worker_auth, ticket_authority=tickets, result_authenticator=results)
+    credential, job_id, lease = _setup_leased_job(store, worker_auth, coordinator)
+    token = coordinator.issue_execution_ticket(credential_token=credential, lease=lease)
+
+    store.revoke_worker("worker-1")
+
+    with pytest.raises(WorkerCoordinationError, match="not active"):
+        coordinator.authorize_execution(token=token, lease=lease)
+
+    result = {"ok": True}
+    envelope = results.sign(
+        worker_id="worker-1", key_id="worker-key-v1", task_id=lease.task_id,
+        result=result, execution_ticket_digest=token_digest(token),
+    )
+    with pytest.raises(WorkerCoordinationError, match="not active"):
+        coordinator.accept_result(execution_ticket=token, lease=lease, result=result, envelope=envelope)
+    assert store.get_job_state(job_id)["state"] == "LEASED"
+
+
+def test_stale_heartbeat_worker_cannot_submit_result_even_with_valid_job_lease():
+    """HIGH regression: a worker whose heartbeat has gone stale must not be
+    trusted at result-submission time, even if its independent job lease
+    (set once, at lease_job time) has not yet expired."""
+    class Clock:
+        def __init__(self):
+            self.now = datetime.now(timezone.utc)
+        def __call__(self):
+            return self.now
+
+    clock = Clock()
+    store = PostgresWorkerCoordinatorStore(_connection_factory, clock=clock)
+    worker_auth = WorkerAuthenticator(KeyResolver(_keys), clock=lambda: clock.now.timestamp())
+    tickets = ExecutionTicketAuthority(KeyResolver(_keys), signing_key_id="coord-key-v1", clock=lambda: clock.now.timestamp())
+    results = ResultAuthenticator(KeyResolver(_keys))
+    coordinator = WorkerCoordinator(store, worker_authenticator=worker_auth, ticket_authority=tickets, result_authenticator=results, clock=lambda: clock.now)
+
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    store.heartbeat(worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=5)  # short heartbeat
+    _engine, approval_id, digest = _approve()
+    job_id = store.enqueue_job(
+        task_id=str(uuid.uuid4()), approval_id=approval_id,
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
+    )
+    lease = store.lease_job(job_id=job_id, worker_id="worker-1", lease_seconds=300)  # long job lease
+    credential = worker_auth.issue(worker_id="worker-1", key_id="worker-key-v1", ttl_seconds=999999)
+    token = coordinator.issue_execution_ticket(credential_token=credential, lease=lease, ttl_seconds=999999)
+    coordinator.authorize_execution(token=token, lease=lease)
+
+    clock.now += timedelta(seconds=10)  # heartbeat (5s) now stale; job lease (300s) still valid
+
+    result = {"ok": True}
+    envelope = results.sign(
+        worker_id="worker-1", key_id="worker-key-v1", task_id=lease.task_id,
+        result=result, execution_ticket_digest=token_digest(token),
+    )
+    with pytest.raises(WorkerCoordinationError, match="heartbeat lease expired"):
+        coordinator.accept_result(execution_ticket=token, lease=lease, result=result, envelope=envelope)
+    assert store.get_job_state(job_id)["state"] == "LEASED"
 
 
 def test_outbound_transport_policy_forbids_inbound_or_reachability_authority():
