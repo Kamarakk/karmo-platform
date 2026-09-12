@@ -19,6 +19,11 @@ This is the single index for KARMO's persistent project-record set. Do not creat
 | [NEXT_STEPS.md](NEXT_STEPS.md) | Outstanding/blocked items and next authorized action. |
 | [PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md](PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md) | Latest durable delta for direct Tailscale enrollment, Core/Worker production deployment, PR #34/#35 merge, maintenance finding, and remaining verification. |
 
+## Learning program
+
+- `docs/learning/KARMO_AI_ENGINEERING_APPRENTICESHIP.md` — active, flexible hands-on AI/agent engineering course built around the real KARMO architecture and practical project work.
+- `docs/learning/KARMO_LEARNING_PROGRESS.md` — durable completion log. Every finished course section must be recorded here before moving on; course changes do not erase completed progress.
+
 ## Access & connection knowledge system
 
 - `docs/access/README.md` — front door for access/routing/login work.
@@ -65,3 +70,4 @@ Per `docs/handoff/h01/KARMO_HANDOFF_2026-09-04_H01_BUILD_COMPLETE.md`, an earlie
 - 2026-09-11 — remote-access runbook and KVE02 jump path recorded.
 - 2026-09-11 — Access & Connection Registry, System-Fit & Reuse Review, and System Stewardship design merged.
 - 2026-09-11 — KARMO-AI01 joined Tailscale at `100.75.239.44`; Core and restricted local Worker services deployed/active; PR #34 and #35 merged; detailed rollout saved in `PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md`.
+- 2026-09-11 — flexible KARMO AI Engineering Apprenticeship and durable learning-progress log created; completed sections must be recorded before advancing.
