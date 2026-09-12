@@ -21,6 +21,7 @@ class TaskState(str, Enum):
     READY = "READY"
     RUNNING = "RUNNING"
     VERIFYING = "VERIFYING"
+    RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -31,8 +32,11 @@ _ALLOWED_TRANSITIONS = {
     TaskState.PLANNED: {TaskState.WAITING_FOR_APPROVAL, TaskState.READY, TaskState.CANCELLED},
     TaskState.WAITING_FOR_APPROVAL: {TaskState.READY, TaskState.CANCELLED, TaskState.FAILED},
     TaskState.READY: {TaskState.RUNNING, TaskState.CANCELLED},
-    TaskState.RUNNING: {TaskState.VERIFYING, TaskState.FAILED, TaskState.CANCELLED},
-    TaskState.VERIFYING: {TaskState.SUCCEEDED, TaskState.FAILED},
+    TaskState.RUNNING: {TaskState.VERIFYING, TaskState.RECOVERY_REQUIRED, TaskState.FAILED, TaskState.CANCELLED},
+    TaskState.VERIFYING: {TaskState.SUCCEEDED, TaskState.RECOVERY_REQUIRED, TaskState.FAILED},
+    # Recovery never silently retries execution. Evidence must be reconciled
+    # first, then the task may continue to verification or terminate.
+    TaskState.RECOVERY_REQUIRED: {TaskState.VERIFYING, TaskState.FAILED, TaskState.CANCELLED},
     TaskState.SUCCEEDED: set(),
     TaskState.FAILED: set(),
     TaskState.CANCELLED: set(),
@@ -111,3 +115,7 @@ class InMemoryTaskStore:
 
     def list(self):
         return [copy.deepcopy(record) for record in self._tasks.values()]
+
+    def list_by_states(self, states):
+        wanted = {TaskState(value) for value in states}
+        return [copy.deepcopy(record) for record in self._tasks.values() if record.state in wanted]
