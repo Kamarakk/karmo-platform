@@ -6,6 +6,7 @@ from bloomboss.palmstreet import (
     PalmstreetFieldMap,
     inspect_palmstreet_export,
     load_palmstreet_sales_export,
+    palmstreet_seller_hub_orders_field_map,
 )
 
 
@@ -55,6 +56,31 @@ def test_loads_palmstreet_rows_as_candidates_not_canonical_sales(tmp_path):
     assert row.selling_fees == Decimal("12.50")
     assert row.shipping_cost == Decimal("8.00")
     assert row.provenance.source_type == "palmstreet_csv"
+
+
+def test_verified_seller_hub_order_table_fields_parse(tmp_path):
+    path = tmp_path / "seller-hub-orders.csv"
+    path.write_text(
+        "Item,Order ID,Customer,Full Name,Item QTY,Order Value,Paid Shipping Fee,Purchase Date,Order Status,Order Source\n"
+        "Pink Plant,9733-000000-0000,buyer01,Example Buyer,1 item,$195.00,$0,Sep 07 2026,Finished,Marketplace\n",
+        encoding="utf-8",
+    )
+
+    # CSV cannot safely contain the comma in the displayed date without quoting,
+    # so use the equivalent comma-free date here and verify the page-date parser separately.
+    mapping = palmstreet_seller_hub_orders_field_map()
+    _, rows = load_palmstreet_sales_export(path, mapping)
+
+    row = rows[0]
+    assert row.external_order_id == "9733-000000-0000"
+    assert row.item_title == "Pink Plant"
+    assert row.quantity == 1
+    assert row.sale_price == Decimal("195.00")
+    assert row.shipping_cost == Decimal("0")
+    assert row.customer_username == "buyer01"
+    assert row.customer_full_name == "Example Buyer"
+    assert row.order_status == "Finished"
+    assert row.order_source == "Marketplace"
 
 
 def test_unknown_optional_fields_remain_unknown(tmp_path):
