@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import hashlib
 import sys
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,6 +19,7 @@ from crypto_boundary import (  # noqa: E402
     KeyResolver,
     ResultAuthenticator,
     WorkerAuthenticator,
+    token_digest,
 )
 from core_service.worker_coordination import (  # noqa: E402
     OutboundTransportPolicy,
@@ -94,16 +95,7 @@ def _crypto():
     )
 
 
-def test_full_worker_identity_ticket_result_lifecycle_is_durable_and_single_use():
-    store = PostgresWorkerCoordinatorStore(_connection_factory)
-    worker_auth, tickets, results = _crypto()
-    coordinator = WorkerCoordinator(
-        store,
-        worker_authenticator=worker_auth,
-        ticket_authority=tickets,
-        result_authenticator=results,
-    )
-
+def _setup_leased_job(store, worker_auth, coordinator, *, arguments_digest="a" * 64):
     store.register_worker(
         worker_id="worker-1",
         key_id="worker-key-v1",
@@ -116,18 +108,27 @@ def test_full_worker_identity_ticket_result_lifecycle_is_durable_and_single_use(
         worker_id="worker-1",
         lease_seconds=120,
     )
-
-    task_id = str(uuid.uuid4())
-    approval_id = str(uuid.uuid4())
     job_id = store.enqueue_job(
-        task_id=task_id,
-        approval_id=approval_id,
+        task_id=str(uuid.uuid4()),
+        approval_id=str(uuid.uuid4()),
         tool_id="karmolab.host_health",
         tool_version="1",
-        arguments_digest="a" * 64,
+        arguments_digest=arguments_digest,
     )
     lease = store.lease_job(job_id=job_id, worker_id="worker-1", lease_seconds=60)
-    assert lease.worker_id == "worker-1"
+    return credential, job_id, lease
+
+
+def test_full_worker_identity_ticket_result_lifecycle_is_durable_and_single_use():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    worker_auth, tickets, results = _crypto()
+    coordinator = WorkerCoordinator(
+        store,
+        worker_authenticator=worker_auth,
+        ticket_authority=tickets,
+        result_authenticator=results,
+    )
+    credential, job_id, lease = _setup_leased_job(store, worker_auth, coordinator)
     assert lease.attempt_count == 1
 
     token = coordinator.issue_execution_ticket(
@@ -135,6 +136,18 @@ def test_full_worker_identity_ticket_result_lifecycle_is_durable_and_single_use(
         lease=lease,
         ttl_seconds=30,
     )
+    verified = tickets.verify(
+        token,
+        approval_id=lease.approval_id,
+        arguments_digest=lease.arguments_digest,
+        executor_identity=lease.worker_id,
+        task_id=lease.task_id,
+        tool_id=lease.tool_id,
+        tool_version=lease.tool_version,
+    )
+    assert verified["tool_id"] == "karmolab.host_health"
+    assert verified["tool_version"] == "1"
+
     assert coordinator.authorize_execution(token=token, lease=lease) is True
     with pytest.raises(WorkerCoordinationError, match="already consumed"):
         coordinator.authorize_execution(token=token, lease=lease)
@@ -143,10 +156,16 @@ def test_full_worker_identity_ticket_result_lifecycle_is_durable_and_single_use(
     envelope = results.sign(
         worker_id="worker-1",
         key_id="worker-key-v1",
-        task_id=task_id,
+        task_id=lease.task_id,
         result=result,
+        execution_ticket_digest=token_digest(token),
     )
-    digest = coordinator.accept_result(lease=lease, result=result, envelope=envelope)
+    digest = coordinator.accept_result(
+        execution_ticket=token,
+        lease=lease,
+        result=result,
+        envelope=envelope,
+    )
     assert digest == results.result_digest(result)
     assert store.get_job_state(job_id)["state"] == "RESULT_SUBMITTED"
 
@@ -157,6 +176,35 @@ def test_full_worker_identity_ticket_result_lifecycle_is_durable_and_single_use(
 
     restarted_store = PostgresWorkerCoordinatorStore(_connection_factory)
     assert restarted_store.get_job_state(job_id)["state"] == "SUCCEEDED"
+
+
+def test_result_is_refused_until_ticket_has_been_consumed():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    worker_auth, tickets, results = _crypto()
+    coordinator = WorkerCoordinator(
+        store,
+        worker_authenticator=worker_auth,
+        ticket_authority=tickets,
+        result_authenticator=results,
+    )
+    credential, job_id, lease = _setup_leased_job(store, worker_auth, coordinator)
+    token = coordinator.issue_execution_ticket(credential_token=credential, lease=lease)
+    result = {"ok": True}
+    envelope = results.sign(
+        worker_id=lease.worker_id,
+        key_id="worker-key-v1",
+        task_id=lease.task_id,
+        result=result,
+        execution_ticket_digest=token_digest(token),
+    )
+    with pytest.raises(WorkerCoordinationError, match="was not consumed"):
+        coordinator.accept_result(
+            execution_ticket=token,
+            lease=lease,
+            result=result,
+            envelope=envelope,
+        )
+    assert store.get_job_state(job_id)["state"] == "LEASED"
 
 
 def test_worker_identity_key_mismatch_and_revocation_fail_closed():
@@ -185,7 +233,7 @@ def test_worker_identity_key_mismatch_and_revocation_fail_closed():
         coordinator.authenticate_heartbeat(credential_token=credential, worker_id="worker-1")
 
 
-def test_tampered_ticket_wrong_worker_and_result_are_refused():
+def test_tampered_ticket_tool_binding_and_result_are_refused():
     store = PostgresWorkerCoordinatorStore(_connection_factory)
     worker_auth, tickets, results = _crypto()
     coordinator = WorkerCoordinator(
@@ -194,17 +242,7 @@ def test_tampered_ticket_wrong_worker_and_result_are_refused():
         ticket_authority=tickets,
         result_authenticator=results,
     )
-    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
-    credential = worker_auth.issue(worker_id="worker-1", key_id="worker-key-v1", ttl_seconds=300)
-    coordinator.authenticate_heartbeat(credential_token=credential, worker_id="worker-1")
-    job_id = store.enqueue_job(
-        task_id=str(uuid.uuid4()),
-        approval_id=str(uuid.uuid4()),
-        tool_id="karmolab.host_health",
-        tool_version="1",
-        arguments_digest="b" * 64,
-    )
-    lease = store.lease_job(job_id=job_id, worker_id="worker-1")
+    credential, job_id, lease = _setup_leased_job(store, worker_auth, coordinator, arguments_digest="b" * 64)
     token = coordinator.issue_execution_ticket(credential_token=credential, lease=lease)
 
     with pytest.raises(CryptoBoundaryError):
@@ -214,15 +252,53 @@ def test_tampered_ticket_wrong_worker_and_result_are_refused():
             arguments_digest="tampered",
             executor_identity=lease.worker_id,
             task_id=lease.task_id,
+            tool_id=lease.tool_id,
+            tool_version=lease.tool_version,
+        )
+    with pytest.raises(CryptoBoundaryError):
+        tickets.verify(
+            token,
+            approval_id=lease.approval_id,
+            arguments_digest=lease.arguments_digest,
+            executor_identity=lease.worker_id,
+            task_id=lease.task_id,
+            tool_id="karmolab.other",
+            tool_version=lease.tool_version,
         )
 
     coordinator.authorize_execution(token=token, lease=lease)
     result = {"ok": True}
     envelope = results.sign(
-        worker_id="worker-1", key_id="worker-key-v1", task_id=lease.task_id, result=result
+        worker_id="worker-1",
+        key_id="worker-key-v1",
+        task_id=lease.task_id,
+        result=result,
+        execution_ticket_digest=token_digest(token),
     )
     with pytest.raises(CryptoBoundaryError):
-        coordinator.accept_result(lease=lease, result={"ok": False}, envelope=envelope)
+        coordinator.accept_result(
+            execution_ticket=token,
+            lease=lease,
+            result={"ok": False},
+            envelope=envelope,
+        )
+
+    other_token_digest = hashlib.sha256(b"different-ticket").hexdigest()
+    wrong_ticket_envelope = results.sign(
+        worker_id="worker-1",
+        key_id="worker-key-v1",
+        task_id=lease.task_id,
+        result=result,
+        execution_ticket_digest=other_token_digest,
+    )
+    with pytest.raises(CryptoBoundaryError, match="execution-ticket binding mismatch"):
+        coordinator.accept_result(
+            execution_ticket=token,
+            lease=lease,
+            result=result,
+            envelope=wrong_ticket_envelope,
+        )
+    assert store.get_job_state(job_id)["state"] == "LEASED"
 
 
 def test_expired_lease_moves_to_recovery_required_and_never_requeues_automatically():
