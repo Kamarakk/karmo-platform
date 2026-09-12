@@ -9,7 +9,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Foundation & Reliability Layer (Foundation v1) — ✅ COMPLETE
 - KARMO Control & Approval Layer (Core v2 prototypes) — ✅ MERGED
 - Trusted Computer Worker System (Worker Runtime v0.1) — ✅ SOURCE MERGE CLOSEOUT COMPLETE
-- BloomBoss Historical Data Intelligence (Phase 1) — 🟡 PR #32 BUILD GATE READY; NOT MERGED OR DEPLOYED
+- BloomBoss Historical Data Intelligence (Phase 1) — 🟠 PR #32 CODE GREEN, MERGE GATE SUSPENDED PENDING MAIN RESYNC; NOT MERGED OR DEPLOYED
 - Production deployment of the Trusted Computer Worker System — ⛔ NOT STARTED
 - Real network connection for trusted worker computers (Worker Runtime network transport) — ⛔ NOT ENABLED
 
@@ -25,24 +25,28 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-Close the refreshed BloomBoss Historical Data Intelligence build gate on PR #32 without crossing the merge/deployment approval boundary.
+Keep improving the approved BloomBoss Historical Data Intelligence slice on PR #32 while preserving the merge/deployment approval boundary, then resynchronize with current `main` before reopening the merge gate.
 
 ## CURRENT ISSUE
 
-No active Phase 1 code blocker. The branch is synchronized with current `main` and is 0 commits behind. Synchronization commit `bdad80ff1df4b01c4351aab355b8ce0848cab435` passed BloomBoss Phase 1 GitHub Actions run #97.
+No active Phase 1 code blocker. The latest fee-aware outcome analytics passed BloomBoss Phase 1 GitHub Actions run #105 at commit `187350b310cb4f1d325058e665d879f161782879`.
 
-Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, cultivar/channel outcomes, deterministic inventory-exposure analysis, and historical listing evidence remain present after synchronization.
+The branch has diverged from current `main`: GitHub comparison on 2026-09-11 reports PR #32 **23 commits behind** and 91 commits ahead. Therefore the prior BUILD GATE READY claim is suspended until a fresh non-production resynchronization is completed and the targeted BloomBoss suite passes again.
 
-Supplier and purchase-batch intelligence separates gross margin from return on known cost and adds known-outcome return that subtracts explicitly known plant-loss cost. Unknown cost remains unknown, and active unsold inventory remains capital exposure rather than realized loss.
+Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, unit/cultivar/channel outcomes, deterministic inventory-exposure analysis, and historical listing evidence remain on the feature branch.
+
+Cultivar and channel intelligence now also reports **known net revenue, known net profit, and known net margin only when landed cost, selling fees, and shipping cost are all known**. Missing fee/shipping facts remain unknown rather than being treated as zero.
+
+Supplier and purchase-batch intelligence continues to separate gross margin from return on known cost and adds known-outcome return that subtracts explicitly known plant-loss cost. Unknown cost remains unknown, and active unsold inventory remains capital exposure rather than realized loss.
 
 ## NEXT GATE
 
-High-level approval to merge PR #32 when Kamara chooses to promote this Phase 1 slice. Merge is not authorized by the autonomous build instruction.
+Resynchronize `feat/bloomboss-historical-intelligence` with current `main` in approved non-production GitHub/dev scope, resolve only real conflicts, rerun the targeted BloomBoss suite, and refresh build-gate evidence. High-level merge approval remains separate and is not authorized by the autonomous build instruction.
 
 ## AFTER THIS
 
 - Use the real BloomBoss historical worksheet/export as the first source dataset in approved non-production scope.
-- Measure completeness, relationship findings, listing activity, inventory exposure, realized return, and known-outcome return before trusting supplier/purchase conclusions.
+- Measure completeness, relationship findings, listing activity, inventory exposure, realized return, known-outcome return, and known net outcomes before trusting supplier/cultivar/channel conclusions.
 - Implement durable local/dev persistence only after the persistence design is reviewed at the next approved build slice.
 - Continue the approved BloomBoss phase order; do not start marketplace write automation or external customer actions.
 - Production remains separately approval-gated.
