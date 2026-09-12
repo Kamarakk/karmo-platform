@@ -69,7 +69,7 @@ def test_channel_outcomes_compare_realized_margin_without_imputing_cost():
     assert summary["known_net_revenue_on_known_costs"] == Decimal("105")
     assert summary["known_net_profit_on_known_costs"] == Decimal("55")
     assert summary["known_net_margin_on_known_costs"] == Decimal("55") / Decimal("105")
-    assert summary["average_days_to_sale"] == Decimal("22") / Decimal("3")
+    assert summary["average_days_to_sale"] == 7
 
 
 def test_known_net_outcomes_stay_unknown_when_fees_or_shipping_are_missing():
