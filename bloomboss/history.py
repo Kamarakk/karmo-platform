@@ -13,6 +13,7 @@ from .listing_history import load_listing_history_csv
 from .models import ListingHistoryEvent, PlantUnit, PropagationEvent, PurchaseBatch, Sale
 from .outcomes import summarize_channels, summarize_cultivars, summarize_units
 from .propagation_history import load_propagation_history_csv
+from .rankings import summarize_decision_rankings
 from .validation import (
     ValidationIssue,
     validate_history_relationships,
@@ -40,6 +41,7 @@ class HistoricalImportSnapshot:
     channel_summary: dict
     inventory_exposure_summary: dict
     quality_summary: dict
+    decision_rankings: dict
     listings: tuple[ListingHistoryEvent, ...] = ()
     listing_source_name: str | None = None
     listing_source_sha256: str | None = None
@@ -113,6 +115,12 @@ def inspect_history_csv(
         listing_size = listing_path.stat().st_size
         listing_issues = validate_listing_relationships(listings, units, sales)
 
+    supplier_summary = summarize_suppliers(batches, units, sales)
+    batch_summary = summarize_batches(batches, units, sales)
+    unit_outcome_summary = summarize_units(units, sales)
+    cultivar_summary = summarize_cultivars(units, sales)
+    channel_summary = summarize_channels(units, sales)
+
     return HistoricalImportSnapshot(
         source_name=path.name,
         source_sha256=source_sha256(path),
@@ -122,13 +130,20 @@ def inspect_history_csv(
         sales=tuple(sales),
         relationship_issues=tuple(issues),
         business_summary=summarize_business(units, sales),
-        supplier_summary=summarize_suppliers(batches, units, sales),
-        batch_summary=summarize_batches(batches, units, sales),
-        unit_outcome_summary=summarize_units(units, sales),
-        cultivar_summary=summarize_cultivars(units, sales),
-        channel_summary=summarize_channels(units, sales),
+        supplier_summary=supplier_summary,
+        batch_summary=batch_summary,
+        unit_outcome_summary=unit_outcome_summary,
+        cultivar_summary=cultivar_summary,
+        channel_summary=channel_summary,
         inventory_exposure_summary=summarize_inventory_exposure(units, sales),
         quality_summary=summarize_history_quality(batches, units, sales),
+        decision_rankings=summarize_decision_rankings(
+            unit_summary=unit_outcome_summary,
+            cultivar_summary=cultivar_summary,
+            supplier_summary=supplier_summary,
+            batch_summary=batch_summary,
+            channel_summary=channel_summary,
+        ),
         listings=tuple(listings),
         listing_source_name=listing_name,
         listing_source_sha256=listing_hash,
