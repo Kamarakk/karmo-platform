@@ -2,8 +2,9 @@
 
 Every real tool invocation must resolve through the KARMO registry and approval
 engine. Models never call arbitrary handlers directly and cannot lower the
-required approval class. When a durable invocation ledger is configured,
-execution is recorded with an idempotency key before the handler runs.
+required approval class. When durable persistence is configured, invocation
+identity is recorded before the handler runs and approved execution may use an
+atomic approval+ledger claim transaction.
 """
 
 from __future__ import annotations
@@ -31,11 +32,13 @@ class DispatchDecision:
 
 
 class CapabilityDispatcher:
-    def __init__(self, *, registry, approval_engine, handlers=None, invocation_ledger=None):
+    def __init__(self, *, registry, approval_engine, handlers=None,
+                 invocation_ledger=None, execution_coordinator=None):
         self.registry = registry
         self.approval_engine = approval_engine
         self.handlers = dict(handlers or {})
         self.invocation_ledger = invocation_ledger
+        self.execution_coordinator = execution_coordinator
 
     def bind(self, tool_id: str, version: str, handler):
         key = (tool_id, version)
@@ -137,6 +140,48 @@ class CapabilityDispatcher:
                 approval_requirement=requirement,
                 approval_id=pending.approval_id,
                 executed=False,
+            )
+
+        if self.execution_coordinator is not None:
+            if not idempotency_key:
+                raise DispatchError("idempotency_key is required for durable approved execution")
+            try:
+                claim = self.execution_coordinator.claim(
+                    approval_id=approval_id,
+                    idempotency_key=idempotency_key,
+                    task_id=task_id,
+                    tool_id=tool_id,
+                    tool_version=version,
+                    requester=requester,
+                    model_identity=model_identity,
+                    executor_identity=executor_identity,
+                    arguments=arguments,
+                    authority_decision=requirement.value,
+                )
+            except CoreControlError as exc:
+                raise DispatchError(str(exc)) from exc
+            try:
+                result = handler(arguments)
+            except Exception:
+                self.execution_coordinator.finish(claim, status="FAILED")
+                if hasattr(self.approval_engine, "refresh"):
+                    self.approval_engine.refresh(approval_id)
+                raise
+            self.execution_coordinator.finish(
+                claim,
+                status="EXECUTED",
+                result_digest=self._digest_result(result),
+            )
+            if hasattr(self.approval_engine, "refresh"):
+                self.approval_engine.refresh(approval_id)
+            return DispatchDecision(
+                tool_id=tool_id,
+                version=version,
+                approval_requirement=requirement,
+                approval_id=approval_id,
+                executed=True,
+                result=result,
+                invocation_id=claim.invocation_id,
             )
 
         invocation_id = self._begin_ledger(
