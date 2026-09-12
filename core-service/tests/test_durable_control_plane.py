@@ -1,10 +1,19 @@
 import copy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from core_service.control import ApprovalEngine, ApprovalState, CapabilityClass, CoreControlError
+from core_service.control import (
+    ApprovalEngine,
+    ApprovalRequirement,
+    ApprovalState,
+    CapabilityClass,
+    CoreControlError,
+)
+from core_service.dispatcher import CapabilityDispatcher, DispatchError
+from core_service.persistence import PersistenceError
 
 
 class MemoryApprovalStore:
@@ -19,6 +28,38 @@ class MemoryApprovalStore:
     def get(self, approval_id):
         record = self.records.get(approval_id)
         return copy.deepcopy(record) if record is not None else None
+
+
+class MemoryLedger:
+    def __init__(self):
+        self.by_key = {}
+        self.completed = {}
+        self.counter = 0
+
+    def begin(self, **kwargs):
+        key = kwargs["idempotency_key"]
+        if key in self.by_key:
+            raise PersistenceError(f"duplicate invocation idempotency key: {key}")
+        self.counter += 1
+        invocation_id = f"inv-{self.counter}"
+        self.by_key[key] = {"invocation_id": invocation_id, **kwargs}
+        return invocation_id
+
+    def complete(self, invocation_id, **kwargs):
+        if invocation_id in self.completed:
+            raise PersistenceError("invocation is already terminal")
+        self.completed[invocation_id] = dict(kwargs)
+
+
+class Registry:
+    def __init__(self, requirement):
+        self.record = SimpleNamespace(
+            deprecated=False,
+            computed_approval_requirement=requirement,
+        )
+
+    def get(self, tool_id, version):
+        return self.record if (tool_id, version) == ("karmolab.host_health", "1") else None
 
 
 class Clock:
@@ -141,6 +182,51 @@ def test_nonpositive_ttl_is_refused():
             authority_class=CapabilityClass.READ.value,
             ttl_seconds=0,
         )
+
+
+def test_dispatcher_requires_idempotency_key_when_durable_ledger_enabled():
+    dispatcher = CapabilityDispatcher(
+        registry=Registry(ApprovalRequirement.NONE),
+        approval_engine=ApprovalEngine(),
+        handlers={("karmolab.host_health", "1"): lambda args: {"host": args["host"], "ok": True}},
+        invocation_ledger=MemoryLedger(),
+    )
+    with pytest.raises(DispatchError):
+        dispatcher.dispatch(
+            requester="kamara",
+            tool_id="karmolab.host_health",
+            version="1",
+            arguments={"host": "karmo-ai01"},
+            executor_identity="worker-1",
+        )
+
+
+def test_dispatcher_records_actual_execution_and_refuses_replay_key():
+    ledger = MemoryLedger()
+    dispatcher = CapabilityDispatcher(
+        registry=Registry(ApprovalRequirement.NONE),
+        approval_engine=ApprovalEngine(),
+        handlers={("karmolab.host_health", "1"): lambda args: {"host": args["host"], "ok": True}},
+        invocation_ledger=ledger,
+    )
+    kwargs = dict(
+        requester="kamara",
+        tool_id="karmolab.host_health",
+        version="1",
+        arguments={"host": "karmo-ai01"},
+        executor_identity="worker-1",
+        task_id=None,
+        model_identity="qwen3:8b",
+        idempotency_key="task-1:karmolab.host_health:1",
+    )
+    decision = dispatcher.dispatch(**kwargs)
+    assert decision.executed is True
+    assert decision.invocation_id == "inv-1"
+    assert ledger.completed["inv-1"]["status"] == "EXECUTED"
+    assert ledger.completed["inv-1"]["result_digest"]
+
+    with pytest.raises(PersistenceError):
+        dispatcher.dispatch(**kwargs)
 
 
 def test_staged_schema_contains_restart_and_replay_controls():
