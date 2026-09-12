@@ -27,25 +27,38 @@ class TaskRecoveryManager:
         for task in candidates:
             prior_state = task.state
             expected_version = task.state_version
+            event_key = f"restart-recovery:{task.task_id}:{expected_version}"
+            payload = {
+                "prior_state": prior_state.value,
+                "new_state": TaskState.RECOVERY_REQUIRED.value,
+                "reason": "process_restart",
+                "automatic_replay": False,
+            }
             task.transition(
                 TaskState.RECOVERY_REQUIRED,
                 actor=self.actor,
                 note=f"process restart observed while task was {prior_state.value}; no automatic replay",
             )
             task.next_action = "reconcile prior execution evidence before continuing"
-            self.task_store.save(task, expected_version=expected_version)
-            if hasattr(self.task_store, "append_event"):
-                self.task_store.append_event(
-                    event_key=f"restart-recovery:{task.task_id}:{expected_version}",
-                    task_id=task.task_id,
+
+            if hasattr(self.task_store, "save_with_event"):
+                self.task_store.save_with_event(
+                    task,
+                    expected_version=expected_version,
+                    event_key=event_key,
                     event_type="RECOVERY_REQUIRED",
                     actor=self.actor,
-                    payload={
-                        "prior_state": prior_state.value,
-                        "new_state": TaskState.RECOVERY_REQUIRED.value,
-                        "reason": "process_restart",
-                        "automatic_replay": False,
-                    },
+                    payload=payload,
                 )
+            else:
+                self.task_store.save(task, expected_version=expected_version)
+                if hasattr(self.task_store, "append_event"):
+                    self.task_store.append_event(
+                        event_key=event_key,
+                        task_id=task.task_id,
+                        event_type="RECOVERY_REQUIRED",
+                        actor=self.actor,
+                        payload=payload,
+                    )
             recovered.append(task)
         return recovered
