@@ -14,6 +14,8 @@ from core_service.control import (
 )
 from core_service.dispatcher import CapabilityDispatcher, DispatchError
 from core_service.persistence import PersistenceError
+from core_service.recovery import TaskRecoveryManager
+from core_service.task_state import InMemoryTaskStore, TaskState, TaskStateError
 
 
 class MemoryApprovalStore:
@@ -49,6 +51,63 @@ class MemoryLedger:
         if invocation_id in self.completed:
             raise PersistenceError("invocation is already terminal")
         self.completed[invocation_id] = dict(kwargs)
+
+
+class MemoryExecutionCoordinator:
+    """Transaction-boundary double for dispatcher tests."""
+
+    def __init__(self, approval_engine):
+        self.approval_engine = approval_engine
+        self.claims = {}
+        self.finished = {}
+        self.counter = 0
+
+    def claim(self, **kwargs):
+        key = kwargs["idempotency_key"]
+        if key in self.claims:
+            raise PersistenceError(f"duplicate invocation idempotency key: {key}")
+        record = self.approval_engine.get(kwargs["approval_id"])
+        if record.state != ApprovalState.APPROVED:
+            raise CoreControlError(f"cannot claim from {record.state.value}")
+        if record.authorized_executor != kwargs["executor_identity"]:
+            raise CoreControlError("executor identity mismatch")
+        self.counter += 1
+        claim = SimpleNamespace(
+            invocation_id=f"claim-{self.counter}",
+            approval_id=kwargs["approval_id"],
+            idempotency_key=key,
+        )
+        record.execution_binding = claim.invocation_id
+        record.transition(ApprovalState.CLAIMED, "system", "execution authority claimed", datetime.now(timezone.utc))
+        self.approval_engine._persist(record)
+        self.claims[key] = claim
+        return claim
+
+    def finish(self, claim, **kwargs):
+        record = self.approval_engine.get(claim.approval_id)
+        if record.state != ApprovalState.CLAIMED:
+            raise PersistenceError("approval is not claimed")
+        target = ApprovalState.EXECUTED if kwargs["status"] == "EXECUTED" else ApprovalState.FAILED
+        record.transition(target, "system", kwargs["status"].lower(), datetime.now(timezone.utc))
+        self.approval_engine._persist(record)
+        self.finished[claim.invocation_id] = dict(kwargs)
+
+
+class EventfulMemoryTaskStore(InMemoryTaskStore):
+    def __init__(self):
+        super().__init__()
+        self.events = {}
+
+    def append_event(self, *, event_key, task_id, event_type, actor, payload=None):
+        if event_key in self.events:
+            raise TaskStateError(f"duplicate event key: {event_key}")
+        self.events[event_key] = {
+            "task_id": task_id,
+            "event_type": event_type,
+            "actor": actor,
+            "payload": dict(payload or {}),
+        }
+        return event_key
 
 
 class Registry:
@@ -96,14 +155,30 @@ def test_approved_record_survives_engine_restart_and_executes_once():
     assert restored.state == ApprovalState.APPROVED
     assert restored.authorized_executor == "worker-1"
 
+    observed = []
+
+    def action():
+        observed.append(restarted.get(record.approval_id).state)
+        with pytest.raises(CoreControlError):
+            restarted.execute(
+                record.approval_id,
+                tool_id="karmolab.host_health",
+                tool_version="1",
+                arguments={"host": "karmo-ai01"},
+                executor_identity="worker-1",
+                action=lambda: {"duplicate": True},
+            )
+        return {"ok": True}
+
     assert restarted.execute(
         record.approval_id,
         tool_id="karmolab.host_health",
         tool_version="1",
         arguments={"host": "karmo-ai01"},
         executor_identity="worker-1",
-        action=lambda: {"ok": True},
+        action=action,
     ) == {"ok": True}
+    assert observed == [ApprovalState.CLAIMED]
 
     second_restart = ApprovalEngine(store=store, clock=clock)
     assert second_restart.get(record.approval_id).state == ApprovalState.EXECUTED
@@ -229,11 +304,100 @@ def test_dispatcher_records_actual_execution_and_refuses_replay_key():
         dispatcher.dispatch(**kwargs)
 
 
-def test_staged_schema_contains_restart_and_replay_controls():
+def test_approved_dispatch_claims_authority_before_handler_and_blocks_replay():
+    approvals = ApprovalEngine(store=MemoryApprovalStore())
+    pending = request(approvals)
+    approvals.approve(pending.approval_id, approver="kamara", authorized_executor="worker-1")
+    coordinator = MemoryExecutionCoordinator(approvals)
+    observed = []
+
+    def handler(args):
+        observed.append(approvals.get(pending.approval_id).state)
+        return {"host": args["host"], "ok": True}
+
+    dispatcher = CapabilityDispatcher(
+        registry=Registry(ApprovalRequirement.EXPLICIT_PER_SESSION_OR_TASK),
+        approval_engine=approvals,
+        handlers={("karmolab.host_health", "1"): handler},
+        execution_coordinator=coordinator,
+    )
+    kwargs = dict(
+        requester="kamara",
+        tool_id="karmolab.host_health",
+        version="1",
+        arguments={"host": "karmo-ai01"},
+        executor_identity="worker-1",
+        approval_id=pending.approval_id,
+        idempotency_key="task-2:health:1",
+    )
+    decision = dispatcher.dispatch(**kwargs)
+    assert decision.executed is True
+    assert observed == [ApprovalState.CLAIMED]
+    assert approvals.get(pending.approval_id).state == ApprovalState.EXECUTED
+    with pytest.raises((PersistenceError, DispatchError)):
+        dispatcher.dispatch(**kwargs)
+
+
+def test_restart_moves_running_work_to_recovery_required_without_replay():
+    store = EventfulMemoryTaskStore()
+    task = store.create(
+        objective="inspect host",
+        requester="kamara",
+        allowed_capabilities=["karmolab.host_health"],
+    )
+    task.transition(TaskState.PLANNED, actor="karmo")
+    task.transition(TaskState.READY, actor="karmo")
+    task.transition(TaskState.RUNNING, actor="worker-1")
+    store.save(task, expected_version=task.state_version)
+
+    recovered = TaskRecoveryManager(store).reconcile_after_restart()
+    assert len(recovered) == 1
+    restored = store.get(task.task_id)
+    assert restored.state == TaskState.RECOVERY_REQUIRED
+    assert restored.next_action == "reconcile prior execution evidence before continuing"
+    assert len(store.events) == 1
+    event = next(iter(store.events.values()))
+    assert event["payload"]["automatic_replay"] is False
+    assert event["payload"]["prior_state"] == TaskState.RUNNING.value
+
+    assert TaskRecoveryManager(store).reconcile_after_restart() == []
+    assert len(store.events) == 1
+
+
+def test_stale_task_writer_is_rejected():
+    store = InMemoryTaskStore()
+    task = store.create(objective="inspect", requester="kamara")
+    first = store.get(task.task_id)
+    second = store.get(task.task_id)
+    assert first.state_version == second.state_version
+
+    first.transition(TaskState.PLANNED, actor="karmo")
+    store.save(first, expected_version=first.state_version)
+
+    second.transition(TaskState.PLANNED, actor="stale-karmo")
+    with pytest.raises(TaskStateError):
+        store.save(second, expected_version=second.state_version)
+
+
+def test_recovery_required_cannot_jump_back_to_running():
+    store = InMemoryTaskStore()
+    task = store.create(objective="inspect", requester="kamara")
+    task.transition(TaskState.PLANNED, actor="karmo")
+    task.transition(TaskState.READY, actor="karmo")
+    task.transition(TaskState.RUNNING, actor="worker")
+    task.transition(TaskState.RECOVERY_REQUIRED, actor="recovery")
+    with pytest.raises(TaskStateError):
+        task.transition(TaskState.RUNNING, actor="worker")
+
+
+def test_staged_schema_contains_restart_race_and_replay_controls():
     migration = Path(__file__).parents[1] / "core_service" / "migrations" / "001_core_v2_substrate.sql"
     sql = migration.read_text()
     assert "idempotency_key TEXT NOT NULL UNIQUE" in sql
     assert "audit_trail JSONB NOT NULL" in sql
+    assert "state_version BIGINT NOT NULL" in sql
+    assert "event_key TEXT NOT NULL UNIQUE" in sql
     assert "idx_core_approval_state_expiry" in sql
+    assert "idx_tool_invocation_unfinished" in sql
     assert "evidence_digest TEXT" in sql
     assert "verification_state TEXT" in sql
