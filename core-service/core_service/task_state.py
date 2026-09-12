@@ -55,6 +55,7 @@ class TaskRecord:
     risk: str
     allowed_capabilities: list[str]
     state: TaskState = TaskState.CREATED
+    state_version: int = 0
     model: str | None = None
     tool: str | None = None
     inputs: dict = field(default_factory=dict)
@@ -106,8 +107,19 @@ class InMemoryTaskStore:
         self.save(record)
         return copy.deepcopy(record)
 
-    def save(self, record: TaskRecord):
-        self._tasks[record.task_id] = copy.deepcopy(record)
+    def save(self, record: TaskRecord, *, expected_version=None):
+        existing = self._tasks.get(record.task_id)
+        if expected_version is not None:
+            actual = existing.state_version if existing is not None else 0
+            if actual != expected_version:
+                raise TaskStateError(
+                    f"task version conflict: expected {expected_version}, found {actual}"
+                )
+        stored = copy.deepcopy(record)
+        stored.state_version = (existing.state_version + 1) if existing is not None else 1
+        record.state_version = stored.state_version
+        self._tasks[record.task_id] = stored
+        return stored.state_version
 
     def get(self, task_id: str):
         record = self._tasks.get(task_id)
