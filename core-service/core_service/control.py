@@ -106,19 +106,30 @@ class ApprovalRecord:
 
 
 class ApprovalEngine:
-    """Local in-memory v0.1 approval engine.
+    """KARMO approval engine with optional injected durable persistence.
 
-    Persistence is intentionally deferred rather than silently added to the
-    approved no-database-migration rollout.
+    The engine owns approval semantics. A persistence adapter may be supplied
+    to make approval truth survive process restart; the adapter never decides
+    authority or transitions. With no adapter the engine remains suitable for
+    isolated unit/dev use.
     """
 
-    def __init__(self, *, clock=None, default_ttl_seconds=3600):
+    def __init__(self, *, clock=None, default_ttl_seconds=3600, store=None):
         self._records: dict[str, ApprovalRecord] = {}
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._default_ttl_seconds = default_ttl_seconds
+        self._store = store
+
+    def _persist(self, record: ApprovalRecord):
+        self._records[record.approval_id] = record
+        if self._store is not None:
+            self._store.save(record)
 
     def request(self, *, requester, tool_id, tool_version, arguments, authority_class, ttl_seconds=None):
         now = self._clock()
+        ttl = self._default_ttl_seconds if ttl_seconds is None else ttl_seconds
+        if ttl <= 0:
+            raise CoreControlError("ttl_seconds must be positive")
         record = ApprovalRecord(
             approval_id=str(uuid.uuid4()),
             requester=requester,
@@ -127,19 +138,29 @@ class ApprovalEngine:
             arguments_digest=arguments_digest(tool_id, tool_version, arguments),
             authority_class=authority_class,
             created_at=now,
-            expires_at=now + timedelta(seconds=ttl_seconds or self._default_ttl_seconds),
+            expires_at=now + timedelta(seconds=ttl),
         )
-        record.audit_trail.append({"timestamp": now.isoformat(), "from_state": None, "to_state": "REQUESTED", "actor": requester, "note": "requested"})
-        self._records[record.approval_id] = record
+        record.audit_trail.append({
+            "timestamp": now.isoformat(),
+            "from_state": None,
+            "to_state": "REQUESTED",
+            "actor": requester,
+            "note": "requested",
+        })
+        self._persist(record)
         return record
 
     def _get(self, approval_id):
-        try:
-            record = self._records[approval_id]
-        except KeyError as exc:
-            raise CoreControlError(f"no such approval: {approval_id}") from exc
+        record = self._records.get(approval_id)
+        if record is None and self._store is not None:
+            record = self._store.get(approval_id)
+            if record is not None:
+                self._records[approval_id] = record
+        if record is None:
+            raise CoreControlError(f"no such approval: {approval_id}")
         if record.state in (ApprovalState.REQUESTED, ApprovalState.APPROVED) and self._clock() >= record.expires_at:
             record.transition(ApprovalState.EXPIRED, "system", "ttl elapsed", self._clock())
+            self._persist(record)
         return record
 
     def approve(self, approval_id, *, approver, authorized_executor=None):
@@ -149,30 +170,20 @@ class ApprovalEngine:
         record.approver = approver
         record.authorized_executor = authorized_executor or record.requester
         record.transition(ApprovalState.APPROVED, approver, "approved", self._clock())
+        self._persist(record)
         return record
 
     def deny(self, approval_id, *, approver, reason="denied"):
-        """Explicitly reject a pending approval request.
-
-        DENIED is terminal: it cannot be approved or executed later. The
-        rejecting identity and reason are retained in the audit trail.
-        """
         record = self._get(approval_id)
         if record.state != ApprovalState.REQUESTED:
             raise CoreControlError(f"cannot deny from {record.state.value}")
         record.approver = approver
         record.authorized_executor = None
         record.transition(ApprovalState.DENIED, approver, reason, self._clock())
+        self._persist(record)
         return record
 
     def cancel(self, approval_id, *, actor, reason="cancelled"):
-        """Revoke a pending or already-approved request before execution.
-
-        The requester may withdraw its own request. After approval, either
-        the requester or the recorded approver may revoke it. Arbitrary
-        executors/workers cannot cancel approvals they do not own.
-        CANCELLED is terminal and therefore cannot execute afterward.
-        """
         record = self._get(approval_id)
         if record.state not in (ApprovalState.REQUESTED, ApprovalState.APPROVED):
             raise CoreControlError(f"cannot cancel from {record.state.value}")
@@ -183,6 +194,7 @@ class ApprovalEngine:
             raise CoreControlError("actor is not authorized to cancel this approval")
         record.authorized_executor = None
         record.transition(ApprovalState.CANCELLED, actor, reason, self._clock())
+        self._persist(record)
         return record
 
     def execute(self, approval_id, *, tool_id, tool_version, arguments, executor_identity, action):
@@ -191,17 +203,21 @@ class ApprovalEngine:
             raise CoreControlError(f"cannot execute from {record.state.value}")
         if executor_identity != record.authorized_executor:
             record.transition(ApprovalState.FAILED, "system", "executor identity mismatch", self._clock())
+            self._persist(record)
             raise CoreControlError("executor identity mismatch; approval invalidated")
         if arguments_digest(tool_id, tool_version, arguments) != record.arguments_digest:
             record.transition(ApprovalState.FAILED, "system", "tool/argument mismatch", self._clock())
+            self._persist(record)
             raise CoreControlError("tool/argument mismatch; approval invalidated")
         try:
             result = action()
         except Exception as exc:
             record.transition(ApprovalState.FAILED, "system", f"execution raised: {exc}", self._clock())
+            self._persist(record)
             raise
         record.execution_binding = str(uuid.uuid5(uuid.NAMESPACE_URL, f"approval:{approval_id}"))
         record.transition(ApprovalState.EXECUTED, "system", "executed", self._clock())
+        self._persist(record)
         return result
 
     def get(self, approval_id):
