@@ -189,26 +189,36 @@ class PostgresWorkerCoordinatorStore:
                 raise WorkerCoordinationError("execution ticket invalid, expired, or already consumed")
         return digest
 
-    def submit_authenticated_result(self, *, lease: WorkerLease, result_digest, result_envelope):
+    def submit_authenticated_result(
+        self, *, lease: WorkerLease, ticket_digest: str,
+        result_digest, result_envelope,
+    ):
         now = self._clock()
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                UPDATE public.karmo_worker_jobs
+                UPDATE public.karmo_worker_jobs AS j
                 SET state='RESULT_SUBMITTED', result_digest=%s,
                     result_envelope=%s::jsonb, lease_token=NULL,
                     lease_expires_at=NULL, updated_at=%s
-                WHERE job_id=%s::uuid AND state='LEASED' AND worker_id=%s
-                  AND lease_token=%s::uuid AND lease_expires_at>%s
-                RETURNING job_id
+                WHERE j.job_id=%s::uuid AND j.state='LEASED' AND j.worker_id=%s
+                  AND j.lease_token=%s::uuid AND j.lease_expires_at>%s
+                  AND EXISTS (
+                      SELECT 1 FROM public.karmo_execution_tickets t
+                      WHERE t.ticket_digest=%s AND t.job_id=j.job_id
+                        AND t.worker_id=j.worker_id AND t.consumed_at IS NOT NULL
+                  )
+                RETURNING j.job_id
                 """,
                 (
                     result_digest, _json(result_envelope), now, lease.job_id,
-                    lease.worker_id, lease.lease_token, now,
+                    lease.worker_id, lease.lease_token, now, ticket_digest,
                 ),
             )
             if cur.fetchone() is None:
-                raise WorkerCoordinationError("result rejected: lease missing, stale, or worker mismatch")
+                raise WorkerCoordinationError(
+                    "result rejected: lease stale/mismatched or execution ticket was not consumed"
+                )
 
     def finalize_job(self, *, job_id, success: bool, error=None):
         target = "SUCCEEDED" if success else "FAILED"
@@ -259,7 +269,7 @@ class PostgresWorkerCoordinatorStore:
 
 
 class WorkerCoordinator:
-    """Policy-neutral coordinator facade around durable state + crypto verifiers."""
+    """Coordinator facade around durable state and cryptographic verification."""
 
     def __init__(self, store, *, worker_authenticator, ticket_authority, result_authenticator, clock=None):
         self.store = store
@@ -283,6 +293,8 @@ class WorkerCoordinator:
             arguments_digest=lease.arguments_digest,
             executor_identity=lease.worker_id,
             task_id=lease.task_id,
+            tool_id=lease.tool_id,
+            tool_version=lease.tool_version,
             ttl_seconds=ttl_seconds,
         )
         expires = self.clock() + timedelta(seconds=ttl_seconds)
@@ -296,20 +308,25 @@ class WorkerCoordinator:
             arguments_digest=lease.arguments_digest,
             executor_identity=lease.worker_id,
             task_id=lease.task_id,
+            tool_id=lease.tool_id,
+            tool_version=lease.tool_version,
         )
         self.store.consume_ticket(token=token, job_id=lease.job_id, worker_id=lease.worker_id)
         return True
 
-    def accept_result(self, *, lease: WorkerLease, result, envelope):
+    def accept_result(self, *, execution_ticket, lease: WorkerLease, result, envelope):
+        ticket_digest = _digest_token(execution_ticket)
         self.result_authenticator.verify(
             envelope,
             worker_id=lease.worker_id,
             task_id=lease.task_id,
             result=result,
+            execution_ticket_digest=ticket_digest,
         )
         digest = self.result_authenticator.result_digest(result)
         self.store.submit_authenticated_result(
             lease=lease,
+            ticket_digest=ticket_digest,
             result_digest=digest,
             result_envelope=envelope,
         )
