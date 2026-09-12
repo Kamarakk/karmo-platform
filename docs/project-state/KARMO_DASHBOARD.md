@@ -9,11 +9,12 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Foundation & Reliability Layer (Foundation v1) — ✅ COMPLETE
 - KARMO Control & Approval Layer (Core) — ✅ DEPLOYED TO KARMO-AI01
 - Trusted Computer Worker System (Worker Runtime local service boundary) — ✅ DEPLOYED TO KARMO-AI01
-- Direct remote network path to KARMO-AI01 over Tailscale — ✅ ACTIVE (`100.75.239.44`)
+- Direct remote network path to KARMO-AI01 over Tailscale — ✅ ENROLLED; direct client SSH smoke still needs verification
 - Real Worker Runtime network transport / remote job execution — ⛔ NOT ENABLED
 - KARMO Access & Connection Registry — ✅ MERGED
 - KARMO System Stewardship design — ✅ MERGED; workers not yet implemented/deployed
-- BloomBoss Historical Data Intelligence (Phase 1) — ✅ PR #32 BUILD GATE READY; DECISION-RANKING SLICE TARGETED CI GREEN; NOT MERGED OR DEPLOYED
+- BloomBoss Historical Data Intelligence (Phase 1) — ✅ PR #32 BUILD GATE READY; NOT MERGED OR DEPLOYED
+- KARMO-FIRST Orchestration Direction — 🟡 ARCHITECTURE LOCKED IN PRINCIPLE; implementation scaffold pending
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -25,46 +26,59 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Trusted Computer Worker System (Worker service boundary) — production-local Worker shell bound to Core; no network listener, no real worker transport, no capability execution, no persistent writes.
 - KARMO Access & Connection Registry — durable machine-readable host, route, authentication-reference, and recovery knowledge for humans and agents.
 - KARMO System Stewardship — planned QA, Security, Reliability/Maintenance, Housekeeping/Data-Hygiene, and Agent-Governance roles implemented over existing Core/Worker architecture rather than separate infrastructure stacks.
-- BloomBoss Historical Data Intelligence — normalizes purchase, sales, listing, propagation, and Palmstreet staging history; preserves unknowns and provenance; validates contradictions; fingerprints raw evidence; calculates reproducible business/quality metrics; buckets unsold inventory by deterministic historical age; and now emits deterministic decision rankings for the Phase 1 release questions without imputing unknown facts.
+- BloomBoss Historical Data Intelligence — normalizes purchase, sales, listing, propagation, and Palmstreet staging history; preserves unknowns and provenance; validates contradictions; fingerprints raw evidence; and calculates reproducible business/quality metrics.
+- KARMO-FIRST Orchestration — target control plane where KARMO owns durable task state, routing, capabilities, approvals, execution authority, verification evidence, and audit while ChatGPT/Claude/local/future models remain replaceable intelligence adapters.
 
 ## CURRENT TASK
 
-Hold PR #32 at the Phase 1 build gate for Kamara's separate high-level merge/promotion decision while continuing safe, Phase-1-scoped historical intelligence improvements in the isolated feature branch.
+Preserve BloomBoss Phase 1 at its existing gate while designing the next KARMO control-plane slice around:
+
+`KARMO Orchestration Layer -> Model Router -> Common KARMO Capability Interface -> Core Approval -> Worker Execution -> Independent Verification -> Durable Memory/Audit`
+
+At the same time, recover and verify the original three-node KVE compute design before assigning distributed roles or recommending new hardware.
 
 ## CURRENT ISSUE
 
-No active Phase 1 code blocker.
+No active BloomBoss code blocker.
 
-The prior mainline-divergence blocker was resolved by merge commit `d2519180a868f84a7da77d5cad9363ee992b5b84`, which incorporated `main` `53fb64f7f04ddd8c4377cf8b898db4b60714e4a2` while preserving BloomBoss Phase 1 changes.
+The immediate infrastructure blocker is management-path verification: Remote Desktop Commander currently knows only `karmo-ai01`, which was observed offline during this session; KVE01/KVE03 were separately shown reachable by SSH from KARMO-DEV01, while KVE02's LAN target is user-supplied and still needs live verification.
 
-The latest BloomBoss slice adds deterministic machine-readable rankings for: plants by realized profit on known cost, purchase batches by known loss cost, suppliers by known-outcome return, cultivars by average days to sale, and channels by known net profit. Unknown values are omitted from the corresponding ranking rather than treated as zero, and ties are deterministic.
+Palmstreet's built-in order export is currently unreliable/unavailable in the observed account/session even for a one-day range. Seller Hub table evidence is therefore staged as a fallback source, not as the long-term primary ingestion design.
 
-GitHub Actions BloomBoss Phase 1 run #152 on code head `66ec331743864da81bddc75ebebcd54afb8a7c54` completed successfully using the targeted `tests/test_bloomboss_*.py` suite under Python 3.12.
+## NEW GOVERNING RULE
 
-Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, unit/cultivar/channel outcomes, deterministic inventory-exposure/aging analysis, historical listing evidence, propagation lineage, Palmstreet staging, Palmstreet staging-quality evidence, and decision rankings remain in Phase 1 scope.
+**KARMO FIRST:** Before recommending an app, SaaS product, manual export, cloud folder, phone shortcut, or third-party workflow, first determine whether KARMO can own the capability using infrastructure already available.
+
+External systems should be sources, destinations, or adapters — not KARMO's brain, workflow engine, authority layer, or source of truth.
 
 ## NEXT GATE
 
-High-level merge/promotion decision for PR #32. The autonomous build instruction does **not** authorize merging the PR, deployment, production access, marketplace writes, or customer actions.
+Before any distributed deployment or Proxmox changes:
+
+1. Restore/verify KARMO-AI01 management availability.
+2. Perform read-only reachability checks from KARMO-controlled infrastructure to KVE01/KVE02/KVE03.
+3. Verify hostnames, cluster state, and real hardware capacity.
+4. Persist that truth in KARMO records.
+5. Only then assign workload roles and decide whether hardware upgrades are justified.
 
 ## AFTER THIS
 
-- Use the real BloomBoss historical worksheet/export as the first source dataset in approved non-production scope.
-- Use an official Palmstreet seller export to lock the staged field map before canonical reconciliation; buyer-side bulk purchase export support remains NEEDS VERIFICATION.
-- Measure completeness, relationship findings, listing activity, inventory exposure/aging, realized return, known-outcome return, known net outcomes, and decision rankings before trusting supplier/cultivar/channel conclusions.
-- Implement durable local/dev persistence only after the persistence design is reviewed at the next approved build slice.
-- Continue the approved BloomBoss phase order; do not start marketplace write automation or external customer actions.
+- Scaffold orchestration task/job state, model-provider abstraction, common capability registry, approval/risk contract, Worker job contract, verification-result contract, and audit/event format in non-production scope.
+- Extend Palmstreet staging so all verified Seller Hub fields, including Buyer Note and Seller Note, are represented and tested without storing unnecessary customer PII in source control.
+- Keep Palmstreet purchases and sales as structured platform evidence when possible; screenshots/invoices remain fallback evidence only.
+- Continue BloomBoss reconciliation only when source evidence can be reliably mapped to canonical inventory without invented matches.
 - Production remains separately approval-gated.
 
 ## ACTIVE SAFETY / AUTHORITY BOUNDARY
 
-- PR #32 / `feat/bloomboss-historical-intelligence` only
-- GitHub/dev scope only for BloomBoss build work
-- Production KARMO untouched by BloomBoss work
+- PR #32 / `feat/bloomboss-historical-intelligence` remains isolated from production
+- GitHub/dev scope only for current architecture/scaffolding work
 - No marketplace writes or customer actions
 - No OBS
 - No BloomBoss deployment or merge
 - No secrets
+- No Proxmox cluster/network/configuration changes until live state is verified
+- No new daemon/model service installation merely for convenience
 
 ## DEFERRED BEFORE ANY REAL WORKER NETWORK EXPOSURE
 
@@ -74,7 +88,7 @@ High-level merge/promotion decision for PR #32. The autonomous build instruction
 4. Result-authenticity cryptographic binding
 5. Coordinator persistence
 
-These are blockers for real Worker network exposure, not for the isolated BloomBoss historical-data build.
+These remain blockers for real Worker network exposure.
 
 ## SESSION STATUS FORMAT
 
@@ -94,6 +108,6 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 - next approval or verification gate
 - immediate post-task direction
 
-Keep it short. Historical detail belongs in `CHANGE_LOG.md` and `CURRENT_STATE.md`, not here.
+Keep it short. Historical detail belongs in `CHANGE_LOG.md`, `CURRENT_STATE.md`, and dated PROJECT SAVE files.
 
 Last refreshed: 2026-09-11
