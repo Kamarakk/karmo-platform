@@ -13,15 +13,20 @@ CREATE TABLE IF NOT EXISTS public.tool_registry (
 
 CREATE TABLE IF NOT EXISTS public.tool_invocation_ledger (
     invocation_id UUID PRIMARY KEY,
+    idempotency_key TEXT NOT NULL UNIQUE,
     task_id UUID,
     tool_id TEXT NOT NULL,
     tool_version TEXT NOT NULL,
     requester TEXT NOT NULL,
+    model_identity TEXT,
     executor_identity TEXT,
     arguments_digest TEXT NOT NULL,
+    authority_decision TEXT NOT NULL,
     approval_id UUID,
     status TEXT NOT NULL,
     result_digest TEXT,
+    evidence_digest TEXT,
+    verification_state TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ
 );
@@ -37,6 +42,7 @@ CREATE TABLE IF NOT EXISTS public.core_approval_records (
     approver TEXT,
     authorized_executor TEXT,
     execution_binding TEXT,
+    audit_trail JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -76,6 +82,8 @@ CREATE TABLE IF NOT EXISTS public.karmo_task_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tool_invocation_task ON public.tool_invocation_ledger(task_id);
+CREATE INDEX IF NOT EXISTS idx_tool_invocation_status ON public.tool_invocation_ledger(status);
+CREATE INDEX IF NOT EXISTS idx_core_approval_state_expiry ON public.core_approval_records(state, expires_at);
 CREATE INDEX IF NOT EXISTS idx_task_events_task_created ON public.karmo_task_events(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_karmo_tasks_state ON public.karmo_tasks(state);
 
