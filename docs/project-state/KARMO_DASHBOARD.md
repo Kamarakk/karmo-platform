@@ -13,7 +13,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Real Worker Runtime network transport / remote job execution — ⛔ NOT ENABLED
 - KARMO Access & Connection Registry — ✅ MERGED
 - KARMO System Stewardship design — ✅ MERGED; workers not yet implemented/deployed
-- BloomBoss Historical Data Intelligence (Phase 1) — 🟠 PR #32 RESYNCHRONIZED WITH CURRENT `main`; FRESH TARGETED CI REQUIRED BEFORE BUILD GATE REOPENS; NOT MERGED OR DEPLOYED
+- BloomBoss Historical Data Intelligence (Phase 1) — ✅ PR #32 BUILD GATE READY AFTER MAIN RESYNC + TARGETED CI; NOT MERGED OR DEPLOYED
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -29,19 +29,21 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-Validate the approved BloomBoss Historical Data Intelligence slice on PR #32 after resynchronizing its feature branch with current `main`, while preserving the separate merge/deployment approval boundary.
+Hold PR #32 at the Phase 1 build gate for Kamara's separate high-level merge/promotion decision while keeping BloomBoss work isolated from production and external marketplace/customer actions.
 
 ## CURRENT ISSUE
 
-No active Phase 1 implementation blocker. Before resynchronization, BloomBoss Phase 1 GitHub Actions run #129 passed successfully at commit `f90e6d53dfcd9d5262022d9a5d2dbde0451b8f10`, covering Palmstreet staging completeness. The branch head then received a documentation-only PROJECT SAVE commit.
+No active Phase 1 code blocker.
 
-The previous divergence blocker is resolved in branch history by a non-production merge commit that preserves current `main` state plus the BloomBoss feature changes. A fresh targeted BloomBoss CI run on the synchronized head is required before the build gate can be declared READY again.
+The prior mainline-divergence blocker is resolved. Merge commit `d2519180a868f84a7da77d5cad9363ee992b5b84` incorporated current `main` (`53fb64f7f04ddd8c4377cf8b898db4b60714e4a2`) while preserving BloomBoss Phase 1 changes. GitHub comparison then reported the branch **0 commits behind** `main`, and PR #32 reported **mergeable: true**.
+
+Fresh BloomBoss Phase 1 GitHub Actions run #130 completed successfully on synchronized commit `d2519180a868f84a7da77d5cad9363ee992b5b84`; the targeted test job passed.
 
 Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, unit/cultivar/channel outcomes, deterministic inventory-exposure analysis, historical listing evidence, propagation lineage, Palmstreet staging, and Palmstreet staging-quality evidence remain in Phase 1 scope.
 
 ## NEXT GATE
 
-Require a successful fresh BloomBoss Phase 1 GitHub Actions run on the synchronized PR #32 head. If it passes and GitHub reports the branch mergeable, reopen the Phase 1 BUILD GATE for Kamara's separate high-level merge/promotion decision. No merge is authorized by the autonomous build instruction.
+High-level merge/promotion decision for PR #32. The autonomous build instruction does **not** authorize merging the PR, deployment, production access, marketplace writes, or customer actions.
 
 ## AFTER THIS
 
