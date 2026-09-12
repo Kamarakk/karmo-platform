@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import http.server
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -104,6 +106,73 @@ def test_general_chat_uses_local_model_router_without_tool_execution():
 def test_ollama_client_rejects_non_loopback_endpoint():
     with pytest.raises(OllamaClientError, match="loopback"):
         OllamaChatClient("http://192.168.1.50:11434")
+
+
+def test_ollama_client_refuses_to_follow_redirect_to_non_loopback_host():
+    """MEDIUM regression: the loopback-only guarantee must hold for the
+    entire request, not just the configured URL. If something is already
+    listening on (or has hijacked) the configured loopback port and tries
+    to redirect the request elsewhere, the client must refuse -- not
+    silently follow it, which is what Python's default urlopen redirect
+    handling would otherwise do for any host."""
+
+    class RedirectingHandler(http.server.BaseHTTPRequestHandler):
+        request_count = 0
+
+        def do_POST(self):
+            RedirectingHandler.request_count += 1
+            length = int(self.headers.get("Content-Length", 0))
+            self.rfile.read(length)
+            self.send_response(307)
+            self.send_header("Location", "http://93.184.216.34/api/chat")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), RedirectingHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = OllamaChatClient(f"http://127.0.0.1:{server.server_port}")
+        with pytest.raises(OllamaClientError, match="local model request failed"):
+            client.chat(model="qwen3:8b", messages=[{"role": "user", "content": "hi"}])
+        # Exactly one request was made -- the client must never issue a
+        # second request to the redirect target.
+        assert RedirectingHandler.request_count == 1
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_ollama_client_still_handles_a_normal_non_redirecting_response():
+    """Regression guard: refusing redirects must not break the ordinary,
+    non-redirecting success path."""
+
+    class OkHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            self.rfile.read(length)
+            body = b'{"message": {"content": "hello"}}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), OkHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = OllamaChatClient(f"http://127.0.0.1:{server.server_port}")
+        result = client.chat(model="qwen3:8b", messages=[{"role": "user", "content": "hi"}])
+        assert result == "hello"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
 
 
 def test_karmolab_subprocesses_are_fixed_read_only_and_never_shell(monkeypatch):

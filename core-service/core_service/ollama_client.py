@@ -7,12 +7,28 @@ endpoint: only loopback Ollama is permitted.
 from __future__ import annotations
 
 import json
+from urllib.error import HTTPError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 class OllamaClientError(RuntimeError):
     pass
+
+
+class _RefuseRedirect(HTTPRedirectHandler):
+    """Loopback-only means loopback for the entire request, not just the
+    configured URL. urllib's default opener follows 3xx redirects to any
+    host with no restriction -- if something else is listening on (or has
+    hijacked) the configured loopback port, a redirect could otherwise send
+    the actual request to an arbitrary destination. This handler refuses
+    every redirect outright instead of trying to selectively allow
+    loopback-only ones, so there is no redirect chain to get wrong."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise HTTPError(
+            newurl, code, "redirect refused: loopback-only Ollama endpoint must not redirect", headers, fp,
+        )
 
 
 class OllamaChatClient:
@@ -24,6 +40,7 @@ class OllamaChatClient:
             raise OllamaClientError("Ollama base URL must contain only loopback host and optional port")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._opener = build_opener(_RefuseRedirect)
 
     def chat(self, *, model: str, messages: list[dict], temperature: float = 0.2) -> str:
         if not model or any(ch in model for ch in "\r\n\x00"):
@@ -41,7 +58,7 @@ class OllamaChatClient:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with self._opener.open(request, timeout=self.timeout) as response:
                 raw = response.read(1024 * 1024 + 1)
         except Exception as exc:
             raise OllamaClientError(f"local model request failed: {type(exc).__name__}") from exc
