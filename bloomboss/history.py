@@ -10,9 +10,15 @@ from .ingest import load_history_csv
 from .inventory import summarize_inventory_exposure
 from .listing_analytics import summarize_listing_activity
 from .listing_history import load_listing_history_csv
-from .models import ListingHistoryEvent, PlantUnit, PurchaseBatch, Sale
+from .models import ListingHistoryEvent, PlantUnit, PropagationEvent, PurchaseBatch, Sale
 from .outcomes import summarize_channels, summarize_cultivars, summarize_units
-from .validation import ValidationIssue, validate_history_relationships, validate_listing_relationships
+from .propagation_history import load_propagation_history_csv
+from .validation import (
+    ValidationIssue,
+    validate_history_relationships,
+    validate_listing_relationships,
+    validate_propagation_relationships,
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +47,11 @@ class HistoricalImportSnapshot:
     listing_relationship_issues: tuple[ValidationIssue, ...] = ()
     listing_quality_summary: dict | None = None
     listing_activity_summary: dict | None = None
+    propagations: tuple[PropagationEvent, ...] = ()
+    propagation_source_name: str | None = None
+    propagation_source_sha256: str | None = None
+    propagation_source_size_bytes: int | None = None
+    propagation_relationship_issues: tuple[ValidationIssue, ...] = ()
 
 
 def source_sha256(path: str | Path, *, chunk_size: int = 1024 * 1024) -> str:
@@ -58,11 +69,36 @@ def inspect_history_csv(
     path: str | Path,
     *,
     listing_path: str | Path | None = None,
+    propagation_path: str | Path | None = None,
 ) -> HistoricalImportSnapshot:
-    """Load, validate, and summarize canonical history plus optional listing evidence."""
+    """Load, validate, and summarize canonical history plus optional evidence streams."""
     path = Path(path)
-    batches, units, sales = load_history_csv(path)
+    batches, purchased_units, sales = load_history_csv(path)
+
+    propagations: list[PropagationEvent] = []
+    propagated_units: list[PlantUnit] = []
+    propagation_name = None
+    propagation_hash = None
+    propagation_size = None
+    propagation_issues: list[ValidationIssue] = []
+    if propagation_path is not None:
+        propagation_path = Path(propagation_path)
+        propagations, propagated_units = load_propagation_history_csv(propagation_path)
+        purchased_unit_ids = {unit.unit_id for unit in purchased_units}
+        collisions = sorted(purchased_unit_ids & {unit.unit_id for unit in propagated_units})
+        if collisions:
+            raise ValueError(
+                "propagation child unit_id conflicts with canonical history: "
+                + ", ".join(repr(unit_id) for unit_id in collisions)
+            )
+        propagation_name = propagation_path.name
+        propagation_hash = source_sha256(propagation_path)
+        propagation_size = propagation_path.stat().st_size
+
+    units = [*purchased_units, *propagated_units]
     issues = validate_history_relationships(batches, units, sales)
+    if propagation_path is not None:
+        propagation_issues = validate_propagation_relationships(propagations, units)
 
     listings: list[ListingHistoryEvent] = []
     listing_name = None
@@ -100,4 +136,9 @@ def inspect_history_csv(
         listing_relationship_issues=tuple(listing_issues),
         listing_quality_summary=summarize_listing_quality(listings) if listing_path is not None else None,
         listing_activity_summary=summarize_listing_activity(listings) if listing_path is not None else None,
+        propagations=tuple(propagations),
+        propagation_source_name=propagation_name,
+        propagation_source_sha256=propagation_hash,
+        propagation_source_size_bytes=propagation_size,
+        propagation_relationship_issues=tuple(propagation_issues),
     )
