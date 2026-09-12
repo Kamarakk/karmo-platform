@@ -202,7 +202,7 @@ def validate_propagation_relationships(
                 )
             )
 
-        parent_by_child[event.child_unit_id] = event.parent_unit_id
+        parent_by_child.setdefault(event.child_unit_id, event.parent_unit_id)
 
     for child_id, child_events in events_by_child.items():
         if len(child_events) > 1:
