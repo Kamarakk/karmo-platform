@@ -7,6 +7,8 @@ and adds a transaction boundary for the recovery write itself.
 
 from __future__ import annotations
 
+import uuid
+
 from .persistence import PersistenceError, PostgresTaskStore, _json
 
 
@@ -23,6 +25,7 @@ class PostgresRecoveryStore:
 
     def save_with_event(self, record, *, expected_version, event_key, event_type, actor, payload):
         """CAS-update one task and append its recovery event in one transaction."""
+        event_id = str(uuid.uuid4())
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
                 """
@@ -55,11 +58,11 @@ class PostgresRecoveryStore:
                 """
                 INSERT INTO public.karmo_task_events
                     (event_id, event_key, task_id, event_type, actor, payload)
-                VALUES (gen_random_uuid(), %s, %s::uuid, %s, %s, %s::jsonb)
+                VALUES (%s::uuid, %s, %s::uuid, %s, %s, %s::jsonb)
                 ON CONFLICT (event_key) DO NOTHING
                 RETURNING event_id
                 """,
-                (event_key, record.task_id, event_type, actor, _json(payload or {})),
+                (event_id, event_key, record.task_id, event_type, actor, _json(payload or {})),
             )
             if cur.fetchone() is None:
                 raise PersistenceError(f"duplicate task event key: {event_key}")
