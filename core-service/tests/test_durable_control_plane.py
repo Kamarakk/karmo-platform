@@ -19,13 +19,30 @@ from core_service.task_state import InMemoryTaskStore, TaskState, TaskStateError
 
 
 class MemoryApprovalStore:
-    """Persistence double that survives ApprovalEngine replacement."""
+    """Persistence double that survives ApprovalEngine replacement.
+
+    Enforces the same compare-and-swap contract as PostgresApprovalStore:
+    ``expected_version=None`` means the approval must not already exist;
+    otherwise the write only applies if the stored version still matches,
+    so a stale writer fails closed instead of overwriting newer state.
+    """
 
     def __init__(self):
         self.records = {}
 
-    def save(self, record):
-        self.records[record.approval_id] = copy.deepcopy(record)
+    def save(self, record, *, expected_version=None):
+        current = self.records.get(record.approval_id)
+        current_version = current.version if current is not None else None
+        if current_version != expected_version:
+            raise CoreControlError(
+                f"approval version conflict for {record.approval_id}: "
+                f"expected {expected_version}, found {current_version}"
+            )
+        new_version = 1 if expected_version is None else expected_version + 1
+        stored = copy.deepcopy(record)
+        stored.version = new_version
+        self.records[record.approval_id] = stored
+        return new_version
 
     def get(self, approval_id):
         record = self.records.get(approval_id)
@@ -77,9 +94,10 @@ class MemoryExecutionCoordinator:
             approval_id=kwargs["approval_id"],
             idempotency_key=key,
         )
+        expected_version = record.version
         record.execution_binding = claim.invocation_id
         record.transition(ApprovalState.CLAIMED, "system", "execution authority claimed", datetime.now(timezone.utc))
-        self.approval_engine._persist(record)
+        self.approval_engine._persist(record, expected_version=expected_version)
         self.claims[key] = claim
         return claim
 
@@ -87,9 +105,10 @@ class MemoryExecutionCoordinator:
         record = self.approval_engine.get(claim.approval_id)
         if record.state != ApprovalState.CLAIMED:
             raise PersistenceError("approval is not claimed")
+        expected_version = record.version
         target = ApprovalState.EXECUTED if kwargs["status"] == "EXECUTED" else ApprovalState.FAILED
         record.transition(target, "system", kwargs["status"].lower(), datetime.now(timezone.utc))
-        self.approval_engine._persist(record)
+        self.approval_engine._persist(record, expected_version=expected_version)
         self.finished[claim.invocation_id] = dict(kwargs)
 
 
@@ -338,6 +357,89 @@ def test_approved_dispatch_claims_authority_before_handler_and_blocks_replay():
         dispatcher.dispatch(**kwargs)
 
 
+def test_stale_approval_writer_is_rejected_by_compare_and_swap():
+    """A writer holding an approval snapshot from before another writer's
+    commit must not be able to persist a transition based on it -- even when
+    nothing but the raw store/version primitive is used, independent of the
+    _get()-always-refreshes convenience that normally prevents this earlier."""
+    store = MemoryApprovalStore()
+    engine_a = ApprovalEngine(store=store)
+    pending = request(engine_a)
+
+    engine_b = ApprovalEngine(store=store)
+    stale_view = engine_b.get(pending.approval_id)
+    assert stale_view.version == 1
+
+    engine_a.approve(pending.approval_id, approver="kamara", authorized_executor="worker-1")
+
+    stale_view.transition(ApprovalState.DENIED, "rogue", "late deny attempt", datetime.now(timezone.utc))
+    with pytest.raises(CoreControlError, match="version conflict"):
+        engine_b._persist(stale_view, expected_version=1)
+
+    assert engine_a.get(pending.approval_id).state == ApprovalState.APPROVED
+
+
+def test_concurrent_deny_after_approve_fails_closed_not_silently_overwritten():
+    """Black-box version: a second engine instance's ordinary deny() call,
+    issued after another engine already approved, must fail closed on the
+    current business rule (not silently flip a terminal decision) because
+    ApprovalEngine now always reads durable truth rather than a stale cache."""
+    store = MemoryApprovalStore()
+    engine_a = ApprovalEngine(store=store)
+    pending = request(engine_a)
+
+    engine_b = ApprovalEngine(store=store)
+    engine_a.approve(pending.approval_id, approver="kamara", authorized_executor="worker-1")
+
+    with pytest.raises(CoreControlError, match="cannot deny from APPROVED"):
+        engine_b.deny(pending.approval_id, approver="rogue")
+
+    assert store.get(pending.approval_id).state == ApprovalState.APPROVED
+
+
+def test_concurrent_cancel_prevents_stale_engine_from_executing():
+    store = MemoryApprovalStore()
+    engine_a = ApprovalEngine(store=store)
+    pending = request(engine_a)
+    engine_a.approve(pending.approval_id, approver="kamara", authorized_executor="worker-1")
+
+    engine_b = ApprovalEngine(store=store)
+    engine_b.cancel(pending.approval_id, actor="kamara", reason="withdrawn")
+
+    with pytest.raises(CoreControlError, match="cannot execute from CANCELLED"):
+        engine_a.execute(
+            pending.approval_id,
+            tool_id="karmolab.host_health",
+            tool_version="1",
+            arguments={"host": "karmo-ai01"},
+            executor_identity="worker-1",
+            action=lambda: {"should": "not run"},
+        )
+
+
+def test_stale_claim_after_concurrent_cancel_fails_closed():
+    store = MemoryApprovalStore()
+    engine = ApprovalEngine(store=store)
+    pending = request(engine)
+    engine.approve(pending.approval_id, approver="kamara", authorized_executor="worker-1")
+    coordinator = MemoryExecutionCoordinator(engine)
+
+    engine.cancel(pending.approval_id, actor="kamara", reason="withdrawn")
+
+    with pytest.raises(CoreControlError, match="cannot claim from CANCELLED"):
+        coordinator.claim(
+            approval_id=pending.approval_id,
+            idempotency_key="race-1",
+            task_id=None,
+            tool_id="karmolab.host_health",
+            tool_version="1",
+            requester="kamara",
+            model_identity=None,
+            executor_identity="worker-1",
+            arguments={"host": "karmo-ai01"},
+        )
+
+
 def test_restart_moves_running_work_to_recovery_required_without_replay():
     store = EventfulMemoryTaskStore()
     task = store.create(
@@ -396,6 +498,7 @@ def test_staged_schema_contains_restart_race_and_replay_controls():
     assert "idempotency_key TEXT NOT NULL UNIQUE" in sql
     assert "audit_trail JSONB NOT NULL" in sql
     assert "state_version BIGINT NOT NULL" in sql
+    assert "version BIGINT NOT NULL DEFAULT 0 CHECK (version >= 0)" in sql
     assert "event_key TEXT NOT NULL UNIQUE" in sql
     assert "idx_core_approval_state_expiry" in sql
     assert "idx_tool_invocation_unfinished" in sql

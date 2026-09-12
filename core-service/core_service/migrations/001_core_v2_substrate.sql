@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS public.core_approval_records (
     authorized_executor TEXT,
     execution_binding TEXT,
     audit_trail JSONB NOT NULL DEFAULT '[]'::jsonb,
+    version BIGINT NOT NULL DEFAULT 0 CHECK (version >= 0),
     created_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

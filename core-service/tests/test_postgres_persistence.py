@@ -18,6 +18,7 @@ without PostgreSQL.
 from __future__ import annotations
 
 import os
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -166,22 +167,69 @@ def test_capability_store_put_get_list_roundtrip_through_real_sql():
 def test_approval_store_save_get_roundtrip_and_update_through_real_sql():
     store = PostgresApprovalStore(_connection_factory)
     record = _approval_record()
-    store.save(record)
+    version = store.save(record, expected_version=None)
+    assert version == 1
 
     fetched = store.get(str(record.approval_id))
     assert fetched.state == ApprovalState.REQUESTED
     assert fetched.requester == "kamara"
     assert fetched.arguments_digest == record.arguments_digest
+    assert fetched.version == 1
 
     record.transition(ApprovalState.APPROVED, "kamara", "approved", datetime.now(timezone.utc))
     record.authorized_executor = "worker-1"
-    store.save(record)
+    version = store.save(record, expected_version=version)
+    assert version == 2
 
     updated = store.get(str(record.approval_id))
     assert updated.state == ApprovalState.APPROVED
     assert updated.authorized_executor == "worker-1"
+    assert updated.version == 2
     assert len(updated.audit_trail) == 1
     assert updated.audit_trail[0]["to_state"] == "APPROVED"
+
+    # A second save reusing the pre-update (now-stale) version must fail
+    # closed rather than silently overwrite the newer row.
+    with pytest.raises(CoreControlError):
+        store.save(record, expected_version=1)
+
+
+def test_concurrent_postgres_writers_race_and_exactly_one_wins():
+    """Two real threads, each with its own PostgreSQL connection, race to
+    write conflicting terminal decisions for the same approval from the same
+    starting version. Exactly one must win; the other must fail closed with
+    no corruption -- proving the compare-and-swap holds under genuine
+    concurrency, not just sequential simulation."""
+    approval_store = PostgresApprovalStore(_connection_factory)
+    record = _approval_record()
+    base_version = approval_store.save(record, expected_version=None)
+
+    barrier = threading.Barrier(2)
+    results = {}
+
+    def racer(name, target_state, actor):
+        local = approval_store.get(str(record.approval_id))
+        local.transition(target_state, actor, f"{name} attempt", datetime.now(timezone.utc))
+        barrier.wait(timeout=5)
+        try:
+            approval_store.save(local, expected_version=base_version)
+            results[name] = "won"
+        except CoreControlError:
+            results[name] = "lost"
+
+    t1 = threading.Thread(target=racer, args=("approve", ApprovalState.APPROVED, "kamara"))
+    t2 = threading.Thread(target=racer, args=("deny", ApprovalState.DENIED, "someone-else"))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+
+    assert sorted(results.values()) == ["lost", "won"]
+    final = approval_store.get(str(record.approval_id))
+    assert final.state in (ApprovalState.APPROVED, ApprovalState.DENIED)
+    assert final.version == base_version + 1
+    winner = "approve" if final.state == ApprovalState.APPROVED else "deny"
+    assert results[winner] == "won"
 
 
 def test_invocation_ledger_begin_complete_and_duplicate_key_through_real_sql():

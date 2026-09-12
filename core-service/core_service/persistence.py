@@ -100,49 +100,89 @@ class PostgresCapabilityStore:
             return [self._decode(row) for row in cur.fetchall()]
 
 
+_APPROVAL_COLUMNS = (
+    "approval_id, requester, tool_id, tool_version, arguments_digest, authority_class, "
+    "state, approver, authorized_executor, execution_binding, audit_trail, version, "
+    "created_at, expires_at"
+)
+
+
 class PostgresApprovalStore:
-    """Durable approval records; policy/transition authority remains in ApprovalEngine."""
+    """Durable approval records; policy/transition authority remains in ApprovalEngine.
+
+    ``save`` is compare-and-swap: ``expected_version=None`` means "must not
+    already exist" (first save of a new approval); an int means the write is
+    only applied if the row's current ``version`` still matches, so a stale
+    writer -- one that read an older state and would otherwise silently
+    overwrite a newer one -- fails closed with CoreControlError instead.
+    """
 
     def __init__(self, connection_factory):
         self._connection_factory = connection_factory
 
-    def save(self, record: ApprovalRecord):
+    def save(self, record: ApprovalRecord, *, expected_version=None):
         with self._connection_factory() as conn, conn.cursor() as cur:
+            if expected_version is None:
+                cur.execute(
+                    """
+                    INSERT INTO public.core_approval_records (
+                        approval_id, requester, tool_id, tool_version, arguments_digest,
+                        authority_class, state, approver, authorized_executor,
+                        execution_binding, audit_trail, version, created_at, expires_at, updated_at
+                    ) VALUES (
+                        %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s::jsonb, 1, %s::timestamptz, %s::timestamptz, NOW()
+                    )
+                    ON CONFLICT (approval_id) DO NOTHING
+                    RETURNING version
+                    """,
+                    (
+                        record.approval_id,
+                        record.requester,
+                        record.tool_id,
+                        record.tool_version,
+                        record.arguments_digest,
+                        record.authority_class,
+                        record.state.value,
+                        record.approver,
+                        record.authorized_executor,
+                        record.execution_binding,
+                        _json(record.audit_trail),
+                        record.created_at,
+                        record.expires_at,
+                    ),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise CoreControlError(f"approval already exists: {record.approval_id}")
+                return int(row[0])
+
             cur.execute(
                 """
-                INSERT INTO public.core_approval_records (
-                    approval_id, requester, tool_id, tool_version, arguments_digest,
-                    authority_class, state, approver, authorized_executor,
-                    execution_binding, audit_trail, created_at, expires_at, updated_at
-                ) VALUES (
-                    %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s::jsonb, %s::timestamptz, %s::timestamptz, NOW()
-                )
-                ON CONFLICT (approval_id) DO UPDATE SET
-                    state=EXCLUDED.state,
-                    approver=EXCLUDED.approver,
-                    authorized_executor=EXCLUDED.authorized_executor,
-                    execution_binding=EXCLUDED.execution_binding,
-                    audit_trail=EXCLUDED.audit_trail,
-                    expires_at=EXCLUDED.expires_at,
-                    updated_at=NOW()
+                UPDATE public.core_approval_records SET
+                    state=%s, approver=%s, authorized_executor=%s,
+                    execution_binding=%s, audit_trail=%s::jsonb, version=version+1,
+                    expires_at=%s::timestamptz, updated_at=NOW()
+                WHERE approval_id=%s::uuid AND version=%s
+                RETURNING version
                 """,
                 (
-                    record.approval_id,
-                    record.requester,
-                    record.tool_id,
-                    record.tool_version,
-                    record.arguments_digest,
-                    record.authority_class,
                     record.state.value,
                     record.approver,
                     record.authorized_executor,
                     record.execution_binding,
                     _json(record.audit_trail),
-                    record.created_at,
                     record.expires_at,
+                    record.approval_id,
+                    expected_version,
                 ),
             )
+            row = cur.fetchone()
+            if row is None:
+                raise CoreControlError(
+                    f"approval version conflict for {record.approval_id}: expected {expected_version}"
+                )
+            return int(row[0])
 
     @staticmethod
     def _decode(row):
@@ -160,16 +200,15 @@ class PostgresApprovalStore:
             authorized_executor=row[8],
             execution_binding=row[9],
             audit_trail=list(_obj(row[10], [])),
-            created_at=row[11],
-            expires_at=row[12],
+            version=int(row[11]),
+            created_at=row[12],
+            expires_at=row[13],
         )
 
     def get(self, approval_id):
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT approval_id, requester, tool_id, tool_version, arguments_digest, authority_class, "
-                "state, approver, authorized_executor, execution_binding, audit_trail, created_at, expires_at "
-                "FROM public.core_approval_records WHERE approval_id=%s::uuid",
+                f"SELECT {_APPROVAL_COLUMNS} FROM public.core_approval_records WHERE approval_id=%s::uuid",
                 (approval_id,),
             )
             return self._decode(cur.fetchone())
@@ -467,9 +506,8 @@ class PostgresExecutionCoordinator:
         invocation_id = str(uuid.uuid4())
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT approval_id, requester, tool_id, tool_version, arguments_digest, authority_class, "
-                "state, approver, authorized_executor, execution_binding, audit_trail, created_at, expires_at "
-                "FROM public.core_approval_records WHERE approval_id=%s::uuid FOR UPDATE",
+                f"SELECT {_APPROVAL_COLUMNS} FROM public.core_approval_records "
+                "WHERE approval_id=%s::uuid FOR UPDATE",
                 (approval_id,),
             )
             record = PostgresApprovalStore._decode(cur.fetchone())
@@ -480,8 +518,8 @@ class PostgresExecutionCoordinator:
             if now >= record.expires_at:
                 record.transition(ApprovalState.EXPIRED, "system", "ttl elapsed before claim", now)
                 cur.execute(
-                    "UPDATE public.core_approval_records SET state=%s, audit_trail=%s::jsonb, updated_at=NOW() "
-                    "WHERE approval_id=%s::uuid",
+                    "UPDATE public.core_approval_records SET state=%s, audit_trail=%s::jsonb, "
+                    "version=version+1, updated_at=NOW() WHERE approval_id=%s::uuid",
                     (record.state.value, _json(record.audit_trail), approval_id),
                 )
                 raise CoreControlError("approval expired before execution claim")
@@ -515,7 +553,7 @@ class PostgresExecutionCoordinator:
             record.transition(ApprovalState.CLAIMED, "system", "execution authority claimed", now)
             cur.execute(
                 "UPDATE public.core_approval_records SET state=%s, execution_binding=%s, "
-                "audit_trail=%s::jsonb, updated_at=NOW() WHERE approval_id=%s::uuid",
+                "audit_trail=%s::jsonb, version=version+1, updated_at=NOW() WHERE approval_id=%s::uuid",
                 (record.state.value, invocation_id, _json(record.audit_trail), approval_id),
             )
         return ExecutionClaim(invocation_id, approval_id, idempotency_key)
@@ -558,7 +596,7 @@ class PostgresExecutionCoordinator:
             if cur.rowcount != 1:
                 raise PersistenceError("invocation is missing or already terminal")
             cur.execute(
-                "UPDATE public.core_approval_records SET state=%s, audit_trail=%s::jsonb, updated_at=NOW() "
-                "WHERE approval_id=%s::uuid",
+                "UPDATE public.core_approval_records SET state=%s, audit_trail=%s::jsonb, "
+                "version=version+1, updated_at=NOW() WHERE approval_id=%s::uuid",
                 (terminal_approval_state.value, _json(audit_trail), claim.approval_id),
             )
