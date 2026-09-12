@@ -71,16 +71,11 @@ def _row_error(rownum: int, exc: ValueError) -> ValueError:
 
 
 def load_history_csv(path: str | Path) -> tuple[list[PurchaseBatch], list[PlantUnit], list[Sale]]:
-    """Load BloomBoss purchase history from a canonical CSV.
+    """Load BloomBoss purchase and sale history from a canonical CSV.
 
-    This source remains the purchase/acquisition stream. Propagated offspring are
-    represented by the separate propagation-history stream so purchase facts are
-    never fabricated for home-grown inventory.
-
-    Blank cells remain unknown. The loader never substitutes zero for missing money.
-    Duplicate IDs and conflicting repeated batch facts fail visibly instead of being
-    silently overwritten. Parsing failures include the source row number so a human
-    can correct the historical worksheet without guessing where the problem lives.
+    Platform-native order and line-item identifiers are optional. When known,
+    they are preserved so later Etsy/Palmstreet/Shopify ingestion can reconcile
+    against source records without replacing BloomBoss canonical IDs.
     """
     path = Path(path)
     batches: dict[str, PurchaseBatch] = {}
@@ -165,6 +160,8 @@ def load_history_csv(path: str | Path) -> tuple[list[PurchaseBatch], list[PlantU
                             selling_fees=_parse_decimal(row.get("selling_fees")),
                             shipping_cost=_parse_decimal(row.get("outbound_shipping_cost")),
                             provenance=(source,),
+                            external_order_id=_blank_to_none(row.get("external_order_id")),
+                            external_line_item_id=_blank_to_none(row.get("external_line_item_id")),
                         )
                     )
             except ValueError as exc:
