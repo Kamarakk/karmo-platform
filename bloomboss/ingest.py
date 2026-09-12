@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from .models import PlantStatus, PlantUnit, Provenance, PurchaseBatch, Sale
+from .models import PlantOrigin, PlantStatus, PlantUnit, Provenance, PurchaseBatch, Sale
 
 
 def _blank_to_none(value: str | None):
@@ -71,7 +71,11 @@ def _row_error(rownum: int, exc: ValueError) -> ValueError:
 
 
 def load_history_csv(path: str | Path) -> tuple[list[PurchaseBatch], list[PlantUnit], list[Sale]]:
-    """Load BloomBoss history from a canonical CSV.
+    """Load BloomBoss purchase history from a canonical CSV.
+
+    This source remains the purchase/acquisition stream. Propagated offspring are
+    represented by the separate propagation-history stream so purchase facts are
+    never fabricated for home-grown inventory.
 
     Blank cells remain unknown. The loader never substitutes zero for missing money.
     Duplicate IDs and conflicting repeated batch facts fail visibly instead of being
@@ -138,6 +142,7 @@ def load_history_csv(path: str | Path) -> tuple[list[PurchaseBatch], list[PlantU
                         allocated_landed_cost=_parse_decimal(row.get("allocated_landed_cost")),
                         acquired_date=_parse_date(row.get("acquired_date") or row.get("purchase_date")),
                         provenance=(source,),
+                        origin_type=PlantOrigin.PURCHASED,
                     )
                 )
 
