@@ -164,6 +164,16 @@ class ApprovalEngine:
             self._persist(record)
         return record
 
+    def refresh(self, approval_id):
+        """Reload durable approval truth after an external transactional coordinator updates it."""
+        if self._store is None:
+            return self._get(approval_id)
+        record = self._store.get(approval_id)
+        if record is None:
+            raise CoreControlError(f"no such approval: {approval_id}")
+        self._records[approval_id] = record
+        return record
+
     def approve(self, approval_id, *, approver, authorized_executor=None):
         record = self._get(approval_id)
         if record.state != ApprovalState.REQUESTED:
@@ -211,9 +221,6 @@ class ApprovalEngine:
             self._persist(record)
             raise CoreControlError("tool/argument mismatch; approval invalidated")
 
-        # Claim first so a second execution path cannot reuse the approval while
-        # the handler is running. A durable production path may bind this claim
-        # atomically to its invocation ledger using PostgresExecutionCoordinator.
         record.execution_binding = str(uuid.uuid5(uuid.NAMESPACE_URL, f"approval:{approval_id}"))
         record.transition(ApprovalState.CLAIMED, "system", "execution authority claimed", self._clock())
         self._persist(record)
