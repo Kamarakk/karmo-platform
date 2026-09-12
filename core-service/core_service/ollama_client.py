@@ -49,6 +49,7 @@ class OllamaChatClient:
             "model": model,
             "messages": messages,
             "stream": False,
+            "think": False,
             "options": {"temperature": temperature},
         }).encode("utf-8")
         request = Request(
