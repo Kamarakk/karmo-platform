@@ -4,7 +4,7 @@ Date: 2026-09-12
 Workstream: BloomBoss Historical Data Intelligence (Phase 1)
 PR: #32
 Branch: `feat/bloomboss-historical-intelligence`
-Status: **IMPLEMENTED IN ISOLATED DEV — VALIDATION PENDING**
+Status: **VERIFIED — BUILD GATE READY; MERGE NOT AUTHORIZED**
 
 ## Purpose
 
@@ -28,20 +28,24 @@ Complete the next recorded Phase 1 Palmstreet staging refinement by representing
 - Added targeted synthetic tests for populated and absent notes.
 - Updated the Palmstreet import design with the note-handling/privacy boundary.
 
+## Verification
+
+- Implementation/test commit: `b4197c7fd864a32ef5daf53a170c10bf83ea8e84`.
+- BloomBoss Phase 1 push workflow run #160 targeted-tests: **SUCCESS** under Python 3.12.
+- Pull-request workflow run #161 was also started for the same implementation head; the successful push run is sufficient targeted validation for this change under I-08.
+- No real customer note values were committed; test values are synthetic.
+- PR #32 remains isolated and unmerged.
+
 ## Risk
 
 Low and isolated. The main risk is accidentally treating customer-entered note text as trusted structured data. The implementation explicitly avoids that behavior and preserves backward compatibility because the new fields are optional.
 
-## Verification
-
-Validation is pending the GitHub Actions run for the resulting branch commit. A failing targeted run blocks the Phase 1 gate and must be fixed before the gate can remain READY.
-
 ## Rollback
 
-Revert the isolated commit containing this change. No production, marketplace, customer, or secret state is touched.
+Revert implementation commit `b4197c7fd864a32ef5daf53a170c10bf83ea8e84` and this documentation refresh. No production, marketplace, customer, or secret state was touched.
 
-PROJECT SAVE: PENDING VALIDATION
+PROJECT SAVE: COMPLETE
 Persistent records updated: this save plus `docs/bloomboss/PALMSTREET_IMPORT_DESIGN.md`
-Durable Git commit: recorded by the commit containing this file
-Current stopping point: Palmstreet note staging implemented; branch validation pending
-Next action: verify the targeted GitHub Actions result, then refresh the Phase 1 gate status if green.
+Durable implementation commit: `b4197c7fd864a32ef5daf53a170c10bf83ea8e84`
+Current stopping point: Seller Hub Buyer Note / Seller Note staging verified; Phase 1 remains BUILD GATE READY pending Kamara's separate merge/promotion decision
+Next action: continue only material non-production Phase 1 correctness/refinement work until the separate high-level merge/promotion decision.
