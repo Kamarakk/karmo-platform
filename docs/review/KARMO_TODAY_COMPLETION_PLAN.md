@@ -1,4 +1,4 @@
-# KARMO Same-Day Completion Plan — Large-Chunk Build / Claude Test / Kamara Approve / Deploy
+# KARMO Same-Day Completion Plan — Large-Chunk Build / Independent Review / Kamara Approve / Deploy
 
 Status: branch-local execution plan for `staging/karmo-full-predeploy-20260912`. This file does not itself authorize merge or production deployment.
 
@@ -8,11 +8,27 @@ Reach a **usable KARMO operational v1** today without bypassing governance. “U
 
 This does **not** mean every future product domain is finished today. Voice streaming, live broker execution, high-impact administration, BloomBoss external/customer actions, and other separately governed domains remain later tracks unless independently approved.
 
+## Three-reviewer verification policy
+
+For consequential KARMO code, security, architecture, promotion, and deployment-candidate review, KARMO will use a three-reviewer layer:
+
+- **ChatGPT** — independent architecture/security/system-fit verification;
+- **Claude** — independent adversarial code review and test verification;
+- **Flash 4.1** — independent third reviewer/verifier.
+
+All three reviewers operate **under KARMO authority**. None may grant authority, approve its own infrastructure access, own KARMO credentials, bypass Core/dispatcher/approval policy, or become the source of durable task truth. A producer model must not satisfy its own independent-verification requirement. KARMO records reviewer identity, evidence, findings, disagreements, and final policy outcome. Kamara remains the human promotion/deployment authority where explicit approval is required.
+
+Target authority chain:
+
+`Kamara -> KARMO -> producer/worker -> ChatGPT + Claude + Flash 4.1 independent review -> KARMO evidence/policy evaluation -> Kamara approval where required -> deployment`
+
+DeepSeek is not assigned this dedicated three-reviewer role unless separately approved later.
+
 ## Operating rule
 
 Work in **large coherent chunks**, not tiny feature fragments:
 
-`BUILD LARGE CHUNK -> TEST -> CLAUDE ADVERSARIAL REVIEW -> FIX BLOCKERS -> KARMO REVIEW -> KAMARA APPROVAL -> DEPLOY/VERIFY -> NEXT CHUNK`
+`BUILD LARGE CHUNK -> TEST -> THREE-REVIEWER VERIFICATION -> FIX BLOCKERS -> KARMO REVIEW -> KAMARA APPROVAL -> DEPLOY/VERIFY -> NEXT CHUNK`
 
 No merge/deploy occurs merely because tests pass. Kamara approval remains a separate gate.
 
@@ -30,6 +46,7 @@ Candidate source: PR #36, `staging/karmo-full-predeploy-20260912`.
 4. Rerun exact-SHA CI after fixes.
 5. Claude verdict must be `READY FOR KARMO REVIEW` before moving to the next major build chunk.
 6. KARMO/System-Fit review verifies no authority inversion, duplicate control plane, or unsupported production assumption.
+7. Before promotion/deployment, ChatGPT, Claude, and Flash 4.1 each provide an independent review result or KARMO records a policy-approved unavailable/defer outcome; no reviewer may silently substitute for another.
 
 ### Stop conditions
 
@@ -141,7 +158,7 @@ Test process restart/crash at critical boundaries:
 
 - all targeted tests green;
 - no in-memory-only authority state remains for the production path;
-- Claude adversarial review has no unresolved BLOCKER/HIGH;
+- three-reviewer policy satisfied for the promotion candidate;
 - KARMO review confirms this extends the existing architecture rather than creating a competing control plane.
 
 ---
@@ -205,7 +222,7 @@ Prefer existing Tailscale path and outbound-only Worker connections. Before enab
 
 - Worker restart/replay/tamper tests green;
 - credential/ticket/result primitives are actually wired, not just library helpers;
-- Claude review passes;
+- three-reviewer verification passes for the promotion candidate;
 - no new firewall exposure or production networking is required merely to prove the code.
 
 ---
@@ -226,6 +243,7 @@ Required behavior:
 - capability/availability routing;
 - explicit producer identity;
 - verifier identity distinct when independent verification required;
+- dedicated independent reviewer pool includes ChatGPT, Claude, and Flash 4.1 for consequential review;
 - verifier unavailable -> policy-defined fail/defer, never silent self-verification;
 - routing decision written to task/ledger;
 - model output treated as evidence/proposal until KARMO policy accepts it.
@@ -264,7 +282,7 @@ Then restart the relevant Core process in isolated/dev test context and prove th
 ## Exit gate
 
 - exact-SHA CI green;
-- Claude review passes;
+- ChatGPT + Claude + Flash 4.1 independent review policy satisfied;
 - KARMO review confirms authority and domain separation;
 - KarmoLab READ result is useful and bounded.
 
@@ -297,22 +315,24 @@ For every production change specify:
 
 1. freeze exact deployment candidate SHA;
 2. exact-SHA CI green;
-3. Claude final adversarial review;
-4. KARMO System-Fit/invariant review;
-5. resolve every blocker/high;
-6. rerun exact-SHA CI;
-7. Kamara explicitly approves merge/promotion;
-8. merge approved candidate only;
-9. Kamara separately approves production deployment scope;
-10. capture production preflight/read-only state;
-11. backup/rollback artifacts where needed;
-12. apply only approved migration/config/code changes;
-13. verify Core health;
-14. verify Worker health;
-15. verify existing PostgreSQL/Qdrant/Ollama/KARMO services unaffected;
-16. run bounded KarmoLab READ end-to-end smoke test;
-17. verify durable task/approval/invocation record;
-18. if any invariant/health check fails, rollback and stop.
+3. ChatGPT independent architecture/security review;
+4. Claude final adversarial code/test review;
+5. Flash 4.1 independent third review;
+6. KARMO System-Fit/invariant evaluation of all evidence;
+7. resolve every blocker/high;
+8. rerun exact-SHA CI after fixes;
+9. Kamara explicitly approves merge/promotion;
+10. merge approved candidate only;
+11. Kamara separately approves production deployment scope;
+12. capture production preflight/read-only state;
+13. backup/rollback artifacts where needed;
+14. apply only approved migration/config/code changes;
+15. verify Core health;
+16. verify Worker health;
+17. verify existing PostgreSQL/Qdrant/Ollama/KARMO services unaffected;
+18. run bounded KarmoLab READ end-to-end smoke test;
+19. verify durable task/approval/invocation record;
+20. if any invariant/health check fails, rollback and stop.
 
 ---
 
@@ -327,6 +347,7 @@ KARMO is usable when all are true:
 - Workers cannot self-authorize;
 - Worker identity/results are authenticated for the enabled execution path;
 - models are replaceable producers/verifiers, not authority;
+- ChatGPT, Claude, and Flash 4.1 are available as the dedicated independent review layer for consequential work under KARMO policy;
 - independent verification is enforceable;
 - at least one useful KarmoLab READ task runs end-to-end;
 - task/evidence/audit history remains after restart;
@@ -338,12 +359,12 @@ KARMO is usable when all are true:
 Use three large engineering gates instead of dozens of tiny approval interruptions:
 
 **Gate A — Last-night candidate verification**
-Claude verifies PR #36 exact SHA. Fix blockers. Kamara decides whether candidate is accepted as today's starting substrate.
+Claude verifies PR #36 exact SHA. Fix blockers. ChatGPT/KARMO verifies architecture/system fit. Kamara decides whether candidate is accepted as today's starting substrate.
 
 **Gate B — Large Core/Worker completion build**
-Implement Chunks 1 + 2 as a cohesive staging increment where dependencies allow. Run CI + Claude adversarial review. Fix all BLOCKER/HIGH findings. KARMO reviews system fit. Kamara approves or rejects promotion of the large increment.
+Implement Chunks 1 + 2 as a cohesive staging increment where dependencies allow. Run CI and independent ChatGPT + Claude + Flash 4.1 review. Fix all BLOCKER/HIGH findings. KARMO evaluates system fit and reviewer evidence. Kamara approves or rejects promotion of the large increment.
 
 **Gate C — Usable KARMO proof + deployment**
-Implement Chunk 3 and the deployment package. Exact-SHA CI + Claude + KARMO review. Kamara explicitly approves merge, then separately approves the exact deployment scope. Deploy and verify using Chunk 4.
+Implement Chunk 3 and the deployment package. Exact-SHA CI + ChatGPT + Claude + Flash 4.1 + KARMO review. Kamara explicitly approves merge, then separately approves the exact deployment scope. Deploy and verify using Chunk 4.
 
 This keeps speed high while retaining explicit human authority over promotion and production.
