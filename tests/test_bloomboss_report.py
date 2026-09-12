@@ -24,6 +24,11 @@ def test_render_history_report_is_json_and_preserves_decimal_precision(tmp_path)
     }
     assert payload["business_summary"]["total_revenue"] == "250"
     assert payload["business_summary"]["known_landed_cost"] == "120"
+    unit = payload["unit_outcome_summary"]["U1"]
+    assert unit["sale_channel"] == "Palmstreet"
+    assert unit["realized_profit_on_known_cost"] == "130"
+    assert unit["known_net_profit"] == "90"
+    assert unit["days_to_sale"] == 31
     assert "listing_source" not in payload
 
 
