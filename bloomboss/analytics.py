@@ -110,7 +110,7 @@ def summarize_business(units: Iterable[PlantUnit], sales: Iterable[Sale]) -> dic
 def summarize_suppliers(
     batches: Iterable[PurchaseBatch], units: Iterable[PlantUnit], sales: Iterable[Sale]
 ) -> dict:
-    """Summarize supplier outcomes without inventing unknown cost or loss facts."""
+    """Summarize purchase-supplier outcomes without inventing propagated suppliers."""
     batches = list(batches)
     units = list(units)
     sales = list(sales)
@@ -136,6 +136,8 @@ def summarize_suppliers(
     )
 
     for unit in units:
+        if unit.batch_id is None:
+            continue
         batch = batch_by_id.get(unit.batch_id)
         supplier = batch.supplier if batch and batch.supplier else "UNKNOWN"
         bucket = suppliers[supplier]
