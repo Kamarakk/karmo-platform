@@ -19,8 +19,14 @@ def test_render_history_report_is_json_and_preserves_decimal_precision(tmp_path)
     assert payload["source"]["name"] == "history.csv"
     assert len(payload["source"]["sha256"]) == 64
     assert payload["record_counts"] == {
-        "batches": 1, "units": 1, "sales": 1, "relationship_issues": 0,
-        "listings": 0, "listing_relationship_issues": 0,
+        "batches": 1,
+        "units": 1,
+        "sales": 1,
+        "relationship_issues": 0,
+        "listings": 0,
+        "listing_relationship_issues": 0,
+        "propagations": 0,
+        "propagation_relationship_issues": 0,
     }
     assert payload["business_summary"]["total_revenue"] == "250"
     assert payload["business_summary"]["known_landed_cost"] == "120"
@@ -30,6 +36,7 @@ def test_render_history_report_is_json_and_preserves_decimal_precision(tmp_path)
     assert unit["known_net_profit"] == "90"
     assert unit["days_to_sale"] == 31
     assert "listing_source" not in payload
+    assert "propagation_source" not in payload
 
 
 def test_report_can_fingerprint_and_validate_separate_listing_evidence(tmp_path):
@@ -48,6 +55,29 @@ def test_report_can_fingerprint_and_validate_separate_listing_evidence(tmp_path)
     assert payload["listing_quality_summary"]["coverage"]["asking_price"] == "1"
 
 
+def test_report_integrates_propagation_children_without_fake_purchase_batches(tmp_path):
+    history = _write_history(tmp_path)
+    propagations = tmp_path / "propagations.csv"
+    propagations.write_text(
+        "propagation_id,parent_unit_id,child_unit_id,cultivar,method,status,propagation_date,acquired_date,allocated_landed_cost,notes\n"
+        "P1,U1,C1,Pink Cuprea,corm,growing,2026-02-11,2026-02-20,,known corm\n",
+        encoding="utf-8",
+    )
+
+    payload = json.loads(render_history_report(history, propagation_path=propagations))
+
+    assert payload["record_counts"]["units"] == 2
+    assert payload["record_counts"]["propagations"] == 1
+    assert payload["record_counts"]["propagation_relationship_issues"] == 0
+    assert payload["propagation_source"]["name"] == "propagations.csv"
+    assert len(payload["propagation_source"]["sha256"]) == 64
+    assert payload["unit_outcome_summary"]["C1"]["batch_id"] is None
+    assert payload["unit_outcome_summary"]["C1"]["status"] == "growing"
+    assert payload["inventory_exposure_summary"]["active_inventory_units"] == 1
+    assert payload["propagations"][0]["parent_unit_id"] == "U1"
+    assert payload["propagations"][0]["child_unit_id"] == "C1"
+
+
 def test_cli_prints_report_without_modifying_sources(tmp_path, capsys):
     history = _write_history(tmp_path)
     listings = tmp_path / "listings.csv"
@@ -56,11 +86,28 @@ def test_cli_prints_report_without_modifying_sources(tmp_path, capsys):
         "L1,U1,Palmstreet,2026-01-20,,275\n",
         encoding="utf-8",
     )
+    propagations = tmp_path / "propagations.csv"
+    propagations.write_text(
+        "propagation_id,parent_unit_id,child_unit_id,cultivar,method\n"
+        "P1,U1,C1,Pink Cuprea,corm\n",
+        encoding="utf-8",
+    )
     before_history = history.read_bytes()
     before_listings = listings.read_bytes()
-    assert main([str(history), "--listings", str(listings)]) == 0
+    before_propagations = propagations.read_bytes()
+    assert main(
+        [
+            str(history),
+            "--listings",
+            str(listings),
+            "--propagations",
+            str(propagations),
+        ]
+    ) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["record_counts"]["units"] == 1
+    assert payload["record_counts"]["units"] == 2
     assert payload["record_counts"]["listings"] == 1
+    assert payload["record_counts"]["propagations"] == 1
     assert history.read_bytes() == before_history
     assert listings.read_bytes() == before_listings
+    assert propagations.read_bytes() == before_propagations
