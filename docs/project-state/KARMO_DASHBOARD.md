@@ -7,45 +7,46 @@ Human-friendly working dashboard for keeping the active project stage visible du
 ## KARMO CURRENT STAGE
 
 - Foundation & Reliability Layer (Foundation v1) — ✅ COMPLETE
-- KARMO Control & Approval Layer (Core v2 prototypes) — ✅ MERGED
-- Trusted Computer Worker System (Worker Runtime v0.1) — ✅ SOURCE MERGE CLOSEOUT COMPLETE
-- BloomBoss Historical Data Intelligence (Phase 1) — 🟠 PR #32 CODE GREEN, MERGE GATE SUSPENDED PENDING MAIN RESYNC; NOT MERGED OR DEPLOYED
-- Production deployment of the Trusted Computer Worker System — ⛔ NOT STARTED
-- Real network connection for trusted worker computers (Worker Runtime network transport) — ⛔ NOT ENABLED
+- KARMO Control & Approval Layer (Core) — ✅ DEPLOYED TO KARMO-AI01
+- Trusted Computer Worker System (Worker Runtime local service boundary) — ✅ DEPLOYED TO KARMO-AI01
+- Direct remote network path to KARMO-AI01 over Tailscale — ✅ ACTIVE (`100.75.239.44`)
+- Real Worker Runtime network transport / remote job execution — ⛔ NOT ENABLED
+- KARMO Access & Connection Registry — ✅ MERGED
+- KARMO System Stewardship design — ✅ MERGED; workers not yet implemented/deployed
+- BloomBoss Historical Data Intelligence (Phase 1) — 🟠 PR #32 RESYNCHRONIZED WITH CURRENT `main`; FRESH TARGETED CI REQUIRED BEFORE BUILD GATE REOPENS; NOT MERGED OR DEPLOYED
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
-- Reliable Event Delivery (H0.1 Transactional Outbox) — makes sure important KARMO events are delivered reliably instead of being lost during failures.
-- Document Memory & Versioning (H0.2 Knowledge Lifecycle) — manages active document versions, lifecycle state, and provenance so old versions are not treated as current.
-- Experimental Hybrid Search (H0.3 Hybrid Retrieval) — combines semantic/vector search with keyword-style search. Evaluated, but intentionally NOT deployed to production.
-- Integrity & Consistency Checker (H0.4 Integrity/Reconciliation) — compares expected KARMO state with database/vector-store state and reports mismatches.
-- KARMO Control & Approval Layer (Core v2 prototypes) — defines tool permissions, approval rules, jobs, configuration patterns, and execution evidence.
-- Trusted Computer Worker System (Worker Runtime v0.1) — lets approved computers register, advertise safe capabilities, pull bounded jobs, execute them in a sandbox, and return results/evidence.
-- BloomBoss Historical Data Intelligence — normalizes purchase, sales, and listing history; preserves unknowns and provenance; validates contradictions; fingerprints raw evidence; and calculates reproducible business/quality metrics.
+- Reliable Event Delivery (H0.1 Transactional Outbox) — protects event delivery across failures.
+- Document Memory & Versioning (H0.2 Knowledge Lifecycle) — manages active versions and provenance.
+- Experimental Hybrid Search (H0.3 Hybrid Retrieval) — evaluated and intentionally not promoted to production.
+- Integrity & Consistency Checker (H0.4 Integrity/Reconciliation) — detects state mismatches across KARMO data systems.
+- KARMO Control & Approval Layer (Core) — production control boundary for capability classes and approval requirements; local-only, no network listener.
+- Trusted Computer Worker System (Worker service boundary) — production-local Worker shell bound to Core; no network listener, no real worker transport, no capability execution, no persistent writes.
+- KARMO Access & Connection Registry — durable machine-readable host, route, authentication-reference, and recovery knowledge for humans and agents.
+- KARMO System Stewardship — planned QA, Security, Reliability/Maintenance, Housekeeping/Data-Hygiene, and Agent-Governance roles implemented over existing Core/Worker architecture rather than separate infrastructure stacks.
+- BloomBoss Historical Data Intelligence — normalizes purchase, sales, listing, propagation, and Palmstreet staging history; preserves unknowns and provenance; validates contradictions; fingerprints raw evidence; and calculates reproducible business/quality metrics.
 
 ## CURRENT TASK
 
-Keep improving the approved BloomBoss Historical Data Intelligence slice on PR #32 while preserving the merge/deployment approval boundary, then resynchronize with current `main` before reopening the merge gate.
+Validate the approved BloomBoss Historical Data Intelligence slice on PR #32 after resynchronizing its feature branch with current `main`, while preserving the separate merge/deployment approval boundary.
 
 ## CURRENT ISSUE
 
-No active Phase 1 code blocker. The latest fee-aware outcome analytics passed BloomBoss Phase 1 GitHub Actions run #105 at commit `187350b310cb4f1d325058e665d879f161782879`.
+No active Phase 1 implementation blocker. Before resynchronization, BloomBoss Phase 1 GitHub Actions run #129 passed successfully at commit `f90e6d53dfcd9d5262022d9a5d2dbde0451b8f10`, covering Palmstreet staging completeness. The branch head then received a documentation-only PROJECT SAVE commit.
 
-The branch has diverged from current `main`: GitHub comparison on 2026-09-11 reports PR #32 **23 commits behind** and 91 commits ahead. Therefore the prior BUILD GATE READY claim is suspended until a fresh non-production resynchronization is completed and the targeted BloomBoss suite passes again.
+The previous divergence blocker is resolved in branch history by a non-production merge commit that preserves current `main` state plus the BloomBoss feature changes. A fresh targeted BloomBoss CI run on the synchronized head is required before the build gate can be declared READY again.
 
-Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, unit/cultivar/channel outcomes, deterministic inventory-exposure analysis, and historical listing evidence remain on the feature branch.
-
-Cultivar and channel intelligence now also reports **known net revenue, known net profit, and known net margin only when landed cost, selling fees, and shipping cost are all known**. Missing fee/shipping facts remain unknown rather than being treated as zero.
-
-Supplier and purchase-batch intelligence continues to separate gross margin from return on known cost and adds known-outcome return that subtracts explicitly known plant-loss cost. Unknown cost remains unknown, and active unsold inventory remains capital exposure rather than realized loss.
+Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, unit/cultivar/channel outcomes, deterministic inventory-exposure analysis, historical listing evidence, propagation lineage, Palmstreet staging, and Palmstreet staging-quality evidence remain in Phase 1 scope.
 
 ## NEXT GATE
 
-Resynchronize `feat/bloomboss-historical-intelligence` with current `main` in approved non-production GitHub/dev scope, resolve only real conflicts, rerun the targeted BloomBoss suite, and refresh build-gate evidence. High-level merge approval remains separate and is not authorized by the autonomous build instruction.
+Require a successful fresh BloomBoss Phase 1 GitHub Actions run on the synchronized PR #32 head. If it passes and GitHub reports the branch mergeable, reopen the Phase 1 BUILD GATE for Kamara's separate high-level merge/promotion decision. No merge is authorized by the autonomous build instruction.
 
 ## AFTER THIS
 
 - Use the real BloomBoss historical worksheet/export as the first source dataset in approved non-production scope.
+- Use an official Palmstreet seller export to lock the staged field map before canonical reconciliation; buyer-side bulk purchase export support remains NEEDS VERIFICATION.
 - Measure completeness, relationship findings, listing activity, inventory exposure, realized return, known-outcome return, and known net outcomes before trusting supplier/cultivar/channel conclusions.
 - Implement durable local/dev persistence only after the persistence design is reviewed at the next approved build slice.
 - Continue the approved BloomBoss phase order; do not start marketplace write automation or external customer actions.
@@ -54,11 +55,11 @@ Resynchronize `feat/bloomboss-historical-intelligence` with current `main` in ap
 ## ACTIVE SAFETY / AUTHORITY BOUNDARY
 
 - PR #32 / `feat/bloomboss-historical-intelligence` only
-- GitHub/dev scope only
-- Production KARMO untouched
+- GitHub/dev scope only for BloomBoss build work
+- Production KARMO untouched by BloomBoss work
 - No marketplace writes or customer actions
 - No OBS
-- No deployment or merge
+- No BloomBoss deployment or merge
 - No secrets
 
 ## DEFERRED BEFORE ANY REAL WORKER NETWORK EXPOSURE
@@ -69,7 +70,7 @@ Resynchronize `feat/bloomboss-historical-intelligence` with current `main` in ap
 4. Result-authenticity cryptographic binding
 5. Coordinator persistence
 
-These remain separate from BloomBoss Phase 1 and are not blockers for the isolated historical-data build.
+These are blockers for real Worker network exposure, not for the isolated BloomBoss historical-data build.
 
 ## SESSION STATUS FORMAT
 

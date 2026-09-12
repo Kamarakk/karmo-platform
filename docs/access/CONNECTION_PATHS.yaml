@@ -1,0 +1,63 @@
+version: 1
+updated: 2026-09-11
+
+contexts:
+  HOME:
+    description: Operator is on the KARMO home LAN or another directly routed local network.
+  OFFICE:
+    description: Operator is on the office network and reaches home systems through Tailscale.
+  TRAVEL_REMOTE:
+    description: Operator is away from home and office; prefer tailnet paths.
+  LOCAL_CONSOLE:
+    description: Operator is physically or virtually at the host console.
+  AGENT_REMOTE:
+    description: Authorized agent uses an already-approved remote-management path.
+
+paths:
+  karmo-ai01-home-direct:
+    target: karmo-ai01
+    contexts: [HOME]
+    route:
+      - transport: lan
+        destination: 192.168.1.235
+    ssh_user: lofason
+    auth_method: karmo-admin-ssh
+    status: VERIFIED
+
+  karmo-ai01-direct-tailscale:
+    target: karmo-ai01
+    contexts: [OFFICE, TRAVEL_REMOTE, AGENT_REMOTE]
+    route:
+      - transport: tailscale
+        destination_host: karmo-ai01
+        destination_ip: 100.75.239.44
+        ssh_user: lofason
+    auth_method: karmo-admin-ssh
+    status: VERIFIED
+    verification_note: Tailscale enrollment and node reachability verified 2026-09-11; direct client-side OpenSSH smoke from KARMO-DEV01 remains recommended at next remote-use opportunity.
+    security_notes:
+      - Use standard OpenSSH over the Tailscale interface.
+      - Tailscale SSH is not enabled.
+      - No subnet routes or exit-node capability are configured.
+      - Production DNS acceptance remains disabled for Tailscale.
+
+  karmo-ai01-office-via-kve02:
+    target: karmo-ai01
+    contexts: [OFFICE, TRAVEL_REMOTE]
+    route:
+      - transport: tailscale
+        destination_host: kve02
+        destination_ip: 100.75.39.34
+        ssh_user: root
+      - transport: lan
+        destination_host: karmo-ai01
+        destination_ip: 192.168.1.235
+        ssh_user: lofason
+    status: VERIFIED
+    note: Retained fallback/bridge path. Do not delete while it remains useful as recovery access.
+
+fallback_order:
+  karmo-ai01:
+    - karmo-ai01-direct-tailscale
+    - karmo-ai01-office-via-kve02
+    - local-console
