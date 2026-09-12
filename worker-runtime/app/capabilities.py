@@ -19,14 +19,32 @@ from pathlib import Path
 import resource_discovery
 from sandbox import SandboxError, register_handler, resolve_within_sandbox
 
-# The worker-runtime's own venv, used to invoke pytest/py_compile as a
-# subprocess with a fixed, known interpreter -- never a job-supplied one.
+# Prefer the worker-runtime's own venv when it exists. GitHub-hosted CI does
+# not create that repo-local venv, so fall back only to the interpreter that
+# is already executing this trusted KARMO process. The job payload can never
+# choose or override this path.
 _VENV_PYTHON = Path(__file__).resolve().parent.parent / "venv" / "bin" / "python"
 
 # Only operationally necessary, non-secret process settings may cross into a
 # capability subprocess. In particular, PYTHONPATH, tokens, cloud credentials,
 # SSH agent variables, and arbitrary user environment are never inherited.
 _SAFE_ENV_KEYS = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR")
+
+
+def _trusted_python_interpreter():
+    """Return a KARMO-controlled Python interpreter path.
+
+    Production/dev prefers the Worker Runtime virtualenv. Portable test/CI
+    environments may not have that venv, so the only allowed fallback is the
+    current process interpreter (sys.executable), resolved to an absolute path.
+    Never accepts a job-supplied path and fails closed if neither interpreter is
+    executable.
+    """
+    candidates = (_VENV_PYTHON, Path(sys.executable).resolve())
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    raise SandboxError("no trusted executable Python interpreter is available -- refused")
 
 
 def _safe_subprocess_env(source=None):
@@ -72,7 +90,7 @@ def _pytest_job(payload, *, sandbox_root, allowed_root, timeout_seconds):
         raise SandboxError(f"test_dir not found within allowed workspace: {payload['test_dir']!r}")
 
     result = subprocess.run(
-        [str(_VENV_PYTHON), "-m", "pytest", "-v", str(test_dir)],
+        [str(_trusted_python_interpreter()), "-m", "pytest", "-v", str(test_dir)],
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
@@ -99,7 +117,7 @@ def _static_analysis(payload, *, sandbox_root, allowed_root, timeout_seconds):
             errors.append(f"{rel_path}: not found")
             continue
         result = subprocess.run(
-            [str(_VENV_PYTHON), "-m", "py_compile", str(path)],
+            [str(_trusted_python_interpreter()), "-m", "py_compile", str(path)],
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
