@@ -131,6 +131,7 @@ def _parse_date(value: str | None) -> Optional[date]:
         "%m/%d/%Y %H:%M",
         "%m/%d/%Y %I:%M %p",
         "%b %d, %Y",
+        "%b %d %Y",
     )
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
