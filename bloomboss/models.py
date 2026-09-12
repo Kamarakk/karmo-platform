@@ -81,13 +81,7 @@ class PlantUnit:
 
 @dataclass(frozen=True)
 class PropagationEvent:
-    """One known parent-to-child propagation relationship.
-
-    The method is intentionally plant-agnostic so BloomBoss can represent
-    corms, divisions, cuttings, nodes, offsets, seed-grown offspring, tissue
-    culture, and future methods without changing the purchase/listing/sale model.
-    Unknown dates and notes remain unknown rather than being inferred.
-    """
+    """One known parent-to-child propagation relationship."""
 
     propagation_id: str
     parent_unit_id: str
@@ -100,12 +94,7 @@ class PropagationEvent:
 
 @dataclass(frozen=True)
 class ListingHistoryEvent:
-    """One historical listing period for a canonical inventory unit.
-
-    Listing history is separate from sale history because asking price/channel
-    evidence is not the same fact as a realized sale. Missing dates/prices stay
-    unknown rather than being inferred from sale records.
-    """
+    """One historical listing period for a canonical inventory unit."""
 
     listing_id: str
     unit_id: str
@@ -126,6 +115,8 @@ class Sale:
     selling_fees: Optional[Decimal] = None
     shipping_cost: Optional[Decimal] = None
     provenance: tuple[Provenance, ...] = field(default_factory=tuple)
+    external_order_id: Optional[str] = None
+    external_line_item_id: Optional[str] = None
 
     @property
     def known_net_revenue(self) -> Optional[Decimal]:
