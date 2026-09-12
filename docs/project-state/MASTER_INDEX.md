@@ -18,6 +18,7 @@ This is the single index for KARMO's persistent project-record set. Do not creat
 | [ROLLBACK_AND_REMOVAL.md](ROLLBACK_AND_REMOVAL.md) | Backup/rollback locations and procedures per phase. |
 | [NEXT_STEPS.md](NEXT_STEPS.md) | Outstanding/blocked items and next authorized action. |
 | [PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md](PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md) | Latest durable delta for direct Tailscale enrollment, Core/Worker production deployment, PR #34/#35 merge, maintenance finding, and remaining verification. |
+| [PROJECT_SAVE_2026-09-12_H01_TEST_HARDENING.md](PROJECT_SAVE_2026-09-12_H01_TEST_HARDENING.md) | Latest durable delta for the H0.1 isolated failure-matrix test-hardening/review checkpoint (not yet merged). |
 
 ## Learning program
 
@@ -71,3 +72,4 @@ Per `docs/handoff/h01/KARMO_HANDOFF_2026-09-04_H01_BUILD_COMPLETE.md`, an earlie
 - 2026-09-11 — Access & Connection Registry, System-Fit & Reuse Review, and System Stewardship design merged.
 - 2026-09-11 — KARMO-AI01 joined Tailscale at `100.75.239.44`; Core and restricted local Worker services deployed/active; PR #34 and #35 merged; detailed rollout saved in `PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md`.
 - 2026-09-11 — flexible KARMO AI Engineering Apprenticeship and durable learning-progress log created; completed sections must be recorded before advancing.
+- 2026-09-12 — H0.1 isolated failure-matrix test suite hardened (three review findings fixed: clock-skew-sensitive latency check, weak duplicate-delivery coverage, environment-dependent fault injection); full matrix re-run 19 passed/2 skipped/0 failed; frozen `test/h01/app/` untouched; see `PROJECT_SAVE_2026-09-12_H01_TEST_HARDENING.md`.
