@@ -71,6 +71,7 @@ def arguments_digest(tool_id: str, tool_version: str, arguments: dict) -> str:
 class ApprovalState(str, Enum):
     REQUESTED = "REQUESTED"
     APPROVED = "APPROVED"
+    CLAIMED = "CLAIMED"
     DENIED = "DENIED"
     EXPIRED = "EXPIRED"
     EXECUTED = "EXECUTED"
@@ -209,13 +210,19 @@ class ApprovalEngine:
             record.transition(ApprovalState.FAILED, "system", "tool/argument mismatch", self._clock())
             self._persist(record)
             raise CoreControlError("tool/argument mismatch; approval invalidated")
+
+        # Claim first so a second execution path cannot reuse the approval while
+        # the handler is running. A durable production path may bind this claim
+        # atomically to its invocation ledger using PostgresExecutionCoordinator.
+        record.execution_binding = str(uuid.uuid5(uuid.NAMESPACE_URL, f"approval:{approval_id}"))
+        record.transition(ApprovalState.CLAIMED, "system", "execution authority claimed", self._clock())
+        self._persist(record)
         try:
             result = action()
         except Exception as exc:
             record.transition(ApprovalState.FAILED, "system", f"execution raised: {exc}", self._clock())
             self._persist(record)
             raise
-        record.execution_binding = str(uuid.uuid5(uuid.NAMESPACE_URL, f"approval:{approval_id}"))
         record.transition(ApprovalState.EXECUTED, "system", "executed", self._clock())
         self._persist(record)
         return result
