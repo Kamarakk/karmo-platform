@@ -61,8 +61,8 @@ def test_loads_palmstreet_rows_as_candidates_not_canonical_sales(tmp_path):
 def test_verified_seller_hub_order_table_fields_parse(tmp_path):
     path = tmp_path / "seller-hub-orders.csv"
     path.write_text(
-        "Item,Order ID,Customer,Full Name,Item QTY,Order Value,Paid Shipping Fee,Purchase Date,Order Status,Order Source\n"
-        "Pink Plant,9733-000000-0000,buyer01,Example Buyer,1 item,$195.00,$0,Sep 07 2026,Finished,Marketplace\n",
+        "Item,Order ID,Customer,Full Name,Item QTY,Order Value,Paid Shipping Fee,Purchase Date,Order Status,Order Source,Buyer Note,Seller Note\n"
+        "Pink Plant,9733-000000-0000,buyer01,Example Buyer,1 item,$195.00,$0,Sep 07 2026,Finished,Marketplace,Please hold until Monday,Heat pack requested\n",
         encoding="utf-8",
     )
 
@@ -81,6 +81,29 @@ def test_verified_seller_hub_order_table_fields_parse(tmp_path):
     assert row.customer_full_name == "Example Buyer"
     assert row.order_status == "Finished"
     assert row.order_source == "Marketplace"
+    assert row.buyer_note == "Please hold until Monday"
+    assert row.seller_note == "Heat pack requested"
+
+
+def test_notes_are_optional_opaque_source_text(tmp_path):
+    path = tmp_path / "palmstreet.csv"
+    path.write_text(
+        "Order ID,Buyer Note,Seller Note\n"
+        "P100,  synthetic buyer note  ,  synthetic seller note  \n",
+        encoding="utf-8",
+    )
+
+    _, rows = load_palmstreet_sales_export(
+        path,
+        PalmstreetFieldMap(
+            order_id="Order ID",
+            buyer_note="Buyer Note",
+            seller_note="Seller Note",
+        ),
+    )
+
+    assert rows[0].buyer_note == "synthetic buyer note"
+    assert rows[0].seller_note == "synthetic seller note"
 
 
 def test_unknown_optional_fields_remain_unknown(tmp_path):
@@ -98,6 +121,8 @@ def test_unknown_optional_fields_remain_unknown(tmp_path):
     assert row.quantity is None
     assert row.sale_price is None
     assert row.sale_date is None
+    assert row.buyer_note is None
+    assert row.seller_note is None
 
 
 def test_bad_mapping_fails_visibly(tmp_path):

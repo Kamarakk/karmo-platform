@@ -28,6 +28,8 @@ class PalmstreetFieldMap:
     customer_full_name: Optional[str] = None
     order_status: Optional[str] = None
     order_source: Optional[str] = None
+    buyer_note: Optional[str] = None
+    seller_note: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,8 @@ class PalmstreetSaleCandidate:
     customer_full_name: Optional[str] = None
     order_status: Optional[str] = None
     order_source: Optional[str] = None
+    buyer_note: Optional[str] = None
+    seller_note: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,8 @@ def palmstreet_seller_hub_orders_field_map() -> PalmstreetFieldMap:
 
     This is intentionally separate from any future downloadable CSV profile because
     Palmstreet's broken export path has not yet supplied a real CSV header set.
+    Notes are staged as opaque source evidence only; BloomBoss does not parse them
+    for inventory matching, financial calculations, or customer inference.
     """
     return PalmstreetFieldMap(
         order_id="Order ID",
@@ -75,6 +81,8 @@ def palmstreet_seller_hub_orders_field_map() -> PalmstreetFieldMap:
         customer_full_name="Full Name",
         order_status="Order Status",
         order_source="Order Source",
+        buyer_note="Buyer Note",
+        seller_note="Seller Note",
     )
 
 
@@ -178,7 +186,8 @@ def load_palmstreet_sales_export(
 
     This does not create BloomBoss Sale records because a platform row must first be
     reconciled to a canonical BloomBoss inventory unit. Unknown fields stay unknown.
-    Raw source identity and row provenance are preserved.
+    Raw source identity and row provenance are preserved. Optional buyer/seller notes
+    remain opaque source text and are not interpreted by the importer.
     """
     path = Path(path)
     profile = inspect_palmstreet_export(path)
@@ -197,6 +206,8 @@ def load_palmstreet_sales_export(
         ("customer_full_name", field_map.customer_full_name),
         ("order_status", field_map.order_status),
         ("order_source", field_map.order_source),
+        ("buyer_note", field_map.buyer_note),
+        ("seller_note", field_map.seller_note),
     ):
         _require_header(headers, field_name, column)
 
@@ -280,6 +291,16 @@ def load_palmstreet_sales_export(
                         order_source=(
                             _blank_to_none(row.get(field_map.order_source))
                             if field_map.order_source
+                            else None
+                        ),
+                        buyer_note=(
+                            _blank_to_none(row.get(field_map.buyer_note))
+                            if field_map.buyer_note
+                            else None
+                        ),
+                        seller_note=(
+                            _blank_to_none(row.get(field_map.seller_note))
+                            if field_map.seller_note
                             else None
                         ),
                     )
