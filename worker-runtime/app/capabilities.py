@@ -10,6 +10,7 @@ sandbox.resolve_within_sandbox.
 """
 
 import hashlib
+import os
 import subprocess
 import sys
 import time
@@ -22,6 +23,19 @@ from sandbox import SandboxError, register_handler, resolve_within_sandbox
 # subprocess with a fixed, known interpreter -- never a job-supplied one.
 _VENV_PYTHON = Path(__file__).resolve().parent.parent / "venv" / "bin" / "python"
 
+# Only operationally necessary, non-secret process settings may cross into a
+# capability subprocess. In particular, PYTHONPATH, tokens, cloud credentials,
+# SSH agent variables, and arbitrary user environment are never inherited.
+_SAFE_ENV_KEYS = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR")
+
+
+def _safe_subprocess_env(source=None):
+    source = os.environ if source is None else source
+    env = {key: source[key] for key in _SAFE_ENV_KEYS if key in source}
+    env["PYTHONNOUSERSITE"] = "1"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
+
 
 def _require_allowed_root(allowed_root):
     if allowed_root is None:
@@ -30,7 +44,6 @@ def _require_allowed_root(allowed_root):
 
 
 # --- A. HASH VERIFY -------------------------------------------------------
-
 def _hash_verify(payload, *, sandbox_root, allowed_root, timeout_seconds):
     root = _require_allowed_root(allowed_root)
     path = resolve_within_sandbox(root, payload["path"])
@@ -52,7 +65,6 @@ register_handler("hash_verify", _hash_verify)
 
 
 # --- B. PYTEST JOB ----------------------------------------------------------
-
 def _pytest_job(payload, *, sandbox_root, allowed_root, timeout_seconds):
     root = _require_allowed_root(allowed_root)
     test_dir = resolve_within_sandbox(root, payload["test_dir"])
@@ -61,7 +73,11 @@ def _pytest_job(payload, *, sandbox_root, allowed_root, timeout_seconds):
 
     result = subprocess.run(
         [str(_VENV_PYTHON), "-m", "pytest", "-v", str(test_dir)],
-        capture_output=True, text=True, timeout=timeout_seconds, cwd=str(sandbox_root),
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+        cwd=str(sandbox_root),
+        env=_safe_subprocess_env(),
     )
     summary_lines = result.stdout.strip().splitlines()[-15:]
     output = {"exit_code": result.returncode, "summary": "\n".join(summary_lines)}
@@ -72,7 +88,6 @@ register_handler("pytest", _pytest_job)
 
 
 # --- C. STATIC PYTHON VALIDATION --------------------------------------------
-
 def _static_analysis(payload, *, sandbox_root, allowed_root, timeout_seconds):
     root = _require_allowed_root(allowed_root)
     errors = []
@@ -85,7 +100,10 @@ def _static_analysis(payload, *, sandbox_root, allowed_root, timeout_seconds):
             continue
         result = subprocess.run(
             [str(_VENV_PYTHON), "-m", "py_compile", str(path)],
-            capture_output=True, text=True, timeout=timeout_seconds,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=_safe_subprocess_env(),
         )
         checked.append(rel_path)
         if result.returncode != 0:
@@ -100,7 +118,6 @@ register_handler("static_analysis", _static_analysis)
 
 
 # --- D. REPOSITORY ANALYSIS -------------------------------------------------
-
 def _repository_analysis(payload, *, sandbox_root, allowed_root, timeout_seconds):
     root = _require_allowed_root(allowed_root)
     repo_path = resolve_within_sandbox(root, payload["repo_path"])
@@ -109,7 +126,7 @@ def _repository_analysis(payload, *, sandbox_root, allowed_root, timeout_seconds
 
     file_count = 0
     total_bytes = 0
-    max_files = 10_000  # bounded walk -- I-05 discipline, never unbounded
+    max_files = 10_000
 
     for entry in repo_path.rglob("*"):
         if entry.is_file():
@@ -127,9 +144,8 @@ register_handler("repository_analysis", _repository_analysis)
 
 
 # --- E. RESOURCE BENCHMARK --------------------------------------------------
-
 def _resource_benchmark(payload, *, sandbox_root, allowed_root, timeout_seconds):
-    iterations = min(int(payload.get("iterations", 100_000)), 5_000_000)  # bounded, never caller-unbounded
+    iterations = min(int(payload.get("iterations", 100_000)), 5_000_000)
 
     start = time.monotonic()
     total = 0
@@ -146,7 +162,6 @@ register_handler("resource_benchmark", _resource_benchmark)
 
 
 # --- Optional probes ---------------------------------------------------
-
 def _media_probe_test(payload, *, sandbox_root, allowed_root, timeout_seconds):
     acceleration = resource_discovery.discover_acceleration()
     output = {
@@ -174,9 +189,7 @@ register_handler("local_model_probe", _local_model_probe)
 
 
 def _document_processing_test(payload, *, sandbox_root, allowed_root, timeout_seconds):
-    """Synthetic chunking simulation -- no Docling dependency, no real
-    document pipeline, just proves the job/sandbox path works for a
-    document-shaped workload."""
+    """Synthetic chunking simulation for the bounded document job path."""
     root = _require_allowed_root(allowed_root)
     path = resolve_within_sandbox(root, payload["path"])
     if not path.is_file():
@@ -194,9 +207,7 @@ register_handler("document_processing_test", _document_processing_test)
 
 
 def _embedding_benchmark_test(payload, *, sandbox_root, allowed_root, timeout_seconds):
-    """Synthetic vector-op benchmark -- no real embedding model, bounded
-    CPU work standing in for one, per explicit instruction not to
-    download/install model weights."""
+    """Synthetic bounded vector-op benchmark; no model weights are downloaded."""
     vector_count = min(int(payload.get("vector_count", 100)), 10_000)
     dim = 64
 
@@ -205,8 +216,6 @@ def _embedding_benchmark_test(payload, *, sandbox_root, allowed_root, timeout_se
         [((hashlib.sha256(f"{i}:{j}".encode()).digest()[0]) / 255.0) for j in range(dim)]
         for i in range(vector_count)
     ]
-    # A bounded amount of dot-product work, standing in for a real
-    # similarity computation.
     _ = sum(sum(a * b for a, b in zip(vectors[0], v)) for v in vectors[1:])
     elapsed = time.monotonic() - start
 
