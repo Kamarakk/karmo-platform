@@ -124,18 +124,43 @@ class PostgresWorkerCoordinatorStore:
                 raise WorkerCoordinationError("worker identity/key mismatch or worker inactive")
         return expires
 
-    def enqueue_job(self, *, task_id, tool_id, tool_version, arguments_digest, approval_id=None):
+    def enqueue_job(self, *, idempotency_key, task_id, tool_id, tool_version, arguments_digest, approval_id=None):
+        """Create a QUEUED job. ``idempotency_key`` is required and must be
+        unique per real enqueue attempt (mirroring
+        PostgresInvocationLedger.begin()) -- a retried call with the SAME
+        key raises rather than silently creating a duplicate job, so a
+        caller unsure whether a prior enqueue succeeded (e.g. after a
+        network timeout) never doubles real work. A deliberate new attempt
+        for the same logical task/tool (e.g. after a FAILED job) uses a new
+        idempotency_key -- this is not a permanent per-task/tool lock."""
+        if not idempotency_key:
+            raise WorkerCoordinationError("idempotency_key is required to enqueue a worker job")
         job_id = str(uuid.uuid4())
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO public.karmo_worker_jobs
-                    (job_id, task_id, approval_id, tool_id, tool_version, arguments_digest, state)
-                VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s, 'QUEUED')
+                    (job_id, idempotency_key, task_id, approval_id, tool_id, tool_version, arguments_digest, state)
+                VALUES (%s::uuid, %s, %s::uuid, %s::uuid, %s, %s, %s, 'QUEUED')
+                ON CONFLICT (idempotency_key) DO NOTHING
+                RETURNING job_id
                 """,
-                (job_id, task_id, approval_id, tool_id, tool_version, arguments_digest),
+                (job_id, idempotency_key, task_id, approval_id, tool_id, tool_version, arguments_digest),
             )
+            if cur.fetchone() is None:
+                raise WorkerCoordinationError(f"duplicate worker-job idempotency key: {idempotency_key}")
         return job_id
+
+    def get_job_by_idempotency_key(self, idempotency_key):
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT job_id, state FROM public.karmo_worker_jobs WHERE idempotency_key=%s",
+                (idempotency_key,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return {"job_id": str(row[0]), "state": row[1]}
 
     def lease_job(self, *, job_id, worker_id, lease_seconds=60):
         """Lease a QUEUED job to a worker, and atomically claim the real

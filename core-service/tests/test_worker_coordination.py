@@ -135,8 +135,10 @@ def _setup_leased_job(store, worker_auth, coordinator, *, arguments=None, tool_i
     _engine, approval_id, digest = _approve(
         tool_id=tool_id, tool_version=tool_version, arguments=arguments, authorized_executor="worker-1",
     )
+    task_id = str(uuid.uuid4())
     job_id = store.enqueue_job(
-        task_id=str(uuid.uuid4()),
+        idempotency_key=f"{task_id}:{tool_id}:{tool_version}",
+        task_id=task_id,
         approval_id=approval_id,
         tool_id=tool_id,
         tool_version=tool_version,
@@ -270,9 +272,10 @@ def test_expired_lease_moves_to_recovery_required_and_never_requeues_automatical
     store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
     store.heartbeat(worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=120)
     _engine, approval_id, digest = _approve()
+    task_id = str(uuid.uuid4())
     job_id = store.enqueue_job(
-        task_id=str(uuid.uuid4()), approval_id=approval_id, tool_id="karmolab.host_health",
-        tool_version="1", arguments_digest=digest,
+        idempotency_key=f"{task_id}:host_health", task_id=task_id, approval_id=approval_id,
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
     )
     store.lease_job(job_id=job_id, worker_id="worker-1", lease_seconds=5)
     clock.now += timedelta(seconds=6)
@@ -294,7 +297,7 @@ def test_lease_job_refuses_missing_or_unapproved_authority():
 
     # No approval_id at all.
     job_no_approval = store.enqueue_job(
-        task_id=str(uuid.uuid4()), approval_id=None,
+        idempotency_key=f"no-approval:{uuid.uuid4()}", task_id=str(uuid.uuid4()), approval_id=None,
         tool_id="karmolab.host_health", tool_version="1", arguments_digest="a" * 64,
     )
     with pytest.raises(WorkerCoordinationError, match="no approval_id"):
@@ -302,7 +305,7 @@ def test_lease_job_refuses_missing_or_unapproved_authority():
 
     # approval_id that does not exist in core_approval_records.
     job_fake_approval = store.enqueue_job(
-        task_id=str(uuid.uuid4()), approval_id=str(uuid.uuid4()),
+        idempotency_key=f"fake-approval:{uuid.uuid4()}", task_id=str(uuid.uuid4()), approval_id=str(uuid.uuid4()),
         tool_id="karmolab.host_health", tool_version="1", arguments_digest="a" * 64,
     )
     with pytest.raises(WorkerCoordinationError, match="no such approval"):
@@ -315,7 +318,7 @@ def test_lease_job_refuses_missing_or_unapproved_authority():
         arguments={"host": "karmo-ai01"}, authority_class=CapabilityClass.EXTERNAL_ACTION.value,
     )
     job_unapproved = store.enqueue_job(
-        task_id=str(uuid.uuid4()), approval_id=requested.approval_id,
+        idempotency_key=f"unapproved:{uuid.uuid4()}", task_id=str(uuid.uuid4()), approval_id=requested.approval_id,
         tool_id="karmolab.host_health", tool_version="1",
         arguments_digest=requested.arguments_digest,
     )
@@ -325,7 +328,7 @@ def test_lease_job_refuses_missing_or_unapproved_authority():
     # A real APPROVED approval whose tool/arguments do not match the job.
     _engine2, approval_id, _digest = _approve(arguments={"host": "karmo-ai01"})
     job_mismatched_args = store.enqueue_job(
-        task_id=str(uuid.uuid4()), approval_id=approval_id,
+        idempotency_key=f"mismatched-args:{uuid.uuid4()}", task_id=str(uuid.uuid4()), approval_id=approval_id,
         tool_id="karmolab.host_health", tool_version="1", arguments_digest="f" * 64,
     )
     with pytest.raises(WorkerCoordinationError, match="does not match"):
@@ -334,7 +337,7 @@ def test_lease_job_refuses_missing_or_unapproved_authority():
     # A real APPROVED approval authorized for a DIFFERENT worker.
     _engine3, approval_id_2, digest_2 = _approve(authorized_executor="worker-2")
     job_wrong_executor = store.enqueue_job(
-        task_id=str(uuid.uuid4()), approval_id=approval_id_2,
+        idempotency_key=f"wrong-executor:{uuid.uuid4()}", task_id=str(uuid.uuid4()), approval_id=approval_id_2,
         tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest_2,
     )
     with pytest.raises(WorkerCoordinationError, match="not the approval's authorized executor"):
@@ -357,7 +360,7 @@ def test_lease_job_claims_the_approval_and_finalize_closes_it_out():
 
     # The same approval can never be claimed a second time by another job.
     duplicate_job = store.enqueue_job(
-        task_id=str(uuid.uuid4()), approval_id=lease.approval_id,
+        idempotency_key=f"duplicate-claim:{uuid.uuid4()}", task_id=str(uuid.uuid4()), approval_id=lease.approval_id,
         tool_id=lease.tool_id, tool_version=lease.tool_version,
         arguments_digest=lease.arguments_digest,
     )
@@ -458,8 +461,9 @@ def test_stale_heartbeat_worker_cannot_submit_result_even_with_valid_job_lease()
     store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
     store.heartbeat(worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=5)  # short heartbeat
     _engine, approval_id, digest = _approve()
+    task_id = str(uuid.uuid4())
     job_id = store.enqueue_job(
-        task_id=str(uuid.uuid4()), approval_id=approval_id,
+        idempotency_key=f"{task_id}:host_health", task_id=task_id, approval_id=approval_id,
         tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
     )
     lease = store.lease_job(job_id=job_id, worker_id="worker-1", lease_seconds=300)  # long job lease
@@ -477,6 +481,52 @@ def test_stale_heartbeat_worker_cannot_submit_result_even_with_valid_job_lease()
     with pytest.raises(WorkerCoordinationError, match="heartbeat lease expired"):
         coordinator.accept_result(execution_ticket=token, lease=lease, result=result, envelope=envelope)
     assert store.get_job_state(job_id)["state"] == "LEASED"
+
+
+def test_enqueue_job_requires_idempotency_key_and_refuses_duplicates():
+    """MEDIUM regression: a retried enqueue_job call for the same logical
+    attempt must never silently create a second job row -- unlike
+    approval_id (fixed separately), there was previously no unique-key
+    protection here at all, unlike tool_invocation_ledger.idempotency_key."""
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    _engine, approval_id, digest = _approve()
+    task_id = str(uuid.uuid4())
+
+    with pytest.raises(WorkerCoordinationError, match="idempotency_key is required"):
+        store.enqueue_job(
+            idempotency_key="", task_id=task_id, approval_id=approval_id,
+            tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
+        )
+
+    key = f"{task_id}:host_health:attempt-1"
+    job_id = store.enqueue_job(
+        idempotency_key=key, task_id=task_id, approval_id=approval_id,
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
+    )
+
+    # A retry with the SAME idempotency_key (e.g. after a timeout where the
+    # caller doesn't know whether the first enqueue landed) must not create
+    # a second job -- it must fail loudly, exactly like
+    # PostgresInvocationLedger.begin() does for a reused key.
+    with pytest.raises(WorkerCoordinationError, match="duplicate worker-job idempotency key"):
+        store.enqueue_job(
+            idempotency_key=key, task_id=task_id, approval_id=approval_id,
+            tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
+        )
+    existing = store.get_job_by_idempotency_key(key)
+    assert existing["job_id"] == job_id
+    assert existing["state"] == "QUEUED"
+
+    # A deliberately new attempt (new idempotency_key) for the same logical
+    # task/tool/arguments is still allowed -- this is dedup for retries, not
+    # a permanent per-task/tool lock.
+    _engine2, approval_id_2, digest_2 = _approve()
+    other_job_id = store.enqueue_job(
+        idempotency_key=f"{task_id}:host_health:attempt-2", task_id=task_id, approval_id=approval_id_2,
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest_2,
+    )
+    assert other_job_id != job_id
+    assert store.get_job_by_idempotency_key(f"{task_id}:host_health:attempt-2")["job_id"] == other_job_id
 
 
 def test_outbound_transport_policy_forbids_inbound_or_reachability_authority():

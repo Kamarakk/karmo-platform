@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.karmo_workers (
 
 CREATE TABLE IF NOT EXISTS public.karmo_worker_jobs (
     job_id UUID PRIMARY KEY,
+    idempotency_key TEXT NOT NULL UNIQUE,
     task_id UUID NOT NULL,
     approval_id UUID,
     tool_id TEXT NOT NULL,
