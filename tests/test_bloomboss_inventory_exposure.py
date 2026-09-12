@@ -101,7 +101,7 @@ def test_inventory_exposure_aging_buckets_preserve_cost_unknowns():
             "A",
             PlantStatus.READY,
             Decimal("20"),
-            acquired_date=date(2026, 3, 31),
+            acquired_date=date(2026, 3, 30),
         ),
         PlantUnit(
             "u-61",
@@ -109,7 +109,7 @@ def test_inventory_exposure_aging_buckets_preserve_cost_unknowns():
             "A",
             PlantStatus.READY,
             None,
-            acquired_date=date(2026, 3, 1),
+            acquired_date=date(2026, 2, 28),
         ),
         PlantUnit(
             "u-91",
@@ -117,7 +117,7 @@ def test_inventory_exposure_aging_buckets_preserve_cost_unknowns():
             "A",
             PlantStatus.READY,
             Decimal("40"),
-            acquired_date=date(2026, 1, 30),
+            acquired_date=date(2026, 1, 29),
         ),
         PlantUnit(
             "u-cutoff",
