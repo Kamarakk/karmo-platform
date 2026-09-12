@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS public.karmo_tasks (
     risk TEXT NOT NULL,
     allowed_capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
     state TEXT NOT NULL,
+    state_version BIGINT NOT NULL DEFAULT 0 CHECK (state_version >= 0),
     model TEXT,
     tool TEXT,
     inputs JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -74,6 +75,7 @@ CREATE TABLE IF NOT EXISTS public.karmo_tasks (
 
 CREATE TABLE IF NOT EXISTS public.karmo_task_events (
     event_id UUID PRIMARY KEY,
+    event_key TEXT NOT NULL UNIQUE,
     task_id UUID NOT NULL REFERENCES public.karmo_tasks(task_id),
     event_type TEXT NOT NULL,
     actor TEXT NOT NULL,
@@ -83,6 +85,7 @@ CREATE TABLE IF NOT EXISTS public.karmo_task_events (
 
 CREATE INDEX IF NOT EXISTS idx_tool_invocation_task ON public.tool_invocation_ledger(task_id);
 CREATE INDEX IF NOT EXISTS idx_tool_invocation_status ON public.tool_invocation_ledger(status);
+CREATE INDEX IF NOT EXISTS idx_tool_invocation_unfinished ON public.tool_invocation_ledger(status, created_at) WHERE completed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_core_approval_state_expiry ON public.core_approval_records(state, expires_at);
 CREATE INDEX IF NOT EXISTS idx_task_events_task_created ON public.karmo_task_events(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_karmo_tasks_state ON public.karmo_tasks(state);
