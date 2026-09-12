@@ -162,6 +162,18 @@ merge sequence ran.
   design — production actions are not recorded in this repo per `AGENTS.md`);
   the above is recorded as VERIFIED on Natalie's direct, specific attestation,
   not on independently re-read production state.
+- H01-T01/H01-T18's production-read-only components (referenced above as
+  BLOCKED at 2026-09-06) were subsequently performed and PASSED on
+  2026-09-09 under Foundation v1 closeout Workload 2 —
+  `docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`.
+- 2026-09-12 (branch `staging/karmo-full-predeploy-20260912`, not yet
+  merged): three test-code robustness/coverage gaps found by review in the
+  isolated `test/h01/tests/test_h01_failure_matrix.py` suite (clock-skew-
+  sensitive latency check, weak duplicate-delivery coverage,
+  environment-dependent socket-based fault injection) were fixed; no
+  frozen `test/h01/app/` file changed; full matrix re-run 19 passed/2
+  skipped/0 failed. Detail:
+  `docs/project-state/PROJECT_SAVE_2026-09-12_H01_TEST_HARDENING.md`.
 
 ## H0.2 — Knowledge Lifecycle & Vector Versioning
 

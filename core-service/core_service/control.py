@@ -71,6 +71,7 @@ def arguments_digest(tool_id: str, tool_version: str, arguments: dict) -> str:
 class ApprovalState(str, Enum):
     REQUESTED = "REQUESTED"
     APPROVED = "APPROVED"
+    CLAIMED = "CLAIMED"
     DENIED = "DENIED"
     EXPIRED = "EXPIRED"
     EXECUTED = "EXECUTED"
@@ -93,6 +94,7 @@ class ApprovalRecord:
     authorized_executor: str | None = None
     execution_binding: str | None = None
     audit_trail: list[dict] = field(default_factory=list)
+    version: int = 0
 
     def transition(self, to_state: ApprovalState, actor: str, note: str, now: datetime):
         self.audit_trail.append({
@@ -106,19 +108,45 @@ class ApprovalRecord:
 
 
 class ApprovalEngine:
-    """Local in-memory v0.1 approval engine.
+    """KARMO approval engine with optional injected durable persistence.
 
-    Persistence is intentionally deferred rather than silently added to the
-    approved no-database-migration rollout.
+    The engine owns approval semantics. A persistence adapter may be supplied
+    to make approval truth survive process restart; the adapter never decides
+    authority or transitions. With no adapter the engine remains suitable for
+    isolated unit/dev use.
     """
 
-    def __init__(self, *, clock=None, default_ttl_seconds=3600):
+    def __init__(self, *, clock=None, default_ttl_seconds=3600, store=None):
         self._records: dict[str, ApprovalRecord] = {}
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._default_ttl_seconds = default_ttl_seconds
+        self._store = store
+
+    def _persist(self, record: ApprovalRecord, *, expected_version):
+        """Compare-and-swap write. ``expected_version`` is the version this
+        record held immediately before the mutation being persisted; ``None``
+        means "must not already exist" (first save). A stale writer -- one
+        whose expected_version no longer matches durable truth because
+        another writer committed first -- fails closed with CoreControlError
+        rather than silently overwriting newer state."""
+        if self._store is not None:
+            record.version = self._store.save(record, expected_version=expected_version)
+        else:
+            current = self._records.get(record.approval_id)
+            current_version = current.version if current is not None else None
+            if current_version != expected_version:
+                raise CoreControlError(
+                    f"approval version conflict for {record.approval_id}: "
+                    f"expected {expected_version}, found {current_version}"
+                )
+            record.version = 1 if expected_version is None else expected_version + 1
+        self._records[record.approval_id] = record
 
     def request(self, *, requester, tool_id, tool_version, arguments, authority_class, ttl_seconds=None):
         now = self._clock()
+        ttl = self._default_ttl_seconds if ttl_seconds is None else ttl_seconds
+        if ttl <= 0:
+            raise CoreControlError("ttl_seconds must be positive")
         record = ApprovalRecord(
             approval_id=str(uuid.uuid4()),
             requester=requester,
@@ -127,47 +155,108 @@ class ApprovalEngine:
             arguments_digest=arguments_digest(tool_id, tool_version, arguments),
             authority_class=authority_class,
             created_at=now,
-            expires_at=now + timedelta(seconds=ttl_seconds or self._default_ttl_seconds),
+            expires_at=now + timedelta(seconds=ttl),
         )
-        record.audit_trail.append({"timestamp": now.isoformat(), "from_state": None, "to_state": "REQUESTED", "actor": requester, "note": "requested"})
-        self._records[record.approval_id] = record
+        record.audit_trail.append({
+            "timestamp": now.isoformat(),
+            "from_state": None,
+            "to_state": "REQUESTED",
+            "actor": requester,
+            "note": "requested",
+        })
+        self._persist(record, expected_version=None)
         return record
 
     def _get(self, approval_id):
-        try:
-            record = self._records[approval_id]
-        except KeyError as exc:
-            raise CoreControlError(f"no such approval: {approval_id}") from exc
+        if self._store is not None:
+            # Durable truth may have moved under a cached local copy (another
+            # writer/process, or the atomic execution-claim coordinator
+            # writing directly). Always defer to the store rather than trust
+            # a potentially stale in-process cache.
+            record = self.refresh(approval_id)
+        else:
+            record = self._records.get(approval_id)
+            if record is None:
+                raise CoreControlError(f"no such approval: {approval_id}")
         if record.state in (ApprovalState.REQUESTED, ApprovalState.APPROVED) and self._clock() >= record.expires_at:
+            expected_version = record.version
             record.transition(ApprovalState.EXPIRED, "system", "ttl elapsed", self._clock())
+            self._persist(record, expected_version=expected_version)
+        return record
+
+    def refresh(self, approval_id):
+        """Reload durable approval truth after an external transactional coordinator updates it."""
+        if self._store is None:
+            return self._get(approval_id)
+        record = self._store.get(approval_id)
+        if record is None:
+            raise CoreControlError(f"no such approval: {approval_id}")
+        self._records[approval_id] = record
         return record
 
     def approve(self, approval_id, *, approver, authorized_executor=None):
         record = self._get(approval_id)
         if record.state != ApprovalState.REQUESTED:
             raise CoreControlError(f"cannot approve from {record.state.value}")
+        expected_version = record.version
         record.approver = approver
         record.authorized_executor = authorized_executor or record.requester
         record.transition(ApprovalState.APPROVED, approver, "approved", self._clock())
+        self._persist(record, expected_version=expected_version)
+        return record
+
+    def deny(self, approval_id, *, approver, reason="denied"):
+        record = self._get(approval_id)
+        if record.state != ApprovalState.REQUESTED:
+            raise CoreControlError(f"cannot deny from {record.state.value}")
+        expected_version = record.version
+        record.approver = approver
+        record.authorized_executor = None
+        record.transition(ApprovalState.DENIED, approver, reason, self._clock())
+        self._persist(record, expected_version=expected_version)
+        return record
+
+    def cancel(self, approval_id, *, actor, reason="cancelled"):
+        record = self._get(approval_id)
+        if record.state not in (ApprovalState.REQUESTED, ApprovalState.APPROVED):
+            raise CoreControlError(f"cannot cancel from {record.state.value}")
+        allowed_actors = {record.requester}
+        if record.approver:
+            allowed_actors.add(record.approver)
+        if actor not in allowed_actors:
+            raise CoreControlError("actor is not authorized to cancel this approval")
+        expected_version = record.version
+        record.authorized_executor = None
+        record.transition(ApprovalState.CANCELLED, actor, reason, self._clock())
+        self._persist(record, expected_version=expected_version)
         return record
 
     def execute(self, approval_id, *, tool_id, tool_version, arguments, executor_identity, action):
         record = self._get(approval_id)
         if record.state != ApprovalState.APPROVED:
             raise CoreControlError(f"cannot execute from {record.state.value}")
+        expected_version = record.version
         if executor_identity != record.authorized_executor:
             record.transition(ApprovalState.FAILED, "system", "executor identity mismatch", self._clock())
+            self._persist(record, expected_version=expected_version)
             raise CoreControlError("executor identity mismatch; approval invalidated")
         if arguments_digest(tool_id, tool_version, arguments) != record.arguments_digest:
             record.transition(ApprovalState.FAILED, "system", "tool/argument mismatch", self._clock())
+            self._persist(record, expected_version=expected_version)
             raise CoreControlError("tool/argument mismatch; approval invalidated")
+
+        record.execution_binding = str(uuid.uuid5(uuid.NAMESPACE_URL, f"approval:{approval_id}"))
+        record.transition(ApprovalState.CLAIMED, "system", "execution authority claimed", self._clock())
+        self._persist(record, expected_version=expected_version)
+        expected_version = record.version
         try:
             result = action()
         except Exception as exc:
             record.transition(ApprovalState.FAILED, "system", f"execution raised: {exc}", self._clock())
+            self._persist(record, expected_version=expected_version)
             raise
-        record.execution_binding = str(uuid.uuid5(uuid.NAMESPACE_URL, f"approval:{approval_id}"))
         record.transition(ApprovalState.EXECUTED, "system", "executed", self._clock())
+        self._persist(record, expected_version=expected_version)
         return result
 
     def get(self, approval_id):
