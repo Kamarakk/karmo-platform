@@ -18,6 +18,28 @@ class PlantStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+class PlantOrigin(str, Enum):
+    PURCHASED = "purchased"
+    PROPAGATED = "propagated"
+    TISSUE_CULTURE = "tissue_culture"
+    SEED_GROWN = "seed_grown"
+    GIFTED = "gifted"
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+
+class PropagationMethod(str, Enum):
+    CORM = "corm"
+    DIVISION = "division"
+    CUTTING = "cutting"
+    NODE = "node"
+    OFFSET = "offset"
+    SEED = "seed"
+    TISSUE_CULTURE = "tissue_culture"
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class Provenance:
     source_type: str
@@ -48,11 +70,31 @@ class PurchaseBatch:
 @dataclass(frozen=True)
 class PlantUnit:
     unit_id: str
-    batch_id: str
+    batch_id: Optional[str]
     cultivar: str
     status: PlantStatus = PlantStatus.UNKNOWN
     allocated_landed_cost: Optional[Decimal] = None
     acquired_date: Optional[date] = None
+    provenance: tuple[Provenance, ...] = field(default_factory=tuple)
+    origin_type: PlantOrigin = PlantOrigin.UNKNOWN
+
+
+@dataclass(frozen=True)
+class PropagationEvent:
+    """One known parent-to-child propagation relationship.
+
+    The method is intentionally plant-agnostic so BloomBoss can represent
+    corms, divisions, cuttings, nodes, offsets, seed-grown offspring, tissue
+    culture, and future methods without changing the purchase/listing/sale model.
+    Unknown dates and notes remain unknown rather than being inferred.
+    """
+
+    propagation_id: str
+    parent_unit_id: str
+    child_unit_id: str
+    method: PropagationMethod
+    event_date: Optional[date] = None
+    notes: Optional[str] = None
     provenance: tuple[Provenance, ...] = field(default_factory=tuple)
 
 
