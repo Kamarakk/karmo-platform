@@ -42,6 +42,8 @@ def snapshot_report(snapshot: HistoricalImportSnapshot) -> dict[str, Any]:
             "relationship_issues": len(snapshot.relationship_issues),
             "listings": len(snapshot.listings),
             "listing_relationship_issues": len(snapshot.listing_relationship_issues),
+            "propagations": len(snapshot.propagations),
+            "propagation_relationship_issues": len(snapshot.propagation_relationship_issues),
         },
         "business_summary": _json_value(snapshot.business_summary),
         "supplier_summary": _json_value(snapshot.supplier_summary),
@@ -62,11 +64,32 @@ def snapshot_report(snapshot: HistoricalImportSnapshot) -> dict[str, Any]:
         report["listing_quality_summary"] = _json_value(snapshot.listing_quality_summary)
         report["listing_activity_summary"] = _json_value(snapshot.listing_activity_summary)
         report["listing_relationship_issues"] = _json_value(snapshot.listing_relationship_issues)
+    if snapshot.propagation_source_name is not None:
+        report["propagation_source"] = {
+            "name": snapshot.propagation_source_name,
+            "sha256": snapshot.propagation_source_sha256,
+            "size_bytes": snapshot.propagation_source_size_bytes,
+        }
+        report["propagations"] = _json_value(snapshot.propagations)
+        report["propagation_relationship_issues"] = _json_value(
+            snapshot.propagation_relationship_issues
+        )
     return report
 
 
-def render_history_report(path: str | Path, *, listing_path: str | Path | None = None) -> str:
-    report = snapshot_report(inspect_history_csv(path, listing_path=listing_path))
+def render_history_report(
+    path: str | Path,
+    *,
+    listing_path: str | Path | None = None,
+    propagation_path: str | Path | None = None,
+) -> str:
+    report = snapshot_report(
+        inspect_history_csv(
+            path,
+            listing_path=listing_path,
+            propagation_path=propagation_path,
+        )
+    )
     return json.dumps(report, indent=2, sort_keys=True)
 
 
@@ -74,8 +97,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Inspect BloomBoss historical CSV data without modifying it.")
     parser.add_argument("source", help="Path to the canonical BloomBoss history CSV")
     parser.add_argument("--listings", help="Optional path to historical listing evidence CSV")
+    parser.add_argument("--propagations", help="Optional path to historical propagation evidence CSV")
     args = parser.parse_args(argv)
-    print(render_history_report(args.source, listing_path=args.listings))
+    print(
+        render_history_report(
+            args.source,
+            listing_path=args.listings,
+            propagation_path=args.propagations,
+        )
+    )
     return 0
 
 
