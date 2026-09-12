@@ -13,7 +13,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Real Worker Runtime network transport / remote job execution — ⛔ NOT ENABLED
 - KARMO Access & Connection Registry — ✅ MERGED
 - KARMO System Stewardship design — ✅ MERGED; workers not yet implemented/deployed
-- BloomBoss Historical Data Intelligence (Phase 1) — ✅ PR #32 BUILD GATE READY; INVENTORY AGING SLICE TARGETED CI GREEN; NOT MERGED OR DEPLOYED
+- BloomBoss Historical Data Intelligence (Phase 1) — ✅ PR #32 BUILD GATE READY; DECISION-RANKING SLICE TARGETED CI GREEN; NOT MERGED OR DEPLOYED
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -25,7 +25,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Trusted Computer Worker System (Worker service boundary) — production-local Worker shell bound to Core; no network listener, no real worker transport, no capability execution, no persistent writes.
 - KARMO Access & Connection Registry — durable machine-readable host, route, authentication-reference, and recovery knowledge for humans and agents.
 - KARMO System Stewardship — planned QA, Security, Reliability/Maintenance, Housekeeping/Data-Hygiene, and Agent-Governance roles implemented over existing Core/Worker architecture rather than separate infrastructure stacks.
-- BloomBoss Historical Data Intelligence — normalizes purchase, sales, listing, propagation, and Palmstreet staging history; preserves unknowns and provenance; validates contradictions; fingerprints raw evidence; calculates reproducible business/quality metrics; and now buckets unsold inventory by deterministic historical age while preserving unknown cost/date exposure.
+- BloomBoss Historical Data Intelligence — normalizes purchase, sales, listing, propagation, and Palmstreet staging history; preserves unknowns and provenance; validates contradictions; fingerprints raw evidence; calculates reproducible business/quality metrics; buckets unsold inventory by deterministic historical age; and now emits deterministic decision rankings for the Phase 1 release questions without imputing unknown facts.
 
 ## CURRENT TASK
 
@@ -37,11 +37,11 @@ No active Phase 1 code blocker.
 
 The prior mainline-divergence blocker was resolved by merge commit `d2519180a868f84a7da77d5cad9363ee992b5b84`, which incorporated `main` `53fb64f7f04ddd8c4377cf8b898db4b60714e4a2` while preserving BloomBoss Phase 1 changes.
 
-The latest BloomBoss slice adds deterministic unsold-inventory aging buckets (`0-30`, `31-60`, `61-90`, `91+`, and unknown age) measured only to the latest known date in the historical dataset, never wall-clock time. Known tied-up capital is reported per bucket only when cost is known; unknown cost/date values remain unknown.
+The latest BloomBoss slice adds deterministic machine-readable rankings for: plants by realized profit on known cost, purchase batches by known loss cost, suppliers by known-outcome return, cultivars by average days to sale, and channels by known net profit. Unknown values are omitted from the corresponding ranking rather than treated as zero, and ties are deterministic.
 
-An initial boundary-fixture mistake caused GitHub Actions run #140 to fail. The test fixture dates were corrected without changing the aging logic. Fresh BloomBoss Phase 1 GitHub Actions run #142 on commit `cc4e8553259100d41c2d8987803e0e8979acfc66` completed successfully.
+GitHub Actions BloomBoss Phase 1 run #152 on code head `66ec331743864da81bddc75ebebcd54afb8a7c54` completed successfully using the targeted `tests/test_bloomboss_*.py` suite under Python 3.12.
 
-Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, unit/cultivar/channel outcomes, deterministic inventory-exposure/aging analysis, historical listing evidence, propagation lineage, Palmstreet staging, and Palmstreet staging-quality evidence remain in Phase 1 scope.
+Raw-source fingerprinting, reproducible inspection snapshots, row-specific import errors, completeness reporting, relationship validation, matched-cost gross margin, purchase-batch loss/outcome analytics, unit/cultivar/channel outcomes, deterministic inventory-exposure/aging analysis, historical listing evidence, propagation lineage, Palmstreet staging, Palmstreet staging-quality evidence, and decision rankings remain in Phase 1 scope.
 
 ## NEXT GATE
 
@@ -51,7 +51,7 @@ High-level merge/promotion decision for PR #32. The autonomous build instruction
 
 - Use the real BloomBoss historical worksheet/export as the first source dataset in approved non-production scope.
 - Use an official Palmstreet seller export to lock the staged field map before canonical reconciliation; buyer-side bulk purchase export support remains NEEDS VERIFICATION.
-- Measure completeness, relationship findings, listing activity, inventory exposure/aging, realized return, known-outcome return, and known net outcomes before trusting supplier/cultivar/channel conclusions.
+- Measure completeness, relationship findings, listing activity, inventory exposure/aging, realized return, known-outcome return, known net outcomes, and decision rankings before trusting supplier/cultivar/channel conclusions.
 - Implement durable local/dev persistence only after the persistence design is reviewed at the next approved build slice.
 - Continue the approved BloomBoss phase order; do not start marketplace write automation or external customer actions.
 - Production remains separately approval-gated.
