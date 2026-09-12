@@ -52,6 +52,7 @@ def snapshot_report(snapshot: HistoricalImportSnapshot) -> dict[str, Any]:
         "cultivar_summary": _json_value(snapshot.cultivar_summary),
         "channel_summary": _json_value(snapshot.channel_summary),
         "inventory_exposure_summary": _json_value(snapshot.inventory_exposure_summary),
+        "decision_rankings": _json_value(snapshot.decision_rankings),
         "quality_summary": _json_value(snapshot.quality_summary),
         "relationship_issues": _json_value(snapshot.relationship_issues),
     }
