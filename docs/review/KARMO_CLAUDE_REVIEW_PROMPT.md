@@ -1,10 +1,12 @@
 # Claude Review Prompt — KARMO Full Predeploy Exact-SHA Gate
 
-You are the independent adversarial reviewer for KARMO. Review **only** the candidate branch `staging/karmo-full-predeploy-20260912` at the exact head SHA supplied below. Treat `main` and the authoritative KARMO records as reference truth and the staging branch as untrusted candidate code.
+You are the independent adversarial reviewer for KARMO. Review the candidate branch `staging/karmo-full-predeploy-20260912` as untrusted candidate code. Treat `main` and the authoritative KARMO records as reference truth.
 
-Current candidate SHA to verify before any new build stage:
+## Exact code candidate to verify before any new build stage
 
 `e69f0dfd97a3c0b9ab58dba985a97beadb3917dd`
+
+This is the **code-bearing candidate SHA** containing last night's staged build plus the Worker portability fixes. The branch may contain newer commits that modify only `docs/review/**` to prepare today's review/completion process. Newer review-only documentation does not invalidate the code SHA. If any commit after the code SHA changes application code, tests, workflow logic, migrations, or any non-review artifact, stop and report `NEEDS_VERIFICATION — CODE SHA MOVED` and identify the first such commit.
 
 ## Non-negotiable boundaries
 
@@ -19,9 +21,9 @@ Current candidate SHA to verify before any new build stage:
 ## Required review sequence
 
 1. Read the authoritative control documents first: Master Index, latest Dashboard/Project Save, CURRENT_STATE with the documented 2026-09-11 supersession rule, Engineering Invariants, SYSTEM_FIT_REVIEW, VALIDATION_LADDER, AUTONOMOUS_EXECUTION_CONTRACT, Core v2 specification/threat model/test strategy, Worker security review/network plan, Tool/Capability Registry design/proposal, and all `docs/review/` artifacts on the candidate branch.
-2. Verify PR #36 head is exactly `e69f0dfd97a3c0b9ab58dba985a97beadb3917dd`. If it differs, stop and report `NEEDS_VERIFICATION — SHA MOVED`.
-3. Compare candidate to `main`. Enumerate every changed file and classify each change as Core authority, persistence, Worker security, routing/verification, CI/test, deployment/review artifact, or other.
-4. Run the available isolated test suites against the exact candidate SHA. Record exact commands, totals, failures, and environment. Do not silently skip a failing suite.
+2. Confirm the exact code candidate `e69f0dfd97a3c0b9ab58dba985a97beadb3917dd`. Inspect commits after it. Continue only if later changes are review-only documentation under `docs/review/**`; otherwise report `NEEDS_VERIFICATION — CODE SHA MOVED`.
+3. Compare the exact code candidate to `main`. Enumerate every changed code/test/workflow/migration file and classify each change as Core authority, persistence, Worker security, routing/verification, CI/test, deployment/review artifact, or other.
+4. Run the available isolated test suites against the exact code candidate. Record exact commands, totals, failures, and environment. Do not silently skip a failing suite.
 5. Reproduce and specifically verify the portability fixes for:
    - trusted Python interpreter selection when `worker-runtime/venv/bin/python` is absent;
    - no job/user payload can choose the interpreter;
@@ -34,7 +36,7 @@ Current candidate SHA to verify before any new build stage:
 9. Attack model routing and verification: provider lock-in, hidden provider authority, unavailable verifier behavior, producer/verifier identity reuse, collusion by configuration, evidence substitution, digest mismatch, and false-success paths.
 10. Inspect CI configuration itself for false-green conditions: path filters, skipped jobs, architecture assumptions, missing dependency setup, test selection omissions, permissive `continue-on-error`, and branch/SHA mismatch.
 11. Add adversarial tests only when needed to prove a real defect or close a real coverage gap. Keep all proposed fixes on the staging branch; never touch `main`.
-12. Review the proposed deployment/rollback template for incomplete verification or rollback assumptions, but do not execute it.
+12. Review the proposed deployment/rollback template and `KARMO_TODAY_COMPLETION_PLAN.md` for missing safety gates, but do not execute either.
 
 ## Mandatory adversarial cases
 
@@ -67,9 +69,10 @@ Severity is one of `BLOCKER`, `HIGH`, `MEDIUM`, `LOW`.
 
 Then report:
 
-- exact reviewed SHA;
+- exact reviewed code SHA;
+- any later review-only documentation commits observed;
 - test commands and pass/fail totals;
-- whether CI evidence matches that exact SHA;
+- whether CI evidence matches that exact code SHA;
 - unresolved security gaps;
 - unresolved persistence/restart gaps;
 - any governance conflict;
