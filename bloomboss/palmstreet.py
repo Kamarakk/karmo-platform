@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -13,11 +14,7 @@ from .models import Provenance
 
 @dataclass(frozen=True)
 class PalmstreetFieldMap:
-    """Explicit mapping from a real Palmstreet export into BloomBoss staging fields.
-
-    We intentionally do not guess Palmstreet column names. Once a real export is
-    supplied, its headers can be mapped here and then kept as the verified profile.
-    """
+    """Explicit mapping from Palmstreet source columns into BloomBoss staging fields."""
 
     order_id: str
     line_item_id: Optional[str] = None
@@ -27,6 +24,10 @@ class PalmstreetFieldMap:
     order_date: Optional[str] = None
     selling_fees: Optional[str] = None
     shipping_cost: Optional[str] = None
+    customer_username: Optional[str] = None
+    customer_full_name: Optional[str] = None
+    order_status: Optional[str] = None
+    order_source: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,10 @@ class PalmstreetSaleCandidate:
     selling_fees: Optional[Decimal]
     shipping_cost: Optional[Decimal]
     provenance: Provenance
+    customer_username: Optional[str] = None
+    customer_full_name: Optional[str] = None
+    order_status: Optional[str] = None
+    order_source: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -51,6 +56,26 @@ class PalmstreetExportProfile:
     source_size_bytes: int
     headers: tuple[str, ...]
     row_count: int
+
+
+def palmstreet_seller_hub_orders_field_map() -> PalmstreetFieldMap:
+    """Verified mapping for the Seller Hub Orders table observed 2026-09-11.
+
+    This is intentionally separate from any future downloadable CSV profile because
+    Palmstreet's broken export path has not yet supplied a real CSV header set.
+    """
+    return PalmstreetFieldMap(
+        order_id="Order ID",
+        item_title="Item",
+        quantity="Item QTY",
+        sale_price="Order Value",
+        shipping_cost="Paid Shipping Fee",
+        order_date="Purchase Date",
+        customer_username="Customer",
+        customer_full_name="Full Name",
+        order_status="Order Status",
+        order_source="Order Source",
+    )
 
 
 def _blank_to_none(value: str | None) -> Optional[str]:
@@ -86,10 +111,10 @@ def _parse_quantity(value: str | None) -> Optional[int]:
     value = _blank_to_none(value)
     if value is None:
         return None
-    try:
-        parsed = int(value)
-    except ValueError as exc:
-        raise ValueError(f"invalid quantity: {value!r}") from exc
+    match = re.fullmatch(r"(\d+)(?:\s+items?)?", value, flags=re.IGNORECASE)
+    if not match:
+        raise ValueError(f"invalid quantity: {value!r}")
+    parsed = int(match.group(1))
     if parsed < 0:
         raise ValueError(f"negative quantity is not allowed: {value!r}")
     return parsed
@@ -100,13 +125,12 @@ def _parse_date(value: str | None) -> Optional[date]:
     if value is None:
         return None
 
-    # Keep parsing bounded and explicit. These formats cover ISO exports and
-    # common US CSV exports without locale inference.
     candidates = (
         "%Y-%m-%d",
         "%m/%d/%Y",
         "%m/%d/%Y %H:%M",
         "%m/%d/%Y %I:%M %p",
+        "%b %d, %Y",
     )
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
@@ -149,11 +173,11 @@ def load_palmstreet_sales_export(
     path: str | Path,
     field_map: PalmstreetFieldMap,
 ) -> tuple[PalmstreetExportProfile, list[PalmstreetSaleCandidate]]:
-    """Load official Palmstreet seller-export rows into read-only sale candidates.
+    """Load Palmstreet rows into read-only sale candidates.
 
-    This does not create BloomBoss Sale records because a platform line item must
-    first be reconciled to a canonical BloomBoss inventory unit. Unknown fields stay
-    unknown. Raw source identity and row provenance are preserved.
+    This does not create BloomBoss Sale records because a platform row must first be
+    reconciled to a canonical BloomBoss inventory unit. Unknown fields stay unknown.
+    Raw source identity and row provenance are preserved.
     """
     path = Path(path)
     profile = inspect_palmstreet_export(path)
@@ -168,6 +192,10 @@ def load_palmstreet_sales_export(
         ("order_date", field_map.order_date),
         ("selling_fees", field_map.selling_fees),
         ("shipping_cost", field_map.shipping_cost),
+        ("customer_username", field_map.customer_username),
+        ("customer_full_name", field_map.customer_full_name),
+        ("order_status", field_map.order_status),
+        ("order_source", field_map.order_source),
     ):
         _require_header(headers, field_name, column)
 
@@ -233,6 +261,26 @@ def load_palmstreet_sales_export(
                             else None
                         ),
                         provenance=source,
+                        customer_username=(
+                            _blank_to_none(row.get(field_map.customer_username))
+                            if field_map.customer_username
+                            else None
+                        ),
+                        customer_full_name=(
+                            _blank_to_none(row.get(field_map.customer_full_name))
+                            if field_map.customer_full_name
+                            else None
+                        ),
+                        order_status=(
+                            _blank_to_none(row.get(field_map.order_status))
+                            if field_map.order_status
+                            else None
+                        ),
+                        order_source=(
+                            _blank_to_none(row.get(field_map.order_source))
+                            if field_map.order_source
+                            else None
+                        ),
                     )
                 )
             except ValueError as exc:
