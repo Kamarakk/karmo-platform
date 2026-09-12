@@ -151,6 +151,40 @@ class ApprovalEngine:
         record.transition(ApprovalState.APPROVED, approver, "approved", self._clock())
         return record
 
+    def deny(self, approval_id, *, approver, reason="denied"):
+        """Explicitly reject a pending approval request.
+
+        DENIED is terminal: it cannot be approved or executed later. The
+        rejecting identity and reason are retained in the audit trail.
+        """
+        record = self._get(approval_id)
+        if record.state != ApprovalState.REQUESTED:
+            raise CoreControlError(f"cannot deny from {record.state.value}")
+        record.approver = approver
+        record.authorized_executor = None
+        record.transition(ApprovalState.DENIED, approver, reason, self._clock())
+        return record
+
+    def cancel(self, approval_id, *, actor, reason="cancelled"):
+        """Revoke a pending or already-approved request before execution.
+
+        The requester may withdraw its own request. After approval, either
+        the requester or the recorded approver may revoke it. Arbitrary
+        executors/workers cannot cancel approvals they do not own.
+        CANCELLED is terminal and therefore cannot execute afterward.
+        """
+        record = self._get(approval_id)
+        if record.state not in (ApprovalState.REQUESTED, ApprovalState.APPROVED):
+            raise CoreControlError(f"cannot cancel from {record.state.value}")
+        allowed_actors = {record.requester}
+        if record.approver:
+            allowed_actors.add(record.approver)
+        if actor not in allowed_actors:
+            raise CoreControlError("actor is not authorized to cancel this approval")
+        record.authorized_executor = None
+        record.transition(ApprovalState.CANCELLED, actor, reason, self._clock())
+        return record
+
     def execute(self, approval_id, *, tool_id, tool_version, arguments, executor_identity, action):
         record = self._get(approval_id)
         if record.state != ApprovalState.APPROVED:
