@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .worker_coordination import WorkerCoordinationError, WorkerLease
+from .worker_coordination import WorkerLease
 
 
 class WorkerGatewayBackendError(RuntimeError):
@@ -145,21 +145,19 @@ class PostgresWorkerGatewayBackend:
 
     def poll(self, *, worker_id: str, credential_token: str, capabilities):
         self._authenticate(worker_id=worker_id, credential_token=credential_token)
-        for job_id in self._candidate_job_ids(
+        candidates = self._candidate_job_ids(
             worker_id=worker_id, requested_capabilities=capabilities
-        ):
-            try:
-                lease = self.store.lease_job(job_id=job_id, worker_id=worker_id)
-            except WorkerCoordinationError:
-                # A concurrent worker/control transition may have consumed or
-                # invalidated this candidate. Never broaden authority; try only
-                # the next already-filtered candidate.
-                continue
-            ticket = self.coordinator.issue_execution_ticket(
-                credential_token=credential_token, lease=lease
-            )
-            return {"lease": lease_to_wire(lease), "execution_ticket": ticket}
-        return None
+        )
+        if not candidates:
+            return None
+        # Fail closed on any CAS/control transition error instead of masking an
+        # expired heartbeat, changed approval, or authorization race as "no work".
+        # The worker can poll again after the control-plane state is reconciled.
+        lease = self.store.lease_job(job_id=candidates[0], worker_id=worker_id)
+        ticket = self.coordinator.issue_execution_ticket(
+            credential_token=credential_token, lease=lease
+        )
+        return {"lease": lease_to_wire(lease), "execution_ticket": ticket}
 
     def authorize_execution(self, *, worker_id: str, credential_token: str,
                             lease: dict, execution_ticket: str):
