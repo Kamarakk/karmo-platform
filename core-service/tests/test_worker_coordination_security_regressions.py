@@ -150,13 +150,19 @@ def _coordinator():
 
 def test_rotated_old_credential_cannot_issue_new_execution_ticket():
     store, coordinator, worker_auth, _results, old_credential = _coordinator()
-    _job_id, lease = _approved_job(store)
 
     coordinator.rotate_worker_key(
         credential_token=old_credential,
         worker_id="worker-1",
         new_key_id="worker-key-v2",
     )
+    new_credential = worker_auth.issue(
+        worker_id="worker-1", key_id="worker-key-v2", ttl_seconds=300
+    )
+    coordinator.authenticate_heartbeat(
+        credential_token=new_credential, worker_id="worker-1", lease_seconds=120
+    )
+    _job_id, lease = _approved_job(store)
 
     with pytest.raises(WorkerCoordinationError, match="key"):
         coordinator.issue_execution_ticket(
@@ -167,18 +173,24 @@ def test_rotated_old_credential_cannot_issue_new_execution_ticket():
 
 
 def test_rotated_old_result_key_cannot_submit_result():
-    store, coordinator, _worker_auth, results, old_credential = _coordinator()
-    _job_id, lease = _approved_job(store)
-    ticket = coordinator.issue_execution_ticket(
-        credential_token=old_credential, lease=lease, ttl_seconds=60
-    )
-    coordinator.authorize_execution(token=ticket, lease=lease)
+    store, coordinator, worker_auth, results, old_credential = _coordinator()
 
     coordinator.rotate_worker_key(
         credential_token=old_credential,
         worker_id="worker-1",
         new_key_id="worker-key-v2",
     )
+    new_credential = worker_auth.issue(
+        worker_id="worker-1", key_id="worker-key-v2", ttl_seconds=300
+    )
+    coordinator.authenticate_heartbeat(
+        credential_token=new_credential, worker_id="worker-1", lease_seconds=120
+    )
+    _job_id, lease = _approved_job(store)
+    ticket = coordinator.issue_execution_ticket(
+        credential_token=new_credential, lease=lease, ttl_seconds=60
+    )
+    coordinator.authorize_execution(token=ticket, lease=lease)
 
     result = {"ok": True}
     stale_envelope = results.sign(
