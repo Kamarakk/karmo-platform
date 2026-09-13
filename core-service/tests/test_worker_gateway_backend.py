@@ -164,19 +164,16 @@ def test_poll_worker_claimed_capabilities_only_narrow_registered_capabilities():
     assert response["lease"]["worker_id"] == "karmo-worker01"
 
 
-def test_poll_race_never_broadens_authority_and_tries_next_filtered_candidate():
+def test_poll_lease_transition_race_fails_closed_instead_of_masking_authority_change():
     backend, store, coordinator, cursor = _backend(jobs=["job-1", "job-2"])
     store.fail_first = True
-    response = backend.poll(
-        worker_id="karmo-worker01",
-        credential_token="credential",
-        capabilities=["karmolab.host_health"],
-    )
-    assert store.leased == [
-        ("job-1", "karmo-worker01"),
-        ("job-2", "karmo-worker01"),
-    ]
-    assert response["lease"]["job_id"] == "job-2"
+    with pytest.raises(WorkerCoordinationError, match="lost race"):
+        backend.poll(
+            worker_id="karmo-worker01",
+            credential_token="credential",
+            capabilities=["karmolab.host_health"],
+        )
+    assert store.leased == [("job-1", "karmo-worker01")]
 
 
 def test_authorize_execution_authenticates_current_key_then_consumes_ticket():
