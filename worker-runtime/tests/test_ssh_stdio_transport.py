@@ -22,22 +22,25 @@ def _config():
     )
 
 
-def test_ssh_transport_uses_strict_no_shell_no_forwarding_controls():
-    seen = {}
-
+def _success_runner(seen=None, result=None):
     def runner(argv, **kwargs):
-        seen["argv"] = argv
-        seen.update(kwargs)
+        if seen is not None:
+            seen["argv"] = argv
+            seen.update(kwargs)
         request = json.loads(kwargs["input"].decode())
         response = {
             "version": 1,
             "request_id": request["request_id"],
             "ok": True,
-            "result": {"lease_expires_at": "soon"},
+            "result": result,
         }
         return Completed(stdout=(json.dumps(response) + "\n").encode())
+    return runner
 
-    transport = SshStdioTransport(_config(), runner=runner)
+
+def test_ssh_transport_uses_strict_no_shell_no_forwarding_controls():
+    seen = {}
+    transport = SshStdioTransport(_config(), runner=_success_runner(seen, {"lease_expires_at": "soon"}))
     result = transport.heartbeat(
         worker_id="karmo-worker01", credential_token="credential", lease_seconds=90
     )
@@ -85,6 +88,24 @@ def test_transport_binds_response_to_request_id():
         )
 
 
+def test_transport_rejects_ambiguous_response_schema():
+    def runner(argv, **kwargs):
+        request = json.loads(kwargs["input"].decode())
+        response = {
+            "version": 1,
+            "request_id": request["request_id"],
+            "ok": True,
+            "result": {},
+            "error": "should-not-coexist",
+        }
+        return Completed(stdout=json.dumps(response).encode())
+
+    with pytest.raises(SshStdioTransportError, match="successful gateway response"):
+        SshStdioTransport(_config(), runner=runner).heartbeat(
+            worker_id="karmo-worker01", credential_token="credential"
+        )
+
+
 def test_transport_rejects_nonzero_ssh_without_leaking_stderr():
     secret = "PRIVATE-DEPLOYMENT-DETAIL"
 
@@ -113,8 +134,24 @@ def test_transport_rejects_oversized_request_before_starting_ssh():
             execution_ticket="ticket",
             result={"blob": "x" * (70 * 1024)},
             envelope={},
+            success=True,
         )
     assert called is False
+
+
+def test_transport_has_explicit_pre_execution_authorization_round_trip():
+    seen = {}
+    transport = SshStdioTransport(_config(), runner=_success_runner(seen, {"authorized": True}))
+    result = transport.authorize_execution(
+        worker_id="karmo-worker01",
+        credential_token="credential",
+        lease={"job_id": "job", "lease_token": "lease"},
+        execution_ticket="ticket",
+    )
+    request = json.loads(seen["input"].decode())
+    assert request["operation"] == "authorize_execution"
+    assert request["payload"]["execution_ticket"] == "ticket"
+    assert result == {"authorized": True}
 
 
 def test_transport_timeout_fails_closed():
