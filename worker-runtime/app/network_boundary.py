@@ -19,12 +19,7 @@ class NetworkBoundaryError(RuntimeError):
 
 
 class SecureCoordinatorBoundary:
-    """Authenticate worker-originated coordinator operations.
-
-    The wrapped coordinator remains the authority for registration, scheduling,
-    leases, approvals, and job state. This class only establishes authenticated
-    worker identity and result provenance before delegating to that authority.
-    """
+    """Authenticate worker-originated coordinator operations."""
 
     def __init__(self, coordinator, *, worker_authenticator, result_authenticator):
         self._coordinator = coordinator
@@ -53,14 +48,14 @@ class SecureCoordinatorBoundary:
         self._authenticate(worker_id, credential)
         return self._coordinator.poll_for_job(worker_id, capabilities)
 
-    def request_approval(
-        self, worker_id: str, job_id: str, *, credential: str, requester: str
-    ):
+    def request_approval(self, worker_id: str, job_id: str, *, credential: str):
         self._authenticate(worker_id, credential)
         job = self._coordinator.jobs.get(job_id)
         if job.assigned_worker_id != worker_id:
             raise NetworkBoundaryError("job is not assigned to authenticated worker")
-        return self._coordinator.request_approval(job_id, requester=requester)
+        return self._coordinator.request_approval(
+            job_id, requester=f"worker:{worker_id}"
+        )
 
     def submit_failure(
         self, worker_id: str, job_id: str, *, credential: str, reason: str
