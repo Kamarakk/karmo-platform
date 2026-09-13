@@ -122,6 +122,12 @@ class ApprovalEngine:
         self._default_ttl_seconds = default_ttl_seconds
         self._store = store
 
+    @staticmethod
+    def _require_nonempty_text(label, value):
+        if not isinstance(value, str) or not value.strip():
+            raise CoreControlError(f"{label} must be a non-empty string")
+        return value
+
     def _persist(self, record: ApprovalRecord, *, expected_version):
         """Compare-and-swap write. ``expected_version`` is the version this
         record held immediately before the mutation being persisted; ``None``
@@ -143,10 +149,17 @@ class ApprovalEngine:
         self._records[record.approval_id] = record
 
     def request(self, *, requester, tool_id, tool_version, arguments, authority_class, ttl_seconds=None):
+        self._require_nonempty_text("requester", requester)
+        self._require_nonempty_text("tool_id", tool_id)
+        self._require_nonempty_text("tool_version", tool_version)
+        self._require_nonempty_text("authority_class", authority_class)
+        if not isinstance(arguments, dict):
+            raise CoreControlError("arguments must be an object")
+
         now = self._clock()
         ttl = self._default_ttl_seconds if ttl_seconds is None else ttl_seconds
-        if ttl <= 0:
-            raise CoreControlError("ttl_seconds must be positive")
+        if isinstance(ttl, bool) or not isinstance(ttl, (int, float)) or ttl <= 0:
+            raise CoreControlError("ttl_seconds must be a positive number")
         record = ApprovalRecord(
             approval_id=str(uuid.uuid4()),
             requester=requester,
@@ -195,6 +208,9 @@ class ApprovalEngine:
         return record
 
     def approve(self, approval_id, *, approver, authorized_executor=None):
+        self._require_nonempty_text("approver", approver)
+        if authorized_executor is not None:
+            self._require_nonempty_text("authorized_executor", authorized_executor)
         record = self._get(approval_id)
         if record.state != ApprovalState.REQUESTED:
             raise CoreControlError(f"cannot approve from {record.state.value}")
@@ -206,6 +222,8 @@ class ApprovalEngine:
         return record
 
     def deny(self, approval_id, *, approver, reason="denied"):
+        self._require_nonempty_text("approver", approver)
+        self._require_nonempty_text("reason", reason)
         record = self._get(approval_id)
         if record.state != ApprovalState.REQUESTED:
             raise CoreControlError(f"cannot deny from {record.state.value}")
@@ -217,6 +235,8 @@ class ApprovalEngine:
         return record
 
     def cancel(self, approval_id, *, actor, reason="cancelled"):
+        self._require_nonempty_text("actor", actor)
+        self._require_nonempty_text("reason", reason)
         record = self._get(approval_id)
         if record.state not in (ApprovalState.REQUESTED, ApprovalState.APPROVED):
             raise CoreControlError(f"cannot cancel from {record.state.value}")
