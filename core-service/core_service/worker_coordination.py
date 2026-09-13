@@ -211,8 +211,8 @@ class PostgresWorkerCoordinatorStore:
             worker = cur.fetchone()
             if worker is None or worker[0] != "ACTIVE":
                 raise WorkerCoordinationError("worker is not active")
-            if worker[1] is not None and worker[1] <= now:
-                raise WorkerCoordinationError("worker heartbeat lease expired")
+            if worker[1] is None or worker[1] <= now:
+                raise WorkerCoordinationError("worker heartbeat lease expired or missing")
 
             cur.execute(
                 "SELECT task_id, tool_id, tool_version, arguments_digest, approval_id, attempt_count "
@@ -343,8 +343,8 @@ class PostgresWorkerCoordinatorStore:
         worker = cur.fetchone()
         if worker is None or worker[0] != "ACTIVE":
             raise WorkerCoordinationError("worker is not active")
-        if worker[1] is not None and worker[1] <= now:
-            raise WorkerCoordinationError("worker heartbeat lease expired")
+        if worker[1] is None or worker[1] <= now:
+            raise WorkerCoordinationError("worker heartbeat lease expired or missing")
 
     def consume_ticket(self, *, token, lease: WorkerLease):
         """Consume a ticket only while its exact job lease is still live.
