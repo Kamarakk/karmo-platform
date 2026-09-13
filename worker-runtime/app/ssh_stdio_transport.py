@@ -116,6 +116,8 @@ class SshStdioTransport:
             raise SshStdioTransportError("SSH gateway could not be started") from exc
 
         if completed.returncode != 0:
+            # Do not surface stderr: OpenSSH diagnostics can reveal local paths,
+            # account names, or deployment details that callers do not need.
             raise SshStdioTransportError("SSH gateway request failed")
         if len(completed.stdout) > _MAX_FRAME_BYTES:
             raise SshStdioTransportError("response frame too large")
@@ -127,14 +129,18 @@ class SshStdioTransport:
             raise SshStdioTransportError("invalid gateway response")
         if response.get("version") != 1 or response.get("request_id") != request_id:
             raise SshStdioTransportError("gateway response binding mismatch")
-        if set(response) - {"version", "request_id", "ok", "result", "error"}:
-            raise SshStdioTransportError("unexpected gateway response fields")
-        if response.get("ok") is not True:
+        if response.get("ok") is True:
+            if set(response) != {"version", "request_id", "ok", "result"}:
+                raise SshStdioTransportError("invalid successful gateway response")
+            return response.get("result")
+        if response.get("ok") is False:
+            if set(response) != {"version", "request_id", "ok", "error"}:
+                raise SshStdioTransportError("invalid failed gateway response")
             code = response.get("error")
             if not isinstance(code, str) or not code:
                 code = "gateway_refused"
             raise SshStdioTransportError(f"gateway refused request: {code}")
-        return response.get("result")
+        raise SshStdioTransportError("invalid gateway response")
 
     def heartbeat(self, *, worker_id: str, credential_token: str, lease_seconds: int = 90):
         return self.request("heartbeat", {
@@ -150,8 +156,18 @@ class SshStdioTransport:
             "capabilities": sorted(set(capabilities)),
         })
 
+    def authorize_execution(self, *, worker_id: str, credential_token: str,
+                            lease: dict, execution_ticket: str):
+        return self.request("authorize_execution", {
+            "worker_id": worker_id,
+            "credential_token": credential_token,
+            "lease": lease,
+            "execution_ticket": execution_ticket,
+        })
+
     def submit_result(self, *, worker_id: str, credential_token: str, lease: dict,
-                      execution_ticket: str, result, envelope: dict):
+                      execution_ticket: str, result, envelope: dict,
+                      success: bool, error: str | None = None):
         return self.request("submit_result", {
             "worker_id": worker_id,
             "credential_token": credential_token,
@@ -159,4 +175,6 @@ class SshStdioTransport:
             "execution_ticket": execution_ticket,
             "result": result,
             "envelope": envelope,
+            "success": bool(success),
+            "error": error,
         })
