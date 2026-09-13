@@ -6,7 +6,8 @@ instead of duplicating authorization logic in a network handler.
 
 Network reachability never grants KARMO authority. Every worker-originated call is
 bound to a short-lived worker credential; successful results additionally require a
-worker-bound result-authentication envelope.
+worker-bound result-authentication envelope signed with the same worker key that
+authenticated the call.
 """
 
 from __future__ import annotations
@@ -79,10 +80,17 @@ class SecureCoordinatorBoundary:
         evidence_files=None,
         execution_ticket_digest: str | None = None,
     ):
-        self._authenticate(worker_id, credential)
+        authenticated = self._authenticate(worker_id, credential)
         job = self._coordinator.jobs.get(job_id)
         if job.assigned_worker_id != worker_id:
             raise NetworkBoundaryError("job is not assigned to authenticated worker")
+
+        payload = result_authentication.get("payload") if isinstance(result_authentication, dict) else None
+        if not isinstance(payload, dict) or payload.get("key_id") != authenticated.get("key_id"):
+            raise NetworkBoundaryError(
+                "worker result key does not match authenticated worker credential"
+            )
+
         try:
             self._result_authenticator.verify(
                 result_authentication,
