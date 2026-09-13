@@ -8,10 +8,14 @@ from worker_registry import WorkerHealth, WorkerStatus
 
 
 WORKER_KEY = b"w" * 32
+OTHER_WORKER_KEY = b"x" * 32
 
 
 def _keys(key_id):
-    return {"worker-1-key": WORKER_KEY}.get(key_id)
+    return {
+        "worker-1-key": WORKER_KEY,
+        "worker-2-key": OTHER_WORKER_KEY,
+    }.get(key_id)
 
 
 def _identity():
@@ -131,6 +135,42 @@ def test_signed_result_is_required_and_bound_to_worker_job_and_output():
     )
     assert completed.result.output == output
     assert coordinator.workers.get("worker-1").status == WorkerStatus.AVAILABLE
+
+
+def test_result_must_use_same_key_as_authenticated_worker_credential():
+    coordinator, boundary, worker_auth, result_auth = _boundary()
+    credential = worker_auth.issue(
+        worker_id="worker-1", key_id="worker-1-key", ttl_seconds=60
+    )
+    boundary.register(worker_id="worker-1", credential=credential, **_identity())
+    boundary.heartbeat("worker-1", credential=credential, health=WorkerHealth.HEALTHY)
+    coordinator.submit_job(
+        capability_id="hash_verify",
+        payload={"path": "example.txt"},
+        idempotency_key="network-boundary-key-binding",
+    )
+    leased = boundary.poll("worker-1", ["hash_verify"], credential=credential)
+
+    output = {"sha256": "abc123"}
+    wrong_key_envelope = result_auth.sign(
+        worker_id="worker-1",
+        key_id="worker-2-key",
+        task_id=leased.job_id,
+        result=output,
+    )
+
+    with pytest.raises(NetworkBoundaryError, match="result key"):
+        boundary.submit_result(
+            "worker-1",
+            leased.job_id,
+            credential=credential,
+            result_authentication=wrong_key_envelope,
+            output=output,
+            duration_seconds=0.01,
+            stdout_summary="",
+        )
+
+    assert coordinator.jobs.get(leased.job_id).result is None
 
 
 def test_worker_cannot_submit_result_for_another_workers_job():
