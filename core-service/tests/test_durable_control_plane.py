@@ -157,7 +157,7 @@ def request(engine):
         tool_id="karmolab.host_health",
         tool_version="1",
         arguments={"host": "karmo-ai01"},
-        authority_class=CapabilityClass.REVERSIBLE_WRITE.value,
+        authority_class=ApprovalRequirement.EXPLICIT_PER_SESSION_OR_TASK.value,
         ttl_seconds=60,
     )
 
