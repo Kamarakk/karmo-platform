@@ -141,7 +141,7 @@ class PostgresWorkerCoordinatorStore:
             )
             row = cur.fetchone()
             if row is None or row[1] != "ACTIVE" or row[0] != key_id:
-                raise WorkerCoordinationError("worker key mismatch or worker inactive")
+                raise WorkerCoordinationError("worker is not active or key mismatch")
         return True
 
     def enqueue_job(self, *, idempotency_key, task_id, tool_id, tool_version, arguments_digest, approval_id=None):
