@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 MAX_FRAME_BYTES = 64 * 1024
 PROTOCOL_VERSION = 1
-_ALLOWED_OPERATIONS = frozenset({"heartbeat", "poll", "submit_result"})
+_ALLOWED_OPERATIONS = frozenset({"heartbeat", "poll", "authorize_execution", "submit_result"})
 
 
 class WorkerStdioGatewayError(RuntimeError):
@@ -67,12 +67,18 @@ def _require_bound_worker(payload: dict, expected_worker_id: str):
         raise WorkerStdioGatewayError("worker_identity_mismatch")
 
 
+def _require_token(value, *, label: str, max_length: int = 16384):
+    if not isinstance(value, str) or not value or len(value) > max_length:
+        raise WorkerStdioGatewayError(f"invalid_{label}")
+
+
 def dispatch_request(request: GatewayRequest, *, backend, expected_worker_id: str):
     payload = request.payload
     _require_bound_worker(payload, expected_worker_id)
 
     if request.operation == "heartbeat":
         _require_exact(payload, {"worker_id", "credential_token", "lease_seconds"})
+        _require_token(payload["credential_token"], label="credential_token")
         lease_seconds = payload["lease_seconds"]
         if not isinstance(lease_seconds, int) or not (1 <= lease_seconds <= 300):
             raise WorkerStdioGatewayError("invalid_lease_seconds")
@@ -84,6 +90,7 @@ def dispatch_request(request: GatewayRequest, *, backend, expected_worker_id: st
 
     if request.operation == "poll":
         _require_exact(payload, {"worker_id", "credential_token", "capabilities"})
+        _require_token(payload["credential_token"], label="credential_token")
         capabilities = payload["capabilities"]
         if (
             not isinstance(capabilities, list)
@@ -97,12 +104,34 @@ def dispatch_request(request: GatewayRequest, *, backend, expected_worker_id: st
             capabilities=capabilities,
         )
 
+    if request.operation == "authorize_execution":
+        _require_exact(payload, {"worker_id", "credential_token", "lease", "execution_ticket"})
+        _require_token(payload["credential_token"], label="credential_token")
+        _require_token(payload["execution_ticket"], label="execution_ticket")
+        if not isinstance(payload["lease"], dict):
+            raise WorkerStdioGatewayError("invalid_lease")
+        return backend.authorize_execution(
+            worker_id=expected_worker_id,
+            credential_token=payload["credential_token"],
+            lease=payload["lease"],
+            execution_ticket=payload["execution_ticket"],
+        )
+
     if request.operation == "submit_result":
         _require_exact(payload, {
-            "worker_id", "credential_token", "lease", "execution_ticket", "result", "envelope"
+            "worker_id", "credential_token", "lease", "execution_ticket",
+            "result", "envelope", "success", "error",
         })
+        _require_token(payload["credential_token"], label="credential_token")
+        _require_token(payload["execution_ticket"], label="execution_ticket")
         if not isinstance(payload["lease"], dict) or not isinstance(payload["envelope"], dict):
             raise WorkerStdioGatewayError("invalid_result_envelope")
+        if not isinstance(payload["success"], bool):
+            raise WorkerStdioGatewayError("invalid_success")
+        if payload["error"] is not None and (
+            not isinstance(payload["error"], str) or len(payload["error"]) > 4096
+        ):
+            raise WorkerStdioGatewayError("invalid_error")
         return backend.submit_result(
             worker_id=expected_worker_id,
             credential_token=payload["credential_token"],
@@ -110,6 +139,8 @@ def dispatch_request(request: GatewayRequest, *, backend, expected_worker_id: st
             execution_ticket=payload["execution_ticket"],
             result=payload["result"],
             envelope=payload["envelope"],
+            success=payload["success"],
+            error=payload["error"],
         )
 
     raise WorkerStdioGatewayError("operation_not_allowed")
@@ -147,6 +178,8 @@ def serve_one(*, backend, expected_worker_id: str, stdin=None, stdout=None) -> i
         output = _response(request_id, ok=False, error=str(exc))
         exit_code = 2
     except Exception:
+        # Never expose coordinator internals, database errors, stack traces, or
+        # credentials across the SSH boundary.
         output = _response(request_id, ok=False, error="coordinator_refused")
         exit_code = 3
     stdout.write(output)
