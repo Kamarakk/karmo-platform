@@ -86,9 +86,22 @@ class TaskRecoveryManager:
         return recovered
 
     def reconcile_unfinished_invocations(self, invocation_ledger):
-        """Bind unfinished invocation truth to task recovery without replaying work."""
-        reconciled = []
-        for invocation in invocation_ledger.list_unfinished():
+        """Bind unfinished invocation truth to task recovery without replaying work.
+
+        Preflight the complete unfinished set before the first task write. A
+        corrupt/missing task reference later in the ledger must not leave earlier
+        tasks partially transitioned merely because iteration order encountered
+        those valid rows first. This is not distributed atomicity; concurrent
+        changes can still race and are fenced by each task store's version/CAS
+        semantics. It does make static ledger/task inconsistencies fail closed
+        before recovery mutates durable task state.
+        """
+        invocations = list(invocation_ledger.list_unfinished())
+        candidates = []
+
+        # Validation pass: no task state is changed until every unfinished row
+        # has a resolvable task in a recovery-compatible state.
+        for invocation in invocations:
             if invocation.task_id is None:
                 raise RecoveryError(
                     f"unfinished invocation {invocation.invocation_id} has no task_id"
@@ -98,14 +111,22 @@ class TaskRecoveryManager:
                 raise RecoveryError(
                     f"unfinished invocation {invocation.invocation_id} references missing task {invocation.task_id}"
                 )
-            if task.state == TaskState.RECOVERY_REQUIRED:
-                reconciled.append(task)
-                continue
-            if task.state not in (TaskState.RUNNING, TaskState.VERIFYING):
+            if task.state not in (
+                TaskState.RUNNING,
+                TaskState.VERIFYING,
+                TaskState.RECOVERY_REQUIRED,
+            ):
                 raise RecoveryError(
                     f"unfinished invocation {invocation.invocation_id} conflicts with task "
                     f"{task.task_id} state {task.state.value}"
                 )
+            candidates.append((invocation, task))
+
+        reconciled = []
+        for invocation, task in candidates:
+            if task.state == TaskState.RECOVERY_REQUIRED:
+                reconciled.append(task)
+                continue
             reconciled.append(self._mark_recovery_required(
                 task,
                 reason="unfinished_invocation",
