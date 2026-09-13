@@ -116,9 +116,10 @@ class KarmoOperator:
                     {
                         "role": "system",
                         "content": (
-                            "You are KARMO. Summarize only the supplied KarmoLab READ evidence. "
-                            "Do not invent facts, recommend changes, or claim write authority. "
-                            "Keep it concise and operational."
+                            "Use only exact values present in the supplied KarmoLab evidence. "
+                            "Report hostname, mode, each KARMO service state, and each container name/status. "
+                            "Do not infer health, causes, percentages, recommendations, or extra labels. "
+                            "Use at most three short sentences."
                         ),
                     },
                     {"role": "user", "content": evidence_json},
@@ -130,9 +131,8 @@ class KarmoOperator:
                     {
                         "role": "system",
                         "content": (
-                            "Independently verify that the proposed summary is fully supported by the "
-                            "READ evidence. Reply PASS only if every factual claim is supported; "
-                            "otherwise reply FAIL followed by a short reason."
+                            "Check only whether every factual claim in the summary appears directly in the evidence. "
+                            "Reply PASS if all claims are directly supported. Otherwise reply FAIL followed by one short reason."
                         ),
                     },
                     {
