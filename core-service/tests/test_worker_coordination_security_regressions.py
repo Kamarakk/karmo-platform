@@ -96,7 +96,7 @@ def _crypto():
     )
 
 
-def _approved_job(store, *, worker_id="worker-1"):
+def _create_approved_job_record(store, *, worker_id="worker-1"):
     arguments = {"host": "karmo-ai01"}
     engine = ApprovalEngine(store=PostgresApprovalStore(_connection_factory))
     pending = engine.request(
@@ -120,6 +120,11 @@ def _approved_job(store, *, worker_id="worker-1"):
         tool_version="1",
         arguments_digest=pending.arguments_digest,
     )
+    return job_id
+
+
+def _approved_job(store, *, worker_id="worker-1"):
+    job_id = _create_approved_job_record(store, worker_id=worker_id)
     lease = store.lease_job(job_id=job_id, worker_id=worker_id, lease_seconds=60)
     return job_id, lease
 
@@ -267,3 +272,14 @@ def test_ticket_cannot_authorize_execution_after_job_lease_recovery():
 
     with pytest.raises(WorkerCoordinationError, match="lease"):
         coordinator.authorize_execution(token=ticket, lease=lease)
+
+
+def test_registered_worker_without_authenticated_heartbeat_cannot_lease_job():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    job_id = _create_approved_job_record(store)
+
+    with pytest.raises(WorkerCoordinationError, match="heartbeat lease"):
+        store.lease_job(job_id=job_id, worker_id="worker-1", lease_seconds=60)
+
+    assert store.get_job_state(job_id)["state"] == "QUEUED"
