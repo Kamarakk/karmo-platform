@@ -8,8 +8,10 @@ ticket, result, and finalization state changes to the durable coordinator/store.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
+from .control import arguments_digest
 from .worker_coordination import WorkerLease
 
 
@@ -22,6 +24,7 @@ _LEASE_FIELDS = {
     "tool_version", "arguments_digest", "approval_id", "attempt_count",
     "lease_expires_at",
 }
+_MAX_ARGUMENT_BYTES = 48 * 1024
 
 
 def lease_to_wire(lease: WorkerLease) -> dict:
@@ -101,11 +104,60 @@ class PostgresWorkerGatewayBackend:
         )
         return {"lease_expires_at": expires.isoformat()}
 
-    def _candidate_job_ids(self, *, worker_id: str, requested_capabilities) -> list[str]:
+    def attach_job_arguments(self, *, job_id: str, tool_id: str, tool_version: str,
+                             arguments: dict, expected_arguments_digest: str):
+        """Attach the exact immutable arguments needed by a remote worker.
+
+        This is deliberately separate from PR #41's job row. If attachment
+        fails, the queued job is simply not remotely dispatchable; it is never
+        executed with missing, guessed, or mismatched arguments.
+        """
+        if not isinstance(arguments, dict):
+            raise WorkerGatewayBackendError("remote job arguments must be an object")
+        serialized = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
+        if len(serialized.encode("utf-8")) > _MAX_ARGUMENT_BYTES:
+            raise WorkerGatewayBackendError("remote job arguments exceed transport bound")
+        computed = arguments_digest(tool_id, tool_version, arguments)
+        if computed != expected_arguments_digest:
+            raise WorkerGatewayBackendError("remote job arguments digest mismatch")
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT tool_id, tool_version, arguments_digest, state "
+                "FROM public.karmo_worker_jobs WHERE job_id=%s::uuid FOR UPDATE",
+                (job_id,),
+            )
+            row = cur.fetchone()
+            if row is None or row[3] != "QUEUED":
+                raise WorkerGatewayBackendError("remote job is missing or no longer queued")
+            if row[0] != tool_id or row[1] != tool_version or row[2] != computed:
+                raise WorkerGatewayBackendError("remote job binding mismatch")
+            cur.execute(
+                """
+                INSERT INTO public.karmo_worker_job_payloads
+                    (job_id, arguments, arguments_digest)
+                VALUES (%s::uuid, %s::jsonb, %s)
+                ON CONFLICT (job_id) DO NOTHING
+                RETURNING job_id
+                """,
+                (job_id, serialized, computed),
+            )
+            if cur.fetchone() is None:
+                cur.execute(
+                    "SELECT arguments, arguments_digest FROM public.karmo_worker_job_payloads "
+                    "WHERE job_id=%s::uuid",
+                    (job_id,),
+                )
+                existing = cur.fetchone()
+                if existing is None or existing[0] != arguments or existing[1] != computed:
+                    raise WorkerGatewayBackendError("remote job arguments already differ")
+        return computed
+
+    def _candidate_jobs(self, *, worker_id: str, requested_capabilities):
         """Find bounded candidates; lease_job remains the authoritative CAS gate.
 
         The worker-supplied capability list can only narrow the registered set.
-        It can never add capability authority.
+        It can never add capability authority. Jobs without an immutable payload
+        row are intentionally invisible to remote workers.
         """
         requested = sorted(set(requested_capabilities))
         with self._connection_factory() as conn, conn.cursor() as cur:
@@ -125,11 +177,13 @@ class PostgresWorkerGatewayBackend:
                 return []
             cur.execute(
                 """
-                SELECT j.job_id
+                SELECT j.job_id, p.arguments
                 FROM public.karmo_worker_jobs AS j
                 JOIN public.core_approval_records AS a ON a.approval_id=j.approval_id
+                JOIN public.karmo_worker_job_payloads AS p ON p.job_id=j.job_id
                 WHERE j.state='QUEUED'
                   AND j.tool_id = ANY(%s)
+                  AND p.arguments_digest=j.arguments_digest
                   AND a.state='APPROVED'
                   AND a.authorized_executor=%s
                   AND a.tool_id=j.tool_id
@@ -141,23 +195,29 @@ class PostgresWorkerGatewayBackend:
                 """,
                 (eligible, worker_id, self.max_poll_candidates),
             )
-            return [str(row[0]) for row in cur.fetchall()]
+            return [(str(row[0]), row[1]) for row in cur.fetchall()]
 
     def poll(self, *, worker_id: str, credential_token: str, capabilities):
         self._authenticate(worker_id=worker_id, credential_token=credential_token)
-        candidates = self._candidate_job_ids(
+        candidates = self._candidate_jobs(
             worker_id=worker_id, requested_capabilities=capabilities
         )
         if not candidates:
             return None
-        # Fail closed on any CAS/control transition error instead of masking an
-        # expired heartbeat, changed approval, or authorization race as "no work".
-        # The worker can poll again after the control-plane state is reconciled.
-        lease = self.store.lease_job(job_id=candidates[0], worker_id=worker_id)
+        job_id, arguments = candidates[0]
+        if not isinstance(arguments, dict):
+            raise WorkerGatewayBackendError("remote job arguments record is invalid")
+        lease = self.store.lease_job(job_id=job_id, worker_id=worker_id)
+        if arguments_digest(lease.tool_id, lease.tool_version, arguments) != lease.arguments_digest:
+            raise WorkerGatewayBackendError("leased job arguments no longer match digest")
         ticket = self.coordinator.issue_execution_ticket(
             credential_token=credential_token, lease=lease
         )
-        return {"lease": lease_to_wire(lease), "execution_ticket": ticket}
+        return {
+            "lease": lease_to_wire(lease),
+            "arguments": arguments,
+            "execution_ticket": ticket,
+        }
 
     def authorize_execution(self, *, worker_id: str, credential_token: str,
                             lease: dict, execution_ticket: str):
