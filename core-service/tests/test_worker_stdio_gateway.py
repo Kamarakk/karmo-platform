@@ -22,6 +22,10 @@ class Backend:
         self.calls.append(("poll", kwargs))
         return None
 
+    def authorize_execution(self, **kwargs):
+        self.calls.append(("authorize_execution", kwargs))
+        return {"authorized": True}
+
     def submit_result(self, **kwargs):
         self.calls.append(("submit_result", kwargs))
         return {"accepted": True}
@@ -128,6 +132,44 @@ def test_gateway_poll_validates_capability_shape():
     assert response["error"] == "invalid_capabilities"
 
 
+def test_gateway_requires_core_authorization_before_execution():
+    backend = Backend()
+    stdout = io.BytesIO()
+    code = serve_one(
+        backend=backend,
+        expected_worker_id="karmo-worker01",
+        stdin=io.BytesIO(_frame("authorize_execution", {
+            "worker_id": "karmo-worker01",
+            "credential_token": "credential",
+            "lease": {"job_id": "job", "lease_token": "lease"},
+            "execution_ticket": "ticket",
+        })),
+        stdout=stdout,
+    )
+    response = json.loads(stdout.getvalue())
+    assert code == 0
+    assert response["result"] == {"authorized": True}
+    assert backend.calls[0][0] == "authorize_execution"
+
+
+def test_gateway_rejects_empty_credential_before_backend_dispatch():
+    backend = Backend()
+    stdout = io.BytesIO()
+    code = serve_one(
+        backend=backend,
+        expected_worker_id="karmo-worker01",
+        stdin=io.BytesIO(_frame("heartbeat", {
+            "worker_id": "karmo-worker01",
+            "credential_token": "",
+            "lease_seconds": 90,
+        })),
+        stdout=stdout,
+    )
+    assert code == 2
+    assert backend.calls == []
+    assert json.loads(stdout.getvalue())["error"] == "invalid_credential_token"
+
+
 def test_gateway_never_discloses_backend_exception_details():
     class FailingBackend(Backend):
         def heartbeat(self, **kwargs):
@@ -164,7 +206,7 @@ def test_gateway_rejects_oversized_input_without_backend_call():
     assert json.loads(stdout.getvalue())["error"] == "invalid_frame"
 
 
-def test_submit_result_keeps_ticket_and_envelope_structured():
+def test_submit_result_keeps_ticket_envelope_and_terminal_state_structured():
     backend = Backend()
     stdout = io.BytesIO()
     payload = {
@@ -174,6 +216,8 @@ def test_submit_result_keeps_ticket_and_envelope_structured():
         "execution_ticket": "ticket",
         "result": {"status": "healthy"},
         "envelope": {"payload": {"key_id": "worker-key-v1"}, "signature": "sig"},
+        "success": True,
+        "error": None,
     }
     code = serve_one(
         backend=backend,
@@ -184,3 +228,4 @@ def test_submit_result_keeps_ticket_and_envelope_structured():
     assert code == 0
     assert backend.calls[0][0] == "submit_result"
     assert backend.calls[0][1]["execution_ticket"] == "ticket"
+    assert backend.calls[0][1]["success"] is True
