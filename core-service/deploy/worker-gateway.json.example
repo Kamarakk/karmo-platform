@@ -7,10 +7,6 @@
     "KARMO-WORKER01": {
       "key_id": "worker01-v1",
       "secret_file": "/etc/karmo/worker-gateway/worker01-v1.key"
-    },
-    "KARMO-WORKER02": {
-      "key_id": "worker02-v1",
-      "secret_file": "/etc/karmo/worker-gateway/worker02-v1.key"
     }
   },
   "max_poll_candidates": 32
