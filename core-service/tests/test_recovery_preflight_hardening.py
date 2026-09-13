@@ -88,3 +88,48 @@ def test_taskless_row_later_in_ledger_causes_zero_recovery_writes():
         TaskRecoveryManager(store).reconcile_unfinished_invocations(ledger)
 
     assert store.get(valid.task_id).state == TaskState.RUNNING
+
+
+def test_multiple_unfinished_rows_for_same_task_recover_once_without_stale_cas():
+    store = InMemoryTaskStore()
+    task = running_task(store, "two unknown invocation outcomes")
+    ledger = Ledger(
+        invocation("inv-a", task.task_id),
+        invocation("inv-b", task.task_id),
+    )
+
+    recovered = TaskRecoveryManager(store).reconcile_unfinished_invocations(ledger)
+
+    assert len(recovered) == 1
+    assert recovered[0].task_id == task.task_id
+    restored = store.get(task.task_id)
+    assert restored.state == TaskState.RECOVERY_REQUIRED
+    assert restored.next_action == "reconcile prior execution evidence before continuing"
+
+
+def test_multiple_unfinished_rows_for_same_task_are_all_preserved_in_recovery_event():
+    class EventfulStore(InMemoryTaskStore):
+        def __init__(self):
+            super().__init__()
+            self.events = []
+
+        def append_event(self, **kwargs):
+            self.events.append(kwargs)
+            return kwargs["event_key"]
+
+    store = EventfulStore()
+    task = running_task(store, "audit all unknown outcomes")
+    ledger = Ledger(
+        invocation("inv-a", task.task_id),
+        invocation("inv-b", task.task_id),
+    )
+
+    TaskRecoveryManager(store).reconcile_unfinished_invocations(ledger)
+
+    assert len(store.events) == 1
+    event = store.events[0]
+    assert event["event_type"] == "RECOVERY_REQUIRED"
+    assert event["payload"]["unfinished_invocation_count"] == 2
+    assert event["payload"]["invocation_ids"] == ["inv-a", "inv-b"]
+    assert event["payload"]["idempotency_keys"] == ["key:inv-a", "key:inv-b"]
+    assert event["payload"]["automatic_replay"] is False
