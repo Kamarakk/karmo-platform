@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from core_service.control import arguments_digest
 from core_service.worker_gateway_backend import (
     PostgresWorkerGatewayBackend,
     WorkerGatewayBackendError,
@@ -12,6 +13,8 @@ from core_service.worker_coordination import WorkerCoordinationError, WorkerLeas
 
 
 NOW = datetime.now(timezone.utc)
+TEST_ARGS = {"host": "karmo-ai01"}
+TEST_DIGEST = arguments_digest("karmolab.host_health", "1", TEST_ARGS)
 
 
 def _lease(worker_id="karmo-worker01", job_id="job-1"):
@@ -22,7 +25,7 @@ def _lease(worker_id="karmo-worker01", job_id="job-1"):
         lease_token="lease-1",
         tool_id="karmolab.host_health",
         tool_version="1",
-        arguments_digest="a" * 64,
+        arguments_digest=TEST_DIGEST,
         approval_id="approval-1",
         attempt_count=1,
         lease_expires_at=NOW + timedelta(seconds=60),
@@ -104,7 +107,7 @@ class Cursor:
         assert set(eligible).issubset(set(self.worker_caps))
         assert worker_id == "karmo-worker01"
         assert limit <= 128
-        return [(job_id,) for job_id in self.candidate_ids]
+        return [(job_id, dict(TEST_ARGS)) for job_id in self.candidate_ids]
 
     def __enter__(self):
         return self
@@ -162,6 +165,7 @@ def test_poll_worker_claimed_capabilities_only_narrow_registered_capabilities():
     assert store.leased == [("job-1", "karmo-worker01")]
     assert response["execution_ticket"] == "signed-ticket"
     assert response["lease"]["worker_id"] == "karmo-worker01"
+    assert response["arguments"] == TEST_ARGS
 
 
 def test_poll_lease_transition_race_fails_closed_instead_of_masking_authority_change():
