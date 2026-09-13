@@ -159,7 +159,7 @@ class KarmoOperator:
             )
         except (OllamaClientError, RuntimeError) as exc:
             return None, f"DEGRADED_MODEL_UNAVAILABLE:{type(exc).__name__}"
-        if verdict.strip().upper().startswith("PASS"):
+        if verdict.strip().upper() == "PASS":
             return summary, "PASS"
         return None, "FAIL"
 
