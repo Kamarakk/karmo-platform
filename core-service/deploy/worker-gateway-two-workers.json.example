@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "database_dsn_file": "/etc/karmo/worker-gateway/postgres.dsn",
+  "ticket_key_id": "core-ticket-v1",
+  "ticket_secret_file": "/etc/karmo/worker-gateway/core-ticket-v1.key",
+  "worker_keys": {
+    "KARMO-WORKER01": {
+      "key_id": "worker01-v1",
+      "secret_file": "/etc/karmo/worker-gateway/worker01-v1.key"
+    },
+    "KARMO-WORKER02": {
+      "key_id": "worker02-v1",
+      "secret_file": "/etc/karmo/worker-gateway/worker02-v1.key"
+    }
+  },
+  "max_poll_candidates": 32
+}
