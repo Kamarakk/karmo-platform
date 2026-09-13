@@ -14,12 +14,16 @@ from dataclasses import dataclass
 from .control import ApprovalEngine, CapabilityClass
 from .dispatcher import CapabilityDispatcher
 from .karmolab import read_status
-from .model_router import ModelResource, ModelRouter
+from .model_router import ModelResource, ModelRouter, ModelRoutingError
 from .ollama_client import OllamaChatClient, OllamaClientError
 from .registry import CapabilityRegistry
 
 KARMOLAB_STATUS_TOOL = "karmolab.read_status"
 KARMOLAB_STATUS_VERSION = "1.0.0"
+
+OPERATOR_REQUIRE_LOCAL = True
+OPERATOR_PRIMARY_MIN_TRUST_TIER = 30
+OPERATOR_VERIFIER_MIN_TRUST_TIER = 20
 
 _WRITE_WORDS = re.compile(
     r"\b(restart|reboot|stop|start|enable|disable|install|uninstall|delete|remove|"
@@ -31,6 +35,7 @@ _STATUS_WORDS = re.compile(
     r"docker|container|containers|running|online)\b",
     re.IGNORECASE,
 )
+
 
 @dataclass(frozen=True)
 class OperatorModels:
@@ -101,8 +106,18 @@ class KarmoOperator:
         self.dispatcher.bind(KARMOLAB_STATUS_TOOL, KARMOLAB_STATUS_VERSION, self.status_reader)
 
     def _models(self) -> OperatorModels:
-        primary = self.router.route(required_capabilities={"summarize"}, prefer_local=True)
-        verifier = self.router.verifier_for(primary.model_id, required_capabilities={"verify"})
+        primary = self.router.route(
+            required_capabilities={"summarize"},
+            prefer_local=True,
+            require_local=OPERATOR_REQUIRE_LOCAL,
+            minimum_trust_tier=OPERATOR_PRIMARY_MIN_TRUST_TIER,
+        )
+        verifier = self.router.verifier_for(
+            primary.model_id,
+            required_capabilities={"verify"},
+            require_local=OPERATOR_REQUIRE_LOCAL,
+            minimum_trust_tier=OPERATOR_VERIFIER_MIN_TRUST_TIER,
+        )
         if primary.model_id == verifier.model_id:
             raise RuntimeError("primary and verifier must be distinct")
         return OperatorModels(primary=primary, verifier=verifier)
@@ -149,7 +164,15 @@ class KarmoOperator:
         return None, "FAIL"
 
     def _read_status(self) -> dict:
-        models = self._models()
+        try:
+            models = self._models()
+        except ModelRoutingError as exc:
+            return {
+                "kind": "karmolab_read",
+                "message": "No trusted local model satisfies the operator routing policy; KarmoLab read was not executed.",
+                "verification": "DEGRADED_MODEL_POLICY",
+                "error": type(exc).__name__,
+            }
         decision = self.dispatcher.dispatch(
             requester="kamara",
             tool_id=KARMOLAB_STATUS_TOOL,
@@ -173,7 +196,19 @@ class KarmoOperator:
         }
 
     def _chat(self, text: str) -> dict:
-        primary = self.router.route(required_capabilities={"chat"}, prefer_local=True)
+        try:
+            primary = self.router.route(
+                required_capabilities={"chat"},
+                prefer_local=True,
+                require_local=OPERATOR_REQUIRE_LOCAL,
+                minimum_trust_tier=OPERATOR_PRIMARY_MIN_TRUST_TIER,
+            )
+        except ModelRoutingError as exc:
+            return {
+                "kind": "chat",
+                "message": "No trusted local model satisfies the operator routing policy. KARMO remains fail-closed.",
+                "error": type(exc).__name__,
+            }
         try:
             answer = self.model_client.chat(
                 model=primary.model_id,
