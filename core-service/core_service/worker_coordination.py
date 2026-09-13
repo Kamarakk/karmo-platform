@@ -124,6 +124,26 @@ class PostgresWorkerCoordinatorStore:
                 raise WorkerCoordinationError("worker identity/key mismatch or worker inactive")
         return expires
 
+    def require_current_key(self, *, worker_id, key_id):
+        """Require proof to use the worker's currently registered key.
+
+        Cryptographic token validity is insufficient after key rotation: an old
+        credential/result envelope may still be inside its TTL and still verify
+        against retained key material. The durable registry is authoritative for
+        which key may act for a worker now.
+        """
+        if not key_id:
+            raise WorkerCoordinationError("worker key is required")
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT key_id, status FROM public.karmo_workers WHERE worker_id=%s",
+                (worker_id,),
+            )
+            row = cur.fetchone()
+            if row is None or row[1] != "ACTIVE" or row[0] != key_id:
+                raise WorkerCoordinationError("worker key mismatch or worker inactive")
+        return True
+
     def enqueue_job(self, *, idempotency_key, task_id, tool_id, tool_version, arguments_digest, approval_id=None):
         """Create a QUEUED job. ``idempotency_key`` is required and must be
         unique per real enqueue attempt (mirroring
@@ -378,15 +398,16 @@ class PostgresWorkerCoordinatorStore:
                 )
 
     def finalize_job(self, *, job_id, success: bool, error=None):
-        """Finalize a submitted result and close out the approval that
-        authorized it -- the counterpart to lease_job's claim, mirroring
-        PostgresExecutionCoordinator.finish(). The approval reaches a real
-        terminal state (EXECUTED/FAILED) instead of being left CLAIMED
-        forever once its worker job is done."""
+        """Finalize a submitted result only when every durable authority/audit
+        binding is still intact. Any missing or mismatched invocation/approval
+        row fails the transaction closed and leaves the job RESULT_SUBMITTED for
+        reconciliation rather than manufacturing a successful terminal state."""
         target = "SUCCEEDED" if success else "FAILED"
         approval_state = ApprovalState.EXECUTED if success else ApprovalState.FAILED
         invocation_status = "EXECUTED" if success else "FAILED"
-        now = datetime.now(timezone.utc)
+        now = self._clock()
+        invocation_key = f"worker-job:{job_id}"
+
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT approval_id, result_digest FROM public.karmo_worker_jobs "
@@ -397,45 +418,75 @@ class PostgresWorkerCoordinatorStore:
             if job is None:
                 raise WorkerCoordinationError("job is not awaiting finalization")
             approval_id, result_digest = job
+            if approval_id is None:
+                raise WorkerCoordinationError("worker job is missing its approval binding")
+
+            cur.execute(
+                "SELECT invocation_id, approval_id FROM public.tool_invocation_ledger "
+                "WHERE idempotency_key=%s AND completed_at IS NULL FOR UPDATE",
+                (invocation_key,),
+            )
+            invocation = cur.fetchone()
+            if invocation is None:
+                raise WorkerCoordinationError("worker invocation audit row is missing or already terminal")
+            invocation_id, invocation_approval_id = invocation
+            if str(invocation_approval_id) != str(approval_id):
+                raise WorkerCoordinationError("worker invocation approval binding mismatch")
+
+            cur.execute(
+                f"SELECT {_APPROVAL_COLUMNS} FROM public.core_approval_records "
+                "WHERE approval_id=%s::uuid FOR UPDATE",
+                (approval_id,),
+            )
+            approval_row = cur.fetchone()
+            if approval_row is None:
+                raise WorkerCoordinationError("worker approval record is missing")
+            approval = PostgresApprovalStore._decode(approval_row)
+            if approval.state != ApprovalState.CLAIMED:
+                raise WorkerCoordinationError(
+                    f"worker approval is {approval.state.value}, expected CLAIMED"
+                )
+            if approval.execution_binding != str(invocation_id):
+                raise WorkerCoordinationError("worker approval execution binding mismatch")
 
             cur.execute(
                 """
                 UPDATE public.karmo_worker_jobs
-                SET state=%s, last_error=%s, updated_at=NOW()
+                SET state=%s, last_error=%s, updated_at=%s
                 WHERE job_id=%s::uuid AND state='RESULT_SUBMITTED'
                 RETURNING job_id
                 """,
-                (target, error, job_id),
+                (target, error, now, job_id),
             )
             if cur.fetchone() is None:
                 raise WorkerCoordinationError("job is not awaiting finalization")
 
             cur.execute(
                 "UPDATE public.tool_invocation_ledger SET status=%s, result_digest=%s, "
-                "completed_at=NOW() WHERE idempotency_key=%s AND completed_at IS NULL",
-                (invocation_status, result_digest, f"worker-job:{job_id}"),
+                "completed_at=%s WHERE invocation_id=%s::uuid AND completed_at IS NULL",
+                (invocation_status, result_digest, now, invocation_id),
             )
+            if cur.rowcount != 1:
+                raise WorkerCoordinationError("worker invocation finalization failed")
 
-            if approval_id is not None:
-                cur.execute(
-                    f"SELECT {_APPROVAL_COLUMNS} FROM public.core_approval_records "
-                    "WHERE approval_id=%s::uuid FOR UPDATE",
-                    (approval_id,),
-                )
-                approval_row = cur.fetchone()
-                if approval_row is not None:
-                    approval = PostgresApprovalStore._decode(approval_row)
-                    if approval.state == ApprovalState.CLAIMED:
-                        approval.transition(
-                            approval_state, "system",
-                            f"worker job {target.lower()}", now,
-                        )
-                        cur.execute(
-                            "UPDATE public.core_approval_records SET state=%s, "
-                            "audit_trail=%s::jsonb, version=version+1, updated_at=NOW() "
-                            "WHERE approval_id=%s::uuid",
-                            (approval.state.value, _json(approval.audit_trail), approval_id),
-                        )
+            approval.transition(
+                approval_state, "system", f"worker job {target.lower()}", now,
+            )
+            cur.execute(
+                "UPDATE public.core_approval_records SET state=%s, "
+                "audit_trail=%s::jsonb, version=version+1, updated_at=%s "
+                "WHERE approval_id=%s::uuid AND state=%s AND execution_binding=%s",
+                (
+                    approval.state.value,
+                    _json(approval.audit_trail),
+                    now,
+                    approval_id,
+                    ApprovalState.CLAIMED.value,
+                    str(invocation_id),
+                ),
+            )
+            if cur.rowcount != 1:
+                raise WorkerCoordinationError("worker approval finalization binding changed")
 
     def recover_expired_leases(self):
         """Mark unknown leased work for reconciliation; never auto-replay it."""
@@ -496,7 +547,12 @@ class WorkerCoordinator:
         self.store.rotate_key(worker_id=worker_id, current_key_id=payload["key_id"], new_key_id=new_key_id)
 
     def issue_execution_ticket(self, *, credential_token, lease: WorkerLease, ttl_seconds=120):
-        self.worker_authenticator.verify(credential_token, expected_worker_id=lease.worker_id)
+        credential = self.worker_authenticator.verify(
+            credential_token, expected_worker_id=lease.worker_id
+        )
+        self.store.require_current_key(
+            worker_id=lease.worker_id, key_id=credential["key_id"]
+        )
         token = self.ticket_authority.issue(
             approval_id=lease.approval_id or "none",
             arguments_digest=lease.arguments_digest,
@@ -524,6 +580,10 @@ class WorkerCoordinator:
         return True
 
     def accept_result(self, *, execution_ticket, lease: WorkerLease, result, envelope):
+        envelope_payload = envelope.get("payload", {}) if isinstance(envelope, dict) else {}
+        self.store.require_current_key(
+            worker_id=lease.worker_id, key_id=envelope_payload.get("key_id")
+        )
         ticket_digest = _digest_token(execution_ticket)
         self.result_authenticator.verify(
             envelope,
