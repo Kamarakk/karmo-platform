@@ -3,7 +3,7 @@ import pytest
 from capability_manifest import SAFE_CAPABILITIES
 from coordinator import Coordinator
 from crypto_boundary import KeyResolver, ResultAuthenticator, WorkerAuthenticator
-from network_boundary import NetworkBoundaryError, SecureCoordinatorBoundary
+from network_boundary import NetworkBoundaryError, SecureCoordinatorBoundary, _result_package
 from worker_registry import WorkerHealth, WorkerStatus
 
 
@@ -44,6 +44,20 @@ def _boundary(clock_value=None):
         result_authenticator=result_auth,
     )
     return coordinator, boundary, worker_auth, result_auth
+
+
+def _signed_result(result_auth, job_id, *, key_id="worker-1-key", output=None,
+                   duration_seconds=0.01, stdout_summary="", evidence_files=None):
+    output = {"sha256": "abc123"} if output is None else output
+    evidence_files = [] if evidence_files is None else evidence_files
+    package = _result_package(output, duration_seconds, stdout_summary, evidence_files)
+    envelope = result_auth.sign(
+        worker_id="worker-1",
+        key_id=key_id,
+        task_id=job_id,
+        result=package,
+    )
+    return envelope, output
 
 
 def test_every_worker_call_requires_a_valid_bound_credential():
@@ -105,13 +119,7 @@ def test_signed_result_is_required_and_bound_to_worker_job_and_output():
     )
     assert leased.job_id == submitted.job_id
 
-    output = {"sha256": "abc123"}
-    envelope = result_auth.sign(
-        worker_id="worker-1",
-        key_id="worker-1-key",
-        task_id=leased.job_id,
-        result=output,
-    )
+    envelope, output = _signed_result(result_auth, leased.job_id)
 
     with pytest.raises(NetworkBoundaryError):
         boundary.submit_result(
@@ -137,6 +145,65 @@ def test_signed_result_is_required_and_bound_to_worker_job_and_output():
     assert coordinator.workers.get("worker-1").status == WorkerStatus.AVAILABLE
 
 
+def test_result_signature_binds_evidence_and_timing_metadata():
+    coordinator, boundary, worker_auth, result_auth = _boundary()
+    credential = worker_auth.issue(
+        worker_id="worker-1", key_id="worker-1-key", ttl_seconds=60
+    )
+    boundary.register(worker_id="worker-1", credential=credential, **_identity())
+    boundary.heartbeat("worker-1", credential=credential, health=WorkerHealth.HEALTHY)
+    coordinator.submit_job(
+        capability_id="hash_verify",
+        payload={"path": "example.txt"},
+        idempotency_key="network-boundary-evidence-binding",
+    )
+    leased = boundary.poll("worker-1", ["hash_verify"], credential=credential)
+
+    envelope, output = _signed_result(
+        result_auth,
+        leased.job_id,
+        duration_seconds=0.01,
+        stdout_summary="verified",
+        evidence_files=["evidence/a.txt"],
+    )
+
+    with pytest.raises(NetworkBoundaryError):
+        boundary.submit_result(
+            "worker-1",
+            leased.job_id,
+            credential=credential,
+            result_authentication=envelope,
+            output=output,
+            duration_seconds=9.99,
+            stdout_summary="verified",
+            evidence_files=["evidence/a.txt"],
+        )
+
+    with pytest.raises(NetworkBoundaryError):
+        boundary.submit_result(
+            "worker-1",
+            leased.job_id,
+            credential=credential,
+            result_authentication=envelope,
+            output=output,
+            duration_seconds=0.01,
+            stdout_summary="changed after signing",
+            evidence_files=["evidence/a.txt"],
+        )
+
+    completed = boundary.submit_result(
+        "worker-1",
+        leased.job_id,
+        credential=credential,
+        result_authentication=envelope,
+        output=output,
+        duration_seconds=0.01,
+        stdout_summary="verified",
+        evidence_files=["evidence/a.txt"],
+    )
+    assert completed.evidence.evidence_files == ["evidence/a.txt"]
+
+
 def test_result_must_use_same_key_as_authenticated_worker_credential():
     coordinator, boundary, worker_auth, result_auth = _boundary()
     credential = worker_auth.issue(
@@ -151,12 +218,8 @@ def test_result_must_use_same_key_as_authenticated_worker_credential():
     )
     leased = boundary.poll("worker-1", ["hash_verify"], credential=credential)
 
-    output = {"sha256": "abc123"}
-    wrong_key_envelope = result_auth.sign(
-        worker_id="worker-1",
-        key_id="worker-2-key",
-        task_id=leased.job_id,
-        result=output,
+    wrong_key_envelope, output = _signed_result(
+        result_auth, leased.job_id, key_id="worker-2-key"
     )
 
     with pytest.raises(NetworkBoundaryError, match="result key"):
@@ -173,6 +236,34 @@ def test_result_must_use_same_key_as_authenticated_worker_credential():
     assert coordinator.jobs.get(leased.job_id).result is None
 
 
+def test_network_boundary_rechecks_result_size_limits():
+    coordinator, boundary, worker_auth, result_auth = _boundary()
+    credential = worker_auth.issue(
+        worker_id="worker-1", key_id="worker-1-key", ttl_seconds=60
+    )
+    boundary.register(worker_id="worker-1", credential=credential, **_identity())
+    boundary.heartbeat("worker-1", credential=credential, health=WorkerHealth.HEALTHY)
+    coordinator.submit_job(
+        capability_id="hash_verify",
+        payload={"path": "example.txt"},
+        idempotency_key="network-boundary-size-bounds",
+    )
+    leased = boundary.poll("worker-1", ["hash_verify"], credential=credential)
+    oversized_output = {"blob": "x" * (70 * 1024)}
+    envelope, _ = _signed_result(result_auth, leased.job_id, output=oversized_output)
+
+    with pytest.raises(NetworkBoundaryError, match="size limit"):
+        boundary.submit_result(
+            "worker-1",
+            leased.job_id,
+            credential=credential,
+            result_authentication=envelope,
+            output=oversized_output,
+            duration_seconds=0.01,
+            stdout_summary="",
+        )
+
+
 def test_worker_cannot_submit_result_for_another_workers_job():
     coordinator, boundary, worker_auth, result_auth = _boundary()
     credential = worker_auth.issue(
@@ -187,13 +278,7 @@ def test_worker_cannot_submit_result_for_another_workers_job():
     )
     leased = boundary.poll("worker-1", ["hash_verify"], credential=credential)
 
-    output = {"sha256": "abc123"}
-    envelope = result_auth.sign(
-        worker_id="worker-1",
-        key_id="worker-1-key",
-        task_id=leased.job_id,
-        result=output,
-    )
+    envelope, output = _signed_result(result_auth, leased.job_id)
     with pytest.raises(NetworkBoundaryError):
         boundary.submit_result(
             "worker-2",
