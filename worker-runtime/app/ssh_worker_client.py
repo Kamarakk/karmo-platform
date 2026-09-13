@@ -106,10 +106,9 @@ class SshRemoteWorkerClient:
         return lease, arguments, ticket
 
     def poll_once(self):
-        credential = self._credential()
         work = self.transport.poll(
             worker_id=self.config.worker_id,
-            credential_token=credential,
+            credential_token=self._credential(),
             capabilities=sorted(self.config.capability_versions),
         )
         if work is None:
@@ -118,9 +117,11 @@ class SshRemoteWorkerClient:
 
         # Critical ordering invariant: no capability code runs until Core has
         # verified and consumed the exact ticket against the still-live lease.
+        # Use a fresh credential for each authority round trip so a credential
+        # that was near expiry at poll time cannot silently weaken recovery.
         authorization = self.transport.authorize_execution(
             worker_id=self.config.worker_id,
-            credential_token=credential,
+            credential_token=self._credential(),
             lease=lease,
             execution_ticket=ticket,
         )
@@ -156,7 +157,7 @@ class SshRemoteWorkerClient:
         )
         final = self.transport.submit_result(
             worker_id=self.config.worker_id,
-            credential_token=credential,
+            credential_token=self._credential(),
             lease=lease,
             execution_ticket=ticket,
             result=result,
