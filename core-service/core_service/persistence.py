@@ -536,6 +536,10 @@ class PostgresExecutionCoordinator:
                     (record.state.value, _json(record.audit_trail), approval_id),
                 )
                 raise CoreControlError("approval expired before execution claim")
+            if requester != record.requester:
+                raise CoreControlError("approval requester mismatch")
+            if authority_decision != record.authority_class:
+                raise CoreControlError("approval authority requirement mismatch")
             if executor_identity != record.authorized_executor:
                 raise CoreControlError("executor identity mismatch")
             digest = arguments_digest(tool_id, tool_version, arguments)
