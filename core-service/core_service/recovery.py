@@ -100,8 +100,16 @@ class TaskRecoveryManager:
         candidates = []
 
         # Validation pass: no task state is changed until every unfinished row
-        # has a resolvable task in a recovery-compatible state.
+        # is structurally a live STARTED invocation with a resolvable task in a
+        # recovery-compatible state. completed_at=NULL with any other status is
+        # contradictory durable state and requires operator review rather than
+        # being normalized into an ordinary restart recovery path.
         for invocation in invocations:
+            if invocation.status != "STARTED":
+                raise RecoveryError(
+                    f"unfinished invocation {invocation.invocation_id} has invalid status "
+                    f"{invocation.status!r}; expected STARTED"
+                )
             if invocation.task_id is None:
                 raise RecoveryError(
                     f"unfinished invocation {invocation.invocation_id} has no task_id"
