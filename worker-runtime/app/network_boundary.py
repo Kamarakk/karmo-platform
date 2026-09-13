@@ -12,11 +12,23 @@ authenticated the call.
 
 from __future__ import annotations
 
+import json
+
 from crypto_boundary import CryptoBoundaryError
+from sandbox import MAX_EVIDENCE_FILES, MAX_OUTPUT_BYTES, MAX_RESULT_BYTES
 
 
 class NetworkBoundaryError(RuntimeError):
     """Fail-closed error exposed by the authenticated worker boundary."""
+
+
+def _result_package(output, duration_seconds, stdout_summary, evidence_files):
+    return {
+        "output": output,
+        "duration_seconds": duration_seconds,
+        "stdout_summary": stdout_summary,
+        "evidence_files": list(evidence_files or []),
+    }
 
 
 class SecureCoordinatorBoundary:
@@ -36,6 +48,16 @@ class SecureCoordinatorBoundary:
             )
         except CryptoBoundaryError as exc:
             raise NetworkBoundaryError("worker authentication failed") from exc
+
+    @staticmethod
+    def _validate_result_bounds(output, stdout_summary, evidence_files):
+        encoded = json.dumps(output, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        if len(encoded) > MAX_RESULT_BYTES:
+            raise NetworkBoundaryError("worker result exceeds structured result size limit")
+        if len(str(stdout_summary).encode("utf-8")) > MAX_OUTPUT_BYTES:
+            raise NetworkBoundaryError("worker stdout summary exceeds size limit")
+        if len(evidence_files or []) > MAX_EVIDENCE_FILES:
+            raise NetworkBoundaryError("worker evidence list exceeds item limit")
 
     def register(self, *, worker_id: str, credential: str, **identity):
         self._authenticate(worker_id, credential)
@@ -85,18 +107,24 @@ class SecureCoordinatorBoundary:
         if job.assigned_worker_id != worker_id:
             raise NetworkBoundaryError("job is not assigned to authenticated worker")
 
+        evidence_files = list(evidence_files or [])
+        self._validate_result_bounds(output, stdout_summary, evidence_files)
+
         payload = result_authentication.get("payload") if isinstance(result_authentication, dict) else None
         if not isinstance(payload, dict) or payload.get("key_id") != authenticated.get("key_id"):
             raise NetworkBoundaryError(
                 "worker result key does not match authenticated worker credential"
             )
 
+        signed_package = _result_package(
+            output, duration_seconds, stdout_summary, evidence_files
+        )
         try:
             self._result_authenticator.verify(
                 result_authentication,
                 worker_id=worker_id,
                 task_id=job_id,
-                result=output,
+                result=signed_package,
                 execution_ticket_digest=execution_ticket_digest,
             )
         except CryptoBoundaryError as exc:
@@ -106,5 +134,5 @@ class SecureCoordinatorBoundary:
             output=output,
             duration_seconds=duration_seconds,
             stdout_summary=stdout_summary,
-            evidence_files=evidence_files or [],
+            evidence_files=evidence_files,
         )
