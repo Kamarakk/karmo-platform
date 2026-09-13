@@ -29,6 +29,7 @@ psycopg = pytest.importorskip("psycopg", reason="psycopg is required for real-Po
 
 from core_service.control import (  # noqa: E402
     ApprovalEngine,
+    ApprovalRequirement,
     ApprovalState,
     CapabilityClass,
     CoreControlError,
@@ -339,7 +340,7 @@ def test_execution_coordinator_claim_and_finish_through_real_sql():
         tool_id="karmolab.host_health",
         tool_version="1",
         arguments={"host": "karmo-ai01"},
-        authority_class=CapabilityClass.REVERSIBLE_WRITE.value,
+        authority_class=ApprovalRequirement.EXPLICIT_PER_SESSION_OR_TASK.value,
     )
     engine.approve(pending.approval_id, approver="kamara", authorized_executor="worker-1")
 
@@ -354,7 +355,7 @@ def test_execution_coordinator_claim_and_finish_through_real_sql():
         model_identity=None,
         executor_identity="worker-1",
         arguments={"host": "karmo-ai01"},
-        authority_decision="EXPLICIT_PER_SESSION_OR_TASK",
+        authority_decision=ApprovalRequirement.EXPLICIT_PER_SESSION_OR_TASK.value,
     )
     claimed_state = approval_store.get(pending.approval_id)
     assert claimed_state.state == ApprovalState.CLAIMED
@@ -371,7 +372,7 @@ def test_execution_coordinator_claim_and_finish_through_real_sql():
             model_identity=None,
             executor_identity="worker-1",
             arguments={"host": "karmo-ai01"},
-            authority_decision="EXPLICIT_PER_SESSION_OR_TASK",
+            authority_decision=ApprovalRequirement.EXPLICIT_PER_SESSION_OR_TASK.value,
         )
 
     coordinator.finish(claim, status="EXECUTED", result_digest="d" * 64)
@@ -388,12 +389,12 @@ def test_execution_coordinator_rejects_duplicate_idempotency_key_without_claimin
 
     first = engine.request(
         requester="kamara", tool_id="karmolab.host_health", tool_version="1",
-        arguments={"host": "a"}, authority_class=CapabilityClass.REVERSIBLE_WRITE.value,
+        arguments={"host": "a"}, authority_class=ApprovalRequirement.EXPLICIT_PER_SESSION_OR_TASK.value,
     )
     engine.approve(first.approval_id, approver="kamara", authorized_executor="worker-1")
     second = engine.request(
         requester="kamara", tool_id="karmolab.host_health", tool_version="1",
-        arguments={"host": "b"}, authority_class=CapabilityClass.REVERSIBLE_WRITE.value,
+        arguments={"host": "b"}, authority_class=ApprovalRequirement.EXPLICIT_PER_SESSION_OR_TASK.value,
     )
     engine.approve(second.approval_id, approver="kamara", authorized_executor="worker-1")
 
@@ -402,7 +403,7 @@ def test_execution_coordinator_rejects_duplicate_idempotency_key_without_claimin
         approval_id=first.approval_id, idempotency_key="shared-key", task_id=None,
         tool_id="karmolab.host_health", tool_version="1", requester="kamara",
         model_identity=None, executor_identity="worker-1", arguments={"host": "a"},
-        authority_decision="EXPLICIT_PER_SESSION_OR_TASK",
+        authority_decision=ApprovalRequirement.EXPLICIT_PER_SESSION_OR_TASK.value,
     )
 
     with pytest.raises(PersistenceError):
@@ -410,7 +411,7 @@ def test_execution_coordinator_rejects_duplicate_idempotency_key_without_claimin
             approval_id=second.approval_id, idempotency_key="shared-key", task_id=None,
             tool_id="karmolab.host_health", tool_version="1", requester="kamara",
             model_identity=None, executor_identity="worker-1", arguments={"host": "b"},
-            authority_decision="EXPLICIT_PER_SESSION_OR_TASK",
+            authority_decision=ApprovalRequirement.EXPLICIT_PER_SESSION_OR_TASK.value,
         )
 
     # The second approval must remain APPROVED, not CLAIMED: the duplicate
