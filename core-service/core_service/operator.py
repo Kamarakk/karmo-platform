@@ -18,7 +18,6 @@ from .model_router import ModelResource, ModelRouter
 from .ollama_client import OllamaChatClient, OllamaClientError
 from .registry import CapabilityRegistry
 
-
 KARMOLAB_STATUS_TOOL = "karmolab.read_status"
 KARMOLAB_STATUS_VERSION = "1.0.0"
 
@@ -32,7 +31,6 @@ _STATUS_WORDS = re.compile(
     r"docker|container|containers|running|online)\b",
     re.IGNORECASE,
 )
-
 
 @dataclass(frozen=True)
 class OperatorModels:
@@ -75,22 +73,15 @@ def default_model_resources() -> list[ModelResource]:
         ModelResource(
             model_id="qwen3:8b",
             provider="ollama-local",
-            capabilities=frozenset({"chat", "summarize", "verify"}),
+            capabilities=frozenset({"chat", "summarize"}),
             trust_tier=30,
-            local=True,
-        ),
-        ModelResource(
-            model_id="qwen3:4b",
-            provider="ollama-local",
-            capabilities=frozenset({"chat", "summarize", "verify"}),
-            trust_tier=20,
             local=True,
         ),
         ModelResource(
             model_id="llama3.2:3b",
             provider="ollama-local",
-            capabilities=frozenset({"chat", "summarize"}),
-            trust_tier=10,
+            capabilities=frozenset({"verify"}),
+            trust_tier=20,
             local=True,
         ),
     ]
@@ -125,9 +116,10 @@ class KarmoOperator:
                     {
                         "role": "system",
                         "content": (
-                            "You are KARMO. Summarize only the supplied KarmoLab READ evidence. "
-                            "Do not invent facts, recommend changes, or claim write authority. "
-                            "Keep it concise and operational."
+                            "Use only exact values present in the supplied KarmoLab evidence. "
+                            "Report hostname, mode, each KARMO service state, and each container name/status. "
+                            "Do not infer health, causes, percentages, recommendations, or extra labels. "
+                            "Use at most three short sentences."
                         ),
                     },
                     {"role": "user", "content": evidence_json},
@@ -139,9 +131,8 @@ class KarmoOperator:
                     {
                         "role": "system",
                         "content": (
-                            "Independently verify that the proposed summary is fully supported by the "
-                            "READ evidence. Reply PASS only if every factual claim is supported; "
-                            "otherwise reply FAIL followed by a short reason."
+                            "Check only whether every factual claim in the summary appears directly in the evidence. "
+                            "Reply PASS if all claims are directly supported. Otherwise reply FAIL followed by one short reason."
                         ),
                     },
                     {

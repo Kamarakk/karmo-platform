@@ -18,7 +18,7 @@ class FakeModelClient:
 
     def chat(self, *, model, messages, temperature=0.2):
         self.calls.append({"model": model, "messages": messages, "temperature": temperature})
-        if model == "qwen3:4b":
+        if model == "llama3.2:3b":
             return self.verifier_reply
         if "Summarize only" in messages[0]["content"]:
             return "KarmoLab is online and the supplied read evidence was collected."
@@ -47,11 +47,11 @@ def test_operator_read_status_routes_dispatches_and_independently_verifies():
     assert response["tool_version"] == "1.0.0"
     assert response["approval_requirement"] == "NONE"
     assert response["primary_model"] == "qwen3:8b"
-    assert response["verifier_model"] == "qwen3:4b"
+    assert response["verifier_model"] == "llama3.2:3b"
     assert response["primary_model"] != response["verifier_model"]
     assert response["verification"] == "PASS"
     assert response["evidence"]["mode"] == "READ_ONLY"
-    assert [call["model"] for call in client.calls] == ["qwen3:8b", "qwen3:4b"]
+    assert [call["model"] for call in client.calls] == ["qwen3:8b", "llama3.2:3b"]
 
 
 def test_verifier_failure_withholds_unverified_model_summary():
@@ -73,7 +73,6 @@ def test_write_request_is_refused_before_model_or_tool_execution():
 
     client = FakeModelClient()
     operator = KarmoOperator(model_client=client, status_reader=status_reader)
-
     response = operator.handle("restart the worker service")
 
     assert response["kind"] == "refusal"
@@ -91,7 +90,6 @@ def test_general_chat_uses_local_model_router_without_tool_execution():
 
     client = FakeModelClient()
     operator = KarmoOperator(model_client=client, status_reader=status_reader)
-
     response = operator.handle("Good morning Karmo")
 
     assert response == {
@@ -109,13 +107,6 @@ def test_ollama_client_rejects_non_loopback_endpoint():
 
 
 def test_ollama_client_refuses_to_follow_redirect_to_non_loopback_host():
-    """MEDIUM regression: the loopback-only guarantee must hold for the
-    entire request, not just the configured URL. If something is already
-    listening on (or has hijacked) the configured loopback port and tries
-    to redirect the request elsewhere, the client must refuse -- not
-    silently follow it, which is what Python's default urlopen redirect
-    handling would otherwise do for any host."""
-
     class RedirectingHandler(http.server.BaseHTTPRequestHandler):
         request_count = 0
 
@@ -137,8 +128,6 @@ def test_ollama_client_refuses_to_follow_redirect_to_non_loopback_host():
         client = OllamaChatClient(f"http://127.0.0.1:{server.server_port}")
         with pytest.raises(OllamaClientError, match="local model request failed"):
             client.chat(model="qwen3:8b", messages=[{"role": "user", "content": "hi"}])
-        # Exactly one request was made -- the client must never issue a
-        # second request to the redirect target.
         assert RedirectingHandler.request_count == 1
     finally:
         server.shutdown()
@@ -146,9 +135,6 @@ def test_ollama_client_refuses_to_follow_redirect_to_non_loopback_host():
 
 
 def test_ollama_client_still_handles_a_normal_non_redirecting_response():
-    """Regression guard: refusing redirects must not break the ordinary,
-    non-redirecting success path."""
-
     class OkHandler(http.server.BaseHTTPRequestHandler):
         def do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
@@ -185,7 +171,6 @@ def test_karmolab_subprocesses_are_fixed_read_only_and_never_shell(monkeypatch):
         return SimpleNamespace(returncode=0, stdout="active\n", stderr="")
 
     monkeypatch.setattr(karmolab.subprocess, "run", fake_run)
-
     result = karmolab.read_status({})
 
     assert result["mode"] == "READ_ONLY"
