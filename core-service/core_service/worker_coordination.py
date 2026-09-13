@@ -346,23 +346,41 @@ class PostgresWorkerCoordinatorStore:
         if worker[1] is not None and worker[1] <= now:
             raise WorkerCoordinationError("worker heartbeat lease expired")
 
-    def consume_ticket(self, *, token, job_id, worker_id):
+    def consume_ticket(self, *, token, lease: WorkerLease):
+        """Consume a ticket only while its exact job lease is still live.
+
+        Ticket TTL is not an independent grant of execution authority. If the
+        job lease expired, was recovered, was reassigned, or its lease token
+        changed, execution must fail closed even when the coordinator-signed
+        ticket itself has time remaining.
+        """
         digest = _digest_token(token)
         now = self._clock()
         with self._connection_factory() as conn, conn.cursor() as cur:
-            self._require_active_worker(cur, worker_id, now)
+            self._require_active_worker(cur, lease.worker_id, now)
             cur.execute(
                 """
-                UPDATE public.karmo_execution_tickets
+                UPDATE public.karmo_execution_tickets AS t
                 SET consumed_at=%s
-                WHERE ticket_digest=%s AND job_id=%s::uuid AND worker_id=%s
-                  AND consumed_at IS NULL AND expires_at>%s
-                RETURNING ticket_digest
+                WHERE t.ticket_digest=%s AND t.job_id=%s::uuid AND t.worker_id=%s
+                  AND t.consumed_at IS NULL AND t.expires_at>%s
+                  AND EXISTS (
+                      SELECT 1 FROM public.karmo_worker_jobs j
+                      WHERE j.job_id=t.job_id AND j.state='LEASED'
+                        AND j.worker_id=t.worker_id AND j.lease_token=%s::uuid
+                        AND j.lease_expires_at>%s
+                  )
+                RETURNING t.ticket_digest
                 """,
-                (now, digest, job_id, worker_id, now),
+                (
+                    now, digest, lease.job_id, lease.worker_id, now,
+                    lease.lease_token, now,
+                ),
             )
             if cur.fetchone() is None:
-                raise WorkerCoordinationError("execution ticket invalid, expired, or already consumed")
+                raise WorkerCoordinationError(
+                    "execution ticket invalid, expired, already consumed, or job lease is no longer live"
+                )
         return digest
 
     def submit_authenticated_result(
@@ -576,7 +594,7 @@ class WorkerCoordinator:
             tool_id=lease.tool_id,
             tool_version=lease.tool_version,
         )
-        self.store.consume_ticket(token=token, job_id=lease.job_id, worker_id=lease.worker_id)
+        self.store.consume_ticket(token=token, lease=lease)
         return True
 
     def accept_result(self, *, execution_ticket, lease: WorkerLease, result, envelope):
