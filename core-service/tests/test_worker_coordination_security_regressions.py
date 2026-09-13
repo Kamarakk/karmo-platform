@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -222,3 +223,47 @@ def test_finalize_fails_closed_if_invocation_ledger_row_is_missing():
         store.finalize_job(job_id=job_id, success=True)
 
     assert store.get_job_state(job_id)["state"] == "RESULT_SUBMITTED"
+
+
+def test_ticket_cannot_authorize_execution_after_job_lease_recovery():
+    class Clock:
+        def __init__(self):
+            self.now = datetime.now(timezone.utc)
+
+        def __call__(self):
+            return self.now
+
+    clock = Clock()
+    store = PostgresWorkerCoordinatorStore(_connection_factory, clock=clock)
+    resolver = KeyResolver(_keys)
+    worker_auth = WorkerAuthenticator(resolver, clock=lambda: clock.now.timestamp())
+    tickets = ExecutionTicketAuthority(
+        resolver, signing_key_id="coord-key-v1", clock=lambda: clock.now.timestamp()
+    )
+    results = ResultAuthenticator(resolver)
+    coordinator = WorkerCoordinator(
+        store,
+        worker_authenticator=worker_auth,
+        ticket_authority=tickets,
+        result_authenticator=results,
+        clock=lambda: clock.now,
+    )
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    credential = worker_auth.issue(
+        worker_id="worker-1", key_id="worker-key-v1", ttl_seconds=300
+    )
+    coordinator.authenticate_heartbeat(
+        credential_token=credential, worker_id="worker-1", lease_seconds=120
+    )
+
+    job_id, lease = _approved_job(store)
+    ticket = coordinator.issue_execution_ticket(
+        credential_token=credential, lease=lease, ttl_seconds=120
+    )
+
+    clock.now += timedelta(seconds=61)
+    assert store.recover_expired_leases() == [job_id]
+    assert store.get_job_state(job_id)["state"] == "RECOVERY_REQUIRED"
+
+    with pytest.raises(WorkerCoordinationError, match="lease"):
+        coordinator.authorize_execution(token=ticket, lease=lease)
