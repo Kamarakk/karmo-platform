@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from capability_manifest import get_canonical_capability
 from crypto_boundary import KeyResolver, ResultAuthenticator, WorkerAuthenticator
 from ssh_stdio_transport import SshStdioConfig, SshStdioTransport
 from ssh_worker_client import RemoteWorkerConfig, SshRemoteWorkerClient
@@ -82,8 +83,19 @@ class WorkerRuntimeConfig:
             raise RemoteWorkerRuntimeError("worker identity is required")
         if not self.ai01_host or not self.ai01_user:
             raise RemoteWorkerRuntimeError("AI01 SSH target is required")
-        if not self.capabilities:
+        if not isinstance(self.capabilities, dict) or not self.capabilities:
             raise RemoteWorkerRuntimeError("at least one bounded capability is required")
+        for capability_id, version in self.capabilities.items():
+            if not isinstance(capability_id, str) or not isinstance(version, str):
+                raise RemoteWorkerRuntimeError("capability id/version must be strings")
+            try:
+                canonical = get_canonical_capability(capability_id)
+            except Exception as exc:
+                raise RemoteWorkerRuntimeError("configured capability is not canonical") from exc
+            if version != canonical["version"]:
+                raise RemoteWorkerRuntimeError("configured capability version mismatch")
+            if canonical["network_required"] or canonical["secrets_required"]:
+                raise RemoteWorkerRuntimeError("configured capability exceeds remote worker boundary")
         if not 1 <= int(self.timeout_seconds) <= 300:
             raise RemoteWorkerRuntimeError("execution timeout out of bounds")
         if not 1 <= int(self.poll_interval_seconds) <= 60:
