@@ -8,7 +8,7 @@
   "known_hosts_file": "/etc/karmo/worker01/known_hosts",
   "worker_key_file": "/etc/karmo/worker01/worker.key",
   "capabilities": {
-    "karmolab.read.status": "1"
+    "local_model_probe": "1.0.0"
   },
   "timeout_seconds": 30,
   "poll_interval_seconds": 5,
