@@ -50,7 +50,7 @@ class OllamaChatClient:
             "messages": messages,
             "stream": False,
             "think": False,
-            "options": {"temperature": temperature},
+            "options": {"temperature": temperature, "num_predict": 96},
         }).encode("utf-8")
         request = Request(
             self.base_url + "/api/chat",
