@@ -87,6 +87,24 @@ class CapabilityDispatcher:
             )
         return result
 
+    def _require_approval_requester_binding(self, approval_id, requester):
+        """Bind reusable approval identifiers to the identity that requested them.
+
+        Tool/version/argument/executor checks prevent capability substitution, but
+        without this check a caller that learns another requester's approval ID
+        could reuse that authority for the same exact invocation shape. Requester
+        identity is part of the durable approval record and is therefore an
+        authority boundary, not merely audit metadata.
+        """
+        try:
+            record = self.approval_engine.get(approval_id)
+        except CoreControlError as exc:
+            raise DispatchError(str(exc)) from exc
+        if record is None:
+            raise DispatchError(f"no such approval: {approval_id}")
+        if record.requester != requester:
+            raise DispatchError("approval requester mismatch")
+
     def dispatch(self, *, requester, tool_id, version, arguments, executor_identity,
                  approval_id=None, task_id=None, model_identity=None, idempotency_key=None):
         record = self.registry.get(tool_id, version)
@@ -141,6 +159,8 @@ class CapabilityDispatcher:
                 approval_id=pending.approval_id,
                 executed=False,
             )
+
+        self._require_approval_requester_binding(approval_id, requester)
 
         if self.execution_coordinator is not None:
             if not idempotency_key:
