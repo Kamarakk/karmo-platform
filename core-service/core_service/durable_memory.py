@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -278,7 +277,7 @@ class DurableMemoryBackend:
                     INSERT INTO public.karmo_outbox (
                         event_id, event_type, aggregate_type, aggregate_id,
                         destination, payload
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s::jsonb)
                     """,
                     (
                         event_id,
