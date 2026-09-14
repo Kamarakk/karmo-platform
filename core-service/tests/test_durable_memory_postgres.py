@@ -68,6 +68,7 @@ def _memory_tables():
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+            ALTER TABLE public.karmo_outbox DROP CONSTRAINT IF EXISTS reject_test_destination;
             TRUNCATE public.karmo_outbox, public.conversation_memory RESTART IDENTITY;
             """
         )
@@ -111,7 +112,13 @@ def test_failed_outbox_insert_rolls_back_both_conversation_turns():
     backend = DurableMemoryBackend(dsn=_conninfo())
 
     with psycopg.connect(_conninfo(), autocommit=True) as conn, conn.cursor() as cur:
-        cur.execute("ALTER TABLE public.karmo_outbox ADD CONSTRAINT reject_test_destination CHECK (destination <> %s)", (DESTINATION,))
+        cur.execute(
+            """
+            ALTER TABLE public.karmo_outbox
+            ADD CONSTRAINT reject_test_destination
+            CHECK (destination <> 'qdrant:karmo_semantic_memory')
+            """
+        )
 
     try:
         with pytest.raises(Exception):
