@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 import resource_discovery
+from commander_readonly import bounded_text_read, directory_list, listener_snapshot, service_status, system_snapshot
 from sandbox import SandboxError, register_handler, resolve_within_sandbox
 
 # Prefer the worker-runtime's own venv when it exists. GitHub-hosted CI does
@@ -242,3 +243,10 @@ def _embedding_benchmark_test(payload, *, sandbox_root, allowed_root, timeout_se
 
 
 register_handler("embedding_benchmark_test", _embedding_benchmark_test)
+
+# Commander READ Pack v1 -- fixed handlers only; no arbitrary command dispatch.
+register_handler("commander.system_snapshot", system_snapshot)
+register_handler("commander.service_status", service_status)
+register_handler("commander.listener_snapshot", listener_snapshot)
+register_handler("commander.bounded_text_read", bounded_text_read)
+register_handler("commander.directory_list", directory_list)
