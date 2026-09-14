@@ -20,6 +20,7 @@ This is the single index for KARMO's persistent project-record set. Do not creat
 | [PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md](PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md) | Latest durable delta for direct Tailscale enrollment, Core/Worker production deployment, PR #34/#35 merge, maintenance finding, and remaining verification. |
 | [PROJECT_SAVE_2026-09-12_H01_TEST_HARDENING.md](PROJECT_SAVE_2026-09-12_H01_TEST_HARDENING.md) | Latest durable delta for the H0.1 isolated failure-matrix test-hardening/review checkpoint (not yet merged). |
 | [PROJECT_SAVE_2026-09-12_PR41_POST_MERGE_WORKER_ACTIVATION.md](PROJECT_SAVE_2026-09-12_PR41_POST_MERGE_WORKER_ACTIVATION.md) | PR #41 post-merge checkpoint plus Worker01/Worker02 activation-track opening, verified AI01 health/network state, access finding, and activation sequence. |
+| [PROJECT_SAVE_2026-09-13_WORKER01_CHECKPOINT.md](PROJECT_SAVE_2026-09-13_WORKER01_CHECKPOINT.md) | Verified Worker01 production activation checkpoint: durable registration, authenticated heartbeat, bounded READ proof success, and authorization to advance to Worker02 verification. |
 
 ## Learning program
 
@@ -75,3 +76,4 @@ Per `docs/handoff/h01/KARMO_HANDOFF_2026-09-04_H01_BUILD_COMPLETE.md`, an earlie
 - 2026-09-11 — flexible KARMO AI Engineering Apprenticeship and durable learning-progress log created; completed sections must be recorded before advancing.
 - 2026-09-12 — H0.1 isolated failure-matrix test suite hardened (three review findings fixed: clock-skew-sensitive latency check, weak duplicate-delivery coverage, environment-dependent fault injection); full matrix re-run 19 passed/2 skipped/0 failed; frozen `test/h01/app/` untouched; see `PROJECT_SAVE_2026-09-12_H01_TEST_HARDENING.md`.
 - 2026-09-12 — PR #41 merged (`879b242c801f10fc141e68874847d9b9315dd304`); post-merge production read-only checkpoint passed, Worker01/Worker02 activation branch opened, and verified access/activation findings saved in `PROJECT_SAVE_2026-09-12_PR41_POST_MERGE_WORKER_ACTIVATION.md`.
+- 2026-09-13 — Worker01 production activation gate passed: durable registration, authenticated heartbeat, no-listener verification, and required bounded READ proof completed successfully; see `PROJECT_SAVE_2026-09-13_WORKER01_CHECKPOINT.md`. Worker02 is the next gated activation target.
