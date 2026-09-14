@@ -32,6 +32,7 @@ _STATUS_WORDS = re.compile(
     re.IGNORECASE,
 )
 
+
 @dataclass(frozen=True)
 class OperatorModels:
     primary: ModelResource
@@ -73,16 +74,34 @@ def default_model_resources() -> list[ModelResource]:
         ModelResource(
             model_id="qwen3:8b",
             provider="ollama-local",
-            capabilities=frozenset({"chat", "summarize"}),
-            trust_tier=30,
+            capabilities=frozenset({"chat", "summarize", "reason"}),
+            trust_tier=40,
             local=True,
+            metadata={"role": "primary"},
         ),
         ModelResource(
-            model_id="llama3.2:3b",
+            model_id="ministral-3:8b",
+            provider="ollama-local",
+            capabilities=frozenset({"chat", "summarize", "reason"}),
+            trust_tier=35,
+            local=True,
+            metadata={"role": "secondary"},
+        ),
+        ModelResource(
+            model_id="mistral:7b",
             provider="ollama-local",
             capabilities=frozenset({"verify"}),
+            trust_tier=30,
+            local=True,
+            metadata={"role": "verifier"},
+        ),
+        ModelResource(
+            model_id="granite3.3:2b",
+            provider="ollama-local",
+            capabilities=frozenset({"chat", "summarize", "fast"}),
             trust_tier=20,
             local=True,
+            metadata={"role": "fast_fallback"},
         ),
     ]
 
@@ -173,31 +192,39 @@ class KarmoOperator:
         }
 
     def _chat(self, text: str) -> dict:
-        primary = self.router.route(required_capabilities={"chat"}, prefer_local=True)
-        try:
-            answer = self.model_client.chat(
-                model=primary.model_id,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are KARMO, Kamara's local AI control-plane interface. "
-                            "You are currently in bounded activation mode. You may converse and explain, "
-                            "but you have no write, deployment, financial, destructive, arbitrary shell, "
-                            "or secret-reading authority. Never imply otherwise."
-                        ),
-                    },
-                    {"role": "user", "content": text},
-                ],
-            )
-        except OllamaClientError as exc:
+        candidates = self.router.ranked(required_capabilities={"chat"}, prefer_local=True)
+        if not candidates:
             return {
                 "kind": "chat",
-                "message": "Local model is unavailable. KARMO control plane remains fail-closed.",
-                "model": primary.model_id,
-                "error": type(exc).__name__,
+                "message": "No enabled local chat model is available. KARMO control plane remains fail-closed.",
+                "error": "ModelRoutingError",
             }
-        return {"kind": "chat", "message": answer, "model": primary.model_id}
+        last_error = None
+        for candidate in candidates:
+            try:
+                answer = self.model_client.chat(
+                    model=candidate.model_id,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are KARMO, Kamara's local AI control-plane interface. "
+                                "You are currently in bounded activation mode. You may converse and explain, "
+                                "but you have no write, deployment, financial, destructive, arbitrary shell, "
+                                "or secret-reading authority. Never imply otherwise."
+                            ),
+                        },
+                        {"role": "user", "content": text},
+                    ],
+                )
+                return {"kind": "chat", "message": answer, "model": candidate.model_id}
+            except OllamaClientError as exc:
+                last_error = type(exc).__name__
+        return {
+            "kind": "chat",
+            "message": "Local chat models are unavailable. KARMO control plane remains fail-closed.",
+            "error": last_error or "OllamaClientError",
+        }
 
     def handle(self, text: str) -> dict:
         text = text.strip()
