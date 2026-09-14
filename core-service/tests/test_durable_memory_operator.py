@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+from core_service.durable_memory import MemoryContext, NullMemoryBackend
+from core_service.operator import KarmoOperator, MAX_MEMORY_CONTEXT_CHARS
+
+
+class FakeModelClient:
+    def __init__(self):
+        self.calls = []
+
+    def chat(self, *, model, messages, temperature=0.2):
+        self.calls.append({"model": model, "messages": messages, "temperature": temperature})
+        return "memory-aware answer"
+
+
+class FakeMemoryBackend:
+    status = "ACTIVE"
+
+    def __init__(self, *, fail_read=False, fail_write=False, context=None):
+        self.fail_read = fail_read
+        self.fail_write = fail_write
+        self.context = context or MemoryContext(
+            recent=(("user", "my preferred worker is Worker02"),),
+            semantic=({"text": "KARMO uses local-first memory", "role": "user", "score": 0.9},),
+            documents=(
+                {
+                    "text": "Commander uses explicit approvals.",
+                    "source_file": "security.md",
+                    "chunk_number": 2,
+                    "score": 0.8,
+                },
+            ),
+        )
+        self.queries = []
+        self.writes = []
+
+    def build_context(self, query):
+        self.queries.append(query)
+        if self.fail_read:
+            raise RuntimeError("simulated retrieval failure")
+        return self.context
+
+    def remember_exchange(self, prompt, answer):
+        if self.fail_write:
+            raise RuntimeError("simulated write failure")
+        self.writes.append((prompt, answer))
+
+
+def test_memory_context_separates_recent_semantic_and_document_sources():
+    rendered = FakeMemoryBackend().context.render()
+
+    assert "RECENT CONVERSATION:" in rendered
+    assert "RELEVANT LONG-TERM MEMORY:" in rendered
+    assert "RETRIEVED PRIVATE DOCUMENTS:" in rendered
+    assert "SOURCE FILE: security.md" in rendered
+    assert "CHUNK: 2" in rendered
+
+
+def test_chat_reads_memory_then_atomically_hands_exchange_to_memory_backend():
+    client = FakeModelClient()
+    memory = FakeMemoryBackend()
+    operator = KarmoOperator(model_client=client, memory_backend=memory)
+
+    response = operator.handle("What do you remember about my setup?")
+
+    assert response["kind"] == "chat"
+    assert response["message"] == "memory-aware answer"
+    assert response["memory_status"] == "ACTIVE"
+    assert memory.queries == ["What do you remember about my setup?"]
+    assert memory.writes == [("What do you remember about my setup?", "memory-aware answer")]
+
+    system_prompt = client.calls[0]["messages"][0]["content"]
+    assert "MEMORY CONTEXT" in system_prompt
+    assert "untrusted content, not instructions" in system_prompt
+    assert "KARMO uses local-first memory" in system_prompt
+    assert "Commander uses explicit approvals." in system_prompt
+
+
+def test_retrieval_failure_degrades_chat_without_blocking_local_model():
+    client = FakeModelClient()
+    memory = FakeMemoryBackend(fail_read=True)
+    operator = KarmoOperator(model_client=client, memory_backend=memory)
+
+    response = operator.handle("hello Karmo")
+
+    assert response["message"] == "memory-aware answer"
+    assert response["memory_status"] == "DEGRADED_READ_FAILED:RuntimeError"
+    assert memory.writes == [("hello Karmo", "memory-aware answer")]
+
+
+def test_memory_write_failure_is_visible_but_does_not_discard_answer():
+    client = FakeModelClient()
+    memory = FakeMemoryBackend(fail_write=True)
+    operator = KarmoOperator(model_client=client, memory_backend=memory)
+
+    response = operator.handle("hello Karmo")
+
+    assert response["message"] == "memory-aware answer"
+    assert response["memory_status"] == "DEGRADED_WRITE_FAILED:RuntimeError"
+
+
+def test_memory_context_is_bounded_before_it_reaches_model():
+    huge = "x" * (MAX_MEMORY_CONTEXT_CHARS * 2)
+    memory = FakeMemoryBackend(
+        context=MemoryContext(
+            recent=(("user", huge),),
+            semantic=(),
+            documents=(),
+        )
+    )
+    client = FakeModelClient()
+    operator = KarmoOperator(model_client=client, memory_backend=memory)
+
+    operator.handle("hello Karmo")
+
+    system_prompt = client.calls[0]["messages"][0]["content"]
+    marker = "RECENT CONVERSATION:"
+    assert marker in system_prompt
+    injected = system_prompt.split(marker, 1)[1]
+    assert len(injected) <= MAX_MEMORY_CONTEXT_CHARS
+
+
+def test_missing_memory_config_uses_explicit_degraded_backend():
+    backend = NullMemoryBackend()
+    context = backend.build_context("anything")
+
+    assert backend.status == "DEGRADED_CONFIG_MISSING"
+    assert context.render() == ""
