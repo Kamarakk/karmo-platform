@@ -12,13 +12,16 @@ from core_service.operator import KarmoOperator
 
 
 class FakeModelClient:
-    def __init__(self, verifier_reply="PASS"):
+    def __init__(self, verifier_reply="PASS", fail_models=()):
         self.calls = []
         self.verifier_reply = verifier_reply
+        self.fail_models = set(fail_models)
 
     def chat(self, *, model, messages, temperature=0.2):
         self.calls.append({"model": model, "messages": messages, "temperature": temperature})
-        if model == "llama3.2:3b":
+        if model in self.fail_models:
+            raise OllamaClientError("simulated model failure")
+        if model == "mistral:7b":
             return self.verifier_reply
         if "Summarize only" in messages[0]["content"]:
             return "KarmoLab is online and the supplied read evidence was collected."
@@ -47,11 +50,11 @@ def test_operator_read_status_routes_dispatches_and_independently_verifies():
     assert response["tool_version"] == "1.0.0"
     assert response["approval_requirement"] == "NONE"
     assert response["primary_model"] == "qwen3:8b"
-    assert response["verifier_model"] == "llama3.2:3b"
+    assert response["verifier_model"] == "mistral:7b"
     assert response["primary_model"] != response["verifier_model"]
     assert response["verification"] == "PASS"
     assert response["evidence"]["mode"] == "READ_ONLY"
-    assert [call["model"] for call in client.calls] == ["qwen3:8b", "llama3.2:3b"]
+    assert [call["model"] for call in client.calls] == ["qwen3:8b", "mistral:7b"]
 
 
 def test_verifier_failure_withholds_unverified_model_summary():
@@ -99,6 +102,32 @@ def test_general_chat_uses_local_model_router_without_tool_execution():
     }
     assert calls["status"] == 0
     assert [call["model"] for call in client.calls] == ["qwen3:8b"]
+
+
+def test_general_chat_falls_back_to_ministral_then_granite():
+    client = FakeModelClient(fail_models={"qwen3:8b", "ministral-3:8b"})
+    operator = KarmoOperator(model_client=client, status_reader=fake_status)
+
+    response = operator.handle("Good morning Karmo")
+
+    assert response["kind"] == "chat"
+    assert response["model"] == "granite3.3:2b"
+    assert [call["model"] for call in client.calls] == [
+        "qwen3:8b",
+        "ministral-3:8b",
+        "granite3.3:2b",
+    ]
+
+
+def test_general_chat_fails_closed_when_all_chat_models_fail():
+    client = FakeModelClient(fail_models={"qwen3:8b", "ministral-3:8b", "granite3.3:2b"})
+    operator = KarmoOperator(model_client=client, status_reader=fake_status)
+
+    response = operator.handle("Good morning Karmo")
+
+    assert response["kind"] == "chat"
+    assert response["message"] == "Local chat models are unavailable. KARMO control plane remains fail-closed."
+    assert "model" not in response
 
 
 def test_ollama_client_rejects_non_loopback_endpoint():
