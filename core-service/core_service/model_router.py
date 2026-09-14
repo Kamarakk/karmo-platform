@@ -38,7 +38,7 @@ class ModelRouter:
             raise ModelRoutingError(f"model already registered: {resource.model_id}")
         self._resources[resource.model_id] = resource
 
-    def route(self, *, required_capabilities=(), prefer_local=False, excluded_models=()):
+    def ranked(self, *, required_capabilities=(), prefer_local=False, excluded_models=()):
         required = frozenset(required_capabilities)
         excluded = frozenset(excluded_models)
         candidates = [
@@ -47,8 +47,6 @@ class ModelRouter:
             and resource.model_id not in excluded
             and required.issubset(resource.capabilities)
         ]
-        if not candidates:
-            raise ModelRoutingError(f"no enabled model satisfies capabilities: {sorted(required)}")
         candidates.sort(
             key=lambda resource: (
                 1 if prefer_local and resource.local else 0,
@@ -57,6 +55,17 @@ class ModelRouter:
             ),
             reverse=True,
         )
+        return candidates
+
+    def route(self, *, required_capabilities=(), prefer_local=False, excluded_models=()):
+        candidates = self.ranked(
+            required_capabilities=required_capabilities,
+            prefer_local=prefer_local,
+            excluded_models=excluded_models,
+        )
+        if not candidates:
+            required = frozenset(required_capabilities)
+            raise ModelRoutingError(f"no enabled model satisfies capabilities: {sorted(required)}")
         return candidates[0]
 
     def verifier_for(self, primary_model_id: str, *, required_capabilities=()):
