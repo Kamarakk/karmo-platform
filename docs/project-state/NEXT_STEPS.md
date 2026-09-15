@@ -32,16 +32,27 @@ for the full reconciliation narrative, including the explicit policy
 decision to keep chat's 3-way model fallback rather than let the new
 trust floor silently narrow it to 2-way.
 
-**Not yet deployed to `karmo-ai01`** — this is a code merge only. Next
-step for this workstream, when ready: build the deployment gate
-(tarball + SHA-256 + backup pattern already established), deploy, and
-run one bounded production canary — same pattern as the durable-memory
-deployment above.
+**Deployed and canary-verified the same day** (`de16b6e959a0ccec30444abea6b1005f6cccd101`).
+The deployment canary surfaced a real, separate pre-existing bug in the
+keyword dispatch regexes (17 combined false positives against ordinary
+English, e.g. "deploy" inside a canary phrase getting refused as a
+write-intent request) — fixed systematically in PR #57
+(`fbaf42752e7a4a124379778b9c7a3ea55fdc62c4`), also deployed and
+re-verified same day. No open item remains for this workstream.
+
+### 2026-09-15 (later same day) — BloomBoss Phase 1 (PR #32) reconciled, awaiting decision
+
+**PR #56 supersedes PR #32** — reconciled against current `main` (147
+commits ahead / 238 behind, but only one file conflicted), all 62
+BloomBoss tests pass, no risky code patterns found. **Deliberately not
+merged** — PR #32's own text reserves that for Kamara's separate
+high-level merge/promotion decision, given real financial/business logic
+is involved. Ready whenever that decision is made.
 
 ### Items requiring Kamara's decision (current, as of 2026-09-15)
 
-1. **PR #32** (`feat: start BloomBoss Historical Data Intelligence`,
-   open since 2026-09-11) — untouched by this reconciliation.
+1. **PR #56** (BloomBoss Phase 1, reconciled, supersedes PR #32) —
+   merge/promotion decision.
 3. **PR #26** (learning program branch) — untouched, predates current
    `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile
    before any merge attempt.
