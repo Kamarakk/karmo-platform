@@ -1,5 +1,27 @@
 # KARMO Next Steps
 
+## 2026-09-15 update (read this first)
+
+Durable Memory Core integration (PR #48/#49) is now **deployed and
+verified** on `karmo-ai01` — see `CURRENT_STATE.md`'s "Durable Memory
+Core integration" section and `KARMO_DEVELOPER_NOTES.md`. No open item
+remains for that workstream.
+
+Everything below this point (Foundation v1 through Worker Runtime v0.1)
+is historical context from 2026-09-09/10 and remains accurate for that
+period, but does **not** cover 2026-09-11 through 2026-09-15 (Access &
+Connection Registry, Core/Worker productionization rollout, Tailscale
+enrollment, dual-worker Commander READ Pack, model-stack work, this
+durable-memory deployment). That gap is flagged **NEEDS VERIFICATION** in
+`CURRENT_STATE.md`'s header — `KARMO_DASHBOARD.md` is the more current
+cockpit view for that period until a full reconciliation is done.
+
+**Next open decision:** choose the next KARMO capability/workstream, or
+do the deferred full reconciliation of 2026-09-11–15 into this file and
+`CURRENT_STATE.md`'s narrative.
+
+---
+
 See MASTER_INDEX.md for status-tag definitions. **KARMO FOUNDATION v1 was
 declared COMPLETE on 2026-09-09.** Two further repository-only,
 zero-production-access programs ran the same day: the Post-Foundation
