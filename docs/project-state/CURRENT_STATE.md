@@ -182,7 +182,35 @@ reconciliation** — it is accurately tracked only as open in this
 section and in `NEXT_STEPS.md`, pending Kamara's decision to bring it
 through review and merge.
 
-## PR #43 reconciliation — approval authority binding, model routing policy, recovery hardening (2026-09-15) — VERIFIED, merged, NOT deployed
+## PR #43 reconciliation — approval authority binding, model routing policy, recovery hardening (2026-09-15) — VERIFIED, merged, DEPLOYED
+
+**Update: deployed and canary-verified on `karmo-ai01` the same day**
+(merge commit `de16b6e959a0ccec30444abea6b1005f6cccd101`). The
+deployment canary found a real, separate bug — `_WRITE_WORDS`/
+`_STATUS_WORDS` (pre-existing keyword dispatch, unrelated to PR #43's
+own content) had 17 combined false positives against ordinary English
+phrases, including "healthy" silently reappearing via an unconflicted
+merge line. Fixed systematically in PR #57
+(`fbaf42752e7a4a124379778b9c7a3ea55fdc62c4`), deployed and re-verified
+the same day. Full narrative:
+`docs/project-state/KARMO_DEVELOPER_NOTES.md`'s second 2026-09-15 entry.
+Also reconciled BloomBoss Phase 1 (PR #56) in parallel — tested and
+ready, **deliberately not merged**, pending Kamara's own
+merge/promotion decision per PR #32's original stated gate.
+
+29 commits of staged Core/Worker hardening work (open since
+2026-09-13, no rejection ever recorded — just never brought to a
+promotion decision) reconciled against 94 commits of diverged `main`
+history and merged at `f2ba1a49ebe8baf664a93cf59dc74693506db42a`. Key
+content: a real approval-reuse security fix (an approval could
+previously be consumed across a different requester or authority-class
+than it was issued under — now bound and independently checked at both
+the dispatcher and the durable execution coordinator),
+`ModelRouter`/`ModelResource` hard policy gates and validation, KarmoLab
+wired through the registry/dispatcher, exact-match verifier strictness,
+durable recovery preflight validation, terminal-status allowlisting, and
+a worker document-size cap. 3 merge conflicts resolved (see
+`docs/project-state/KARMO_DEVELOPER_NOTES.md` for full detail, including
 
 29 commits of staged Core/Worker hardening work (open since
 2026-09-13, no rejection ever recorded — just never brought to a

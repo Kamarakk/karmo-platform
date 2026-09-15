@@ -14,6 +14,9 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - KARMO Access & Connection Registry — ✅ MERGED
 - KARMO System Stewardship design — ✅ MERGED; workers not yet implemented/deployed
 - Durable Memory Core integration (conversation/semantic/document recall in `chat`) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
+- KARMO PR #43 hardening (approval authority binding, model routing policy, recovery hardening) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
+- Keyword dispatch false-positive fix (PR #57) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
+- BloomBoss Historical Data Intelligence (Phase 1) — 🟡 reconciled against current `main` (PR #56); merge/promotion decision pending
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -28,13 +31,12 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-Durable Memory Core integration is deployed and canary-verified
-(2026-09-15). The full 2026-09-11–15 reconciliation into
-`CURRENT_STATE.md`'s narrative is now done — no outstanding
-documentation debt from that period. Open decisions (PR #43 staged
-hardening work, PR #32 BloomBoss, choice of next capability) are listed
-in `NEXT_STEPS.md`. Otherwise, return focus to useful KARMO capabilities
-instead of more infrastructure churn.
+Durable memory, PR #43's hardening, and the keyword false-positive fix
+are all deployed and canary-verified on `karmo-ai01` as of 2026-09-15.
+No outstanding documentation debt. The one open decision is BloomBoss
+Phase 1 (PR #56, reconciled and tested, awaiting Kamara's
+merge/promotion call) — see `NEXT_STEPS.md`. Otherwise, return focus to
+useful KARMO capabilities instead of more infrastructure churn.
 
 ## CURRENT ISSUE
 
