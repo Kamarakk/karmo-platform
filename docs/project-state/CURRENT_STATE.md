@@ -6,6 +6,91 @@ the KARMO Large Autonomous Review of PR #14–#21 and the Post-Foundation
 Overnight Readiness/Core v2 Engineering Blueprint programs earlier in
 this sequence. See MASTER_INDEX.md for status-tag definitions.
 
+**Partial reconciliation added 2026-09-15 for one specific workstream
+(Durable Memory Core integration) below — see that section.** The
+2026-09-11 through 2026-09-14 period (Access & Connection Registry,
+Core/Worker productionization rollout to `karmo-ai01`, Tailscale
+enrollment, dual-worker Commander READ Pack deployment, model-stack
+work) is **NEEDS VERIFICATION** against this file — it is tracked in
+`KARMO_DASHBOARD.md` and `docs/project-state/KARMO_DEVELOPER_NOTES.md`'s
+prior entries but has not been fully reconciled into this document's
+narrative form. Treat `KARMO_DASHBOARD.md`'s "KARMO CURRENT STAGE"
+section as the more current cockpit view for that period until a full
+reconciliation is done.
+
+## Durable Memory Core integration (2026-09-15) — VERIFIED, deployed
+
+PR #48 (`feat/durable-memory-core-integration`, merge commit
+`7b50a381b2e19e1b12aecd59182df3fd4215216b`) wired the existing H0.1
+PostgreSQL (`conversation_memory`, `karmo_outbox`) and H0.2 Qdrant
+(`karmo_semantic_memory`, `karmo_documents`) memory stack into the Core
+`chat` operator. No new service, listener, datastore, or schema
+migration. Independent security review (this session) found no
+HIGH/MEDIUM issues before merge.
+
+Production deployment to `karmo-ai01` surfaced 3 real defects, none
+caught by the isolated test suite (which mocks the memory backend):
+
+1. a pre-existing dispatch bug where `_STATUS_WORDS` matched the bare
+   word "memory" inside hyphenated text, hijacking any chat message
+   mentioning memory into the KarmoLab status tool instead of `_chat()`;
+2. a status-masking bug where a write failure silently overwrote a
+   simultaneous read failure in `memory_status`;
+3. a missing production runtime dependency — `qdrant_client` was never
+   installed for the system Python interpreter `chat` actually runs
+   under; `core-service` had no `requirements.txt` declaring it.
+
+All three fixed in PR #49 (`fix/durable-memory-deploy-gaps`, merge
+commit `6cee676e5516075f2c81b6be2f2480f24c0042c0`), CI green (5/5 checks),
+81 tests passing locally (2 new regression tests added). Full narrative,
+exact commands, and evidence:
+`docs/project-state/KARMO_DEVELOPER_NOTES.md` (2026-09-15 entry) and
+`docs/review/KARMO_DURABLE_MEMORY_DEPLOYMENT_GATE.md`.
+
+**Redeployed and verified on `karmo-ai01` (2026-09-15):** a bounded
+production canary proved `memory=ACTIVE` on both a write turn and a
+separately-started `chat` process's read turn (survives process
+exit/reopen); `conversation_memory` gained the 2 expected rows;
+`karmo_outbox` gained 1 `semantic_memory.upsert.v1` row, delivered by the
+existing H0.1 relay; a second independent `chat` invocation correctly
+recalled the canary phrase; the listener set (`ss -H -lntu`) was
+unchanged from the pre-deploy baseline; `karmo-worker.service` was
+unaffected throughout.
+
+**Production Access Authorization (acted on, per
+`docs/governance/KARMO_ENGINEERING_INVARIANTS.md`):**
+```
+PRODUCTION ACCESS AUTHORIZATION
+Task: Durable memory Core integration deployment (PR #48/#49)
+Target system/environment: karmo-ai01 — karmo-postgres (conversation_memory,
+  karmo_outbox tables, and the conversation_memory_id_seq sequence only),
+  /opt/karmo/core-service, /etc/karmo/core/, karmo-core.service
+Purpose: deploy merged, tested, security-reviewed durable-memory Core
+  integration
+Permitted operations: read-only host/service/listener audit; create scoped
+  Postgres role karmo_core_memory + grants; write
+  /etc/karmo/core/postgres.dsn; backup + replace /opt/karmo/core-service
+  (two deploy attempts); install psycopg/qdrant-client to the lofason user
+  site-packages; restart karmo-core.service; bounded chat canaries +
+  read-only verification queries
+Authority: READ-ONLY + WRITE — CREATE ROLE/GRANT (scoped as above), file
+  writes under /etc/karmo/core/ and /opt/karmo/core-service, one pip
+  install, two service restarts. No other write.
+Commands/command class: the numbered commands in
+  docs/review/KARMO_DURABLE_MEMORY_DEPLOYMENT_GATE.md
+Granted: 2026-09-15, by Kamara (in-session, read-only audit authorized
+  first, then write/deploy authorized separately)
+Expires: automatically on task completion (complete as of this entry)
+```
+
+Known non-blocking residuals: `qdrant-client`/`psycopg` are installed
+per-user via pip (`--break-system-packages`, required by Ubuntu 24.04's
+PEP 668 guard), not a project-pinned venv — fine at this scale, worth a
+dedicated venv if dependencies grow. Two `/opt/karmo/core-service.bak.*`
+trees exist from the two deploy attempts, not cleaned up (harmless).
+Document retrieval was exercised by the code path but not independently
+canaried with a real document match this session.
+
 **KARMO FOUNDATION v1: DECLARED COMPLETE, 2026-09-09.** See
 `docs/evidence/foundation-v1/FOUNDATION_V1_CLOSEOUT_REPORT.md` for the full
 closeout report and `docs/evidence/foundation-v1/` for the complete

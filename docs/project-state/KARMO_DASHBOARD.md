@@ -13,6 +13,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Real Worker Runtime network transport / remote job execution — ⛔ NOT ENABLED
 - KARMO Access & Connection Registry — ✅ MERGED
 - KARMO System Stewardship design — ✅ MERGED; workers not yet implemented/deployed
+- Durable Memory Core integration (conversation/semantic/document recall in `chat`) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -27,7 +28,13 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-Close the 2026-09-11 access + Core/Worker rollout with durable project-state records, then return focus to useful KARMO capabilities instead of more infrastructure churn.
+Durable Memory Core integration is deployed and canary-verified
+(2026-09-15) — no open item on that workstream. Remaining housekeeping:
+a fuller reconciliation of 2026-09-11–15 (access rollout, Core/Worker
+productionization, Commander dual-worker deployment) into
+`CURRENT_STATE.md`'s narrative is still owed (flagged `NEEDS
+VERIFICATION` there). Otherwise, return focus to useful KARMO
+capabilities instead of more infrastructure churn.
 
 ## CURRENT ISSUE
 
@@ -92,4 +99,4 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 
 Keep it short. Historical detail belongs in `CHANGE_LOG.md` and `CURRENT_STATE.md`, not here.
 
-Last refreshed: 2026-09-11
+Last refreshed: 2026-09-15
