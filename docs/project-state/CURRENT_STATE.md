@@ -466,7 +466,14 @@ evidence durability gap is closed.
 
 ## H0.4 — Integrity, Reconciliation & Production Integration
 
-**VERIFIED**:
+**VERIFIED**, plus a 2026-09-15 update: `registry_repair.py` (merged
+since 2026-09-09 but never actually run against production) was deployed
+and run in dry-run mode, and a fresh full `auditor.py` pass was taken —
+both confirmed **no new or real data-integrity problem exists**; every
+finding (18 `LEGACY_PROVENANCE_UNVERIFIED`, 2 `ORPHAN_VECTOR`, 3
+`ACTIVE_STATE_MISMATCH`) traces to the same 5 known pre-H0.2 legacy
+documents behaving exactly as already understood. Full detail:
+`docs/evidence/h04/H04_2026-09-15_FULL_AUDIT_AND_REPAIR_DRY_RUN.md`.
 
 - Isolated acceptance: 10/10 PASS
   (`docs/evidence/h04/H04_INTEGRITY_RECONCILIATION_REPORT.md`), plus a
