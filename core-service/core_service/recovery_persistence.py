@@ -24,8 +24,17 @@ class PostgresRecoveryStore:
         return self._tasks.list_by_states(states)
 
     def save_with_event(self, record, *, expected_version, event_key, event_type, actor, payload):
-        """CAS-update one task and append its recovery event in one transaction."""
+        """CAS-update one task and append its recovery event in one transaction.
+
+        The caller's in-memory state_version is advanced only after the database
+        transaction exits successfully. A commit failure must not make the
+        caller believe a version was persisted when PostgreSQL rolled it back.
+        """
+        if not event_key or not event_type or not actor:
+            raise PersistenceError("recovery event_key, event_type, and actor are required")
+
         event_id = str(uuid.uuid4())
+        next_version = None
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
                 """
@@ -66,5 +75,8 @@ class PostgresRecoveryStore:
             )
             if cur.fetchone() is None:
                 raise PersistenceError(f"duplicate task event key: {event_key}")
-            record.state_version = next_version
-            return next_version
+
+        # Psycopg/DB-API context managers commit on successful exit. Only now
+        # mirror the durable version into the caller's record.
+        record.state_version = next_version
+        return next_version

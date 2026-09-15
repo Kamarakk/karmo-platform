@@ -28,6 +28,18 @@ class PersistenceError(RuntimeError):
     pass
 
 
+_INVOCATION_TERMINAL_STATUSES = frozenset({"EXECUTED", "FAILED"})
+
+
+def _require_terminal_invocation_status(status):
+    if status not in _INVOCATION_TERMINAL_STATUSES:
+        allowed = ", ".join(sorted(_INVOCATION_TERMINAL_STATUSES))
+        raise PersistenceError(
+            f"invalid terminal invocation status: {status!r}; expected one of {allowed}"
+        )
+    return status
+
+
 def _json(value):
     return json.dumps(value, sort_keys=True, default=str)
 
@@ -270,6 +282,7 @@ class PostgresInvocationLedger:
 
     def complete(self, invocation_id, *, status, result_digest=None, evidence_digest=None,
                  verification_state=None):
+        _require_terminal_invocation_status(status)
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
                 """
@@ -523,6 +536,10 @@ class PostgresExecutionCoordinator:
                     (record.state.value, _json(record.audit_trail), approval_id),
                 )
                 raise CoreControlError("approval expired before execution claim")
+            if requester != record.requester:
+                raise CoreControlError("approval requester mismatch")
+            if authority_decision != record.authority_class:
+                raise CoreControlError("approval authority requirement mismatch")
             if executor_identity != record.authorized_executor:
                 raise CoreControlError("executor identity mismatch")
             digest = arguments_digest(tool_id, tool_version, arguments)
@@ -560,6 +577,7 @@ class PostgresExecutionCoordinator:
 
     def finish(self, claim: ExecutionClaim, *, status, result_digest=None,
                evidence_digest=None, verification_state=None):
+        _require_terminal_invocation_status(status)
         terminal_approval_state = ApprovalState.EXECUTED if status == "EXECUTED" else ApprovalState.FAILED
         now = datetime.now(timezone.utc)
         with self._connection_factory() as conn, conn.cursor() as cur:

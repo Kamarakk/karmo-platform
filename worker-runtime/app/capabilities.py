@@ -31,6 +31,13 @@ _VENV_PYTHON = Path(__file__).resolve().parent.parent / "venv" / "bin" / "python
 # SSH agent variables, and arbitrary user environment are never inherited.
 _SAFE_ENV_KEYS = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR")
 
+# KarmoLab document processing is deliberately a bounded proving capability,
+# not a general file-ingestion path. Refuse oversized inputs before read_text()
+# allocates memory so a workspace file cannot turn a READ-only job into an
+# unbounded-memory workload. Future real document ingestion must use its own
+# governed streaming/chunking path rather than raising this ceiling casually.
+MAX_DOCUMENT_BYTES = 8 * 1024 * 1024
+
 
 def _trusted_python_interpreter():
     """Return a KARMO-controlled Python interpreter path.
@@ -213,6 +220,12 @@ def _document_processing_test(payload, *, sandbox_root, allowed_root, timeout_se
     path = resolve_within_sandbox(root, payload["path"])
     if not path.is_file():
         raise SandboxError(f"file not found within allowed workspace: {payload['path']!r}")
+
+    file_size = path.stat().st_size
+    if file_size > MAX_DOCUMENT_BYTES:
+        raise SandboxError(
+            f"document input is too large ({file_size} bytes > {MAX_DOCUMENT_BYTES} cap) -- refused"
+        )
 
     text = path.read_text(encoding="utf-8")
     chunk_size = 200

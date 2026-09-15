@@ -86,34 +86,91 @@ class TaskRecoveryManager:
         return recovered
 
     def reconcile_unfinished_invocations(self, invocation_ledger):
-        """Bind unfinished invocation truth to task recovery without replaying work."""
-        reconciled = []
-        for invocation in invocation_ledger.list_unfinished():
+        """Bind unfinished invocation truth to task recovery without replaying work.
+
+        Preflight the complete unfinished set before the first task write. A
+        corrupt/missing task reference later in the ledger must not leave earlier
+        tasks partially transitioned merely because iteration order encountered
+        those valid rows first. This is not distributed atomicity; concurrent
+        changes can still race and are fenced by each task store's version/CAS
+        semantics. It does make static ledger/task inconsistencies fail closed
+        before recovery mutates durable task state.
+
+        Multiple unfinished rows may legitimately reference the same task. Read
+        one task snapshot per task_id and transition that task at most once; this
+        prevents a second stale copy of the same pre-recovery task version from
+        causing a partial-recovery CAS failure after the first row is persisted.
+        Every unfinished invocation remains represented in the recovery event
+        payload so unknown outcomes are not silently discarded.
+        """
+        invocations = list(invocation_ledger.list_unfinished())
+        candidates_by_task = {}
+
+        # Validation pass: no task state is changed until every unfinished row
+        # is structurally a live STARTED invocation with a resolvable task in a
+        # recovery-compatible state. completed_at=NULL with any other status is
+        # contradictory durable state and requires operator review rather than
+        # being normalized into an ordinary restart recovery path.
+        for invocation in invocations:
+            if invocation.status != "STARTED":
+                raise RecoveryError(
+                    f"unfinished invocation {invocation.invocation_id} has invalid status "
+                    f"{invocation.status!r}; expected STARTED"
+                )
             if invocation.task_id is None:
                 raise RecoveryError(
                     f"unfinished invocation {invocation.invocation_id} has no task_id"
                 )
-            task = self.task_store.get(invocation.task_id)
-            if task is None:
-                raise RecoveryError(
-                    f"unfinished invocation {invocation.invocation_id} references missing task {invocation.task_id}"
-                )
+
+            candidate = candidates_by_task.get(invocation.task_id)
+            if candidate is None:
+                task = self.task_store.get(invocation.task_id)
+                if task is None:
+                    raise RecoveryError(
+                        f"unfinished invocation {invocation.invocation_id} references missing task {invocation.task_id}"
+                    )
+                if task.state not in (
+                    TaskState.RUNNING,
+                    TaskState.VERIFYING,
+                    TaskState.RECOVERY_REQUIRED,
+                ):
+                    raise RecoveryError(
+                        f"unfinished invocation {invocation.invocation_id} conflicts with task "
+                        f"{task.task_id} state {task.state.value}"
+                    )
+                candidate = {"task": task, "invocations": []}
+                candidates_by_task[invocation.task_id] = candidate
+            candidate["invocations"].append(invocation)
+
+        reconciled = []
+        for task_id, candidate in candidates_by_task.items():
+            task = candidate["task"]
+            task_invocations = candidate["invocations"]
             if task.state == TaskState.RECOVERY_REQUIRED:
                 reconciled.append(task)
                 continue
-            if task.state not in (TaskState.RUNNING, TaskState.VERIFYING):
-                raise RecoveryError(
-                    f"unfinished invocation {invocation.invocation_id} conflicts with task "
-                    f"{task.task_id} state {task.state.value}"
-                )
-            reconciled.append(self._mark_recovery_required(
-                task,
-                reason="unfinished_invocation",
-                event_key=f"unfinished-invocation:{invocation.invocation_id}",
-                extra_payload={
+
+            if len(task_invocations) == 1:
+                invocation = task_invocations[0]
+                event_key = f"unfinished-invocation:{invocation.invocation_id}"
+                extra_payload = {
                     "invocation_id": invocation.invocation_id,
                     "invocation_status": invocation.status,
                     "idempotency_key": invocation.idempotency_key,
-                },
+                }
+            else:
+                event_key = f"unfinished-invocations:{task_id}:{task.state_version}"
+                extra_payload = {
+                    "invocation_ids": [item.invocation_id for item in task_invocations],
+                    "invocation_statuses": [item.status for item in task_invocations],
+                    "idempotency_keys": [item.idempotency_key for item in task_invocations],
+                    "unfinished_invocation_count": len(task_invocations),
+                }
+
+            reconciled.append(self._mark_recovery_required(
+                task,
+                reason="unfinished_invocation",
+                event_key=event_key,
+                extra_payload=extra_payload,
             ))
         return reconciled

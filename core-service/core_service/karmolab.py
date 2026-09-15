@@ -18,6 +18,37 @@ class KarmoLabReadError(RuntimeError):
     pass
 
 
+KARMOLAB_STATUS_TOOL_ID = "karmolab.read_status"
+KARMOLAB_STATUS_VERSION = "1.0.0"
+KARMOLAB_STATUS_MANIFEST = {
+    "tool_id": KARMOLAB_STATUS_TOOL_ID,
+    "domain": "karmolab",
+    "version": KARMOLAB_STATUS_VERSION,
+    "description": "Return bounded, non-secret, read-only host/runtime status.",
+    "input_schema": {"type": "object", "additionalProperties": False},
+    "output_schema": {"type": "object"},
+    "capability_class": "READ",
+    "read_scope": ["local_host_runtime_status"],
+    "write_scope": [],
+    "external_side_effects": False,
+    "financial_action": False,
+    "destructive_action": False,
+    "network_requirements": [],
+    "secret_requirements": [],
+    "invocation_identity": "core",
+    "timeout_seconds": 10,
+    "retry_policy": {"max_attempts": 1},
+    "idempotent": True,
+    "idempotency_mechanism": "read_only_snapshot",
+    "rollback_or_compensation": "not required",
+    "health_check": "local",
+    "deprecation_policy": "versioned",
+    "dependencies": ["systemctl", "docker_optional", "/proc/meminfo_optional"],
+    "observability": ["invocation_ledger", "result_digest"],
+    "failure_isolation": "per invocation",
+}
+
+
 def _run_fixed(argv: tuple[str, ...], *, timeout: float = 3.0) -> dict:
     try:
         completed = subprocess.run(
@@ -125,3 +156,16 @@ def read_status(_arguments: dict | None = None) -> dict:
         "containers": _container_status(),
         "mode": "READ_ONLY",
     }
+
+
+def register_read_status_capability(*, registry, dispatcher):
+    """Register and bind the proving-ground READ capability through Core.
+
+    This helper intentionally uses the same authoritative registry + dispatcher
+    path as any future real tool. It opens no listener and grants no new
+    authority: the manifest is READ-only, has no network/secret requirements,
+    and the dispatcher computes the approval requirement from policy.
+    """
+    record = registry.register(dict(KARMOLAB_STATUS_MANIFEST))
+    dispatcher.bind(KARMOLAB_STATUS_TOOL_ID, KARMOLAB_STATUS_VERSION, read_status)
+    return record
