@@ -125,6 +125,28 @@ def test_memory_context_is_bounded_before_it_reaches_model():
     assert len(injected) <= MAX_MEMORY_CONTEXT_CHARS
 
 
+def test_read_and_write_failure_are_both_visible_not_masked():
+    client = FakeModelClient()
+    memory = FakeMemoryBackend(fail_read=True, fail_write=True)
+    operator = KarmoOperator(model_client=client, memory_backend=memory)
+
+    response = operator.handle("hello Karmo")
+
+    assert response["message"] == "memory-aware answer"
+    assert response["memory_status"] == "DEGRADED_READ_FAILED:RuntimeError+DEGRADED_WRITE_FAILED:RuntimeError"
+
+
+def test_message_mentioning_memory_still_reaches_chat_not_karmolab_status():
+    client = FakeModelClient()
+    memory = FakeMemoryBackend()
+    operator = KarmoOperator(model_client=client, memory_backend=memory)
+
+    response = operator.handle("Please recall this for your durable-memory canary: token-123.")
+
+    assert response["kind"] == "chat"
+    assert response["message"] == "memory-aware answer"
+
+
 def test_missing_memory_config_uses_explicit_degraded_backend():
     backend = NullMemoryBackend()
     context = backend.build_context("anything")
