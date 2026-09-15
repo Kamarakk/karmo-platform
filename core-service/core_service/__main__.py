@@ -43,6 +43,8 @@ def health():
 
 def _render_operator_response(response: dict) -> None:
     print(f"KARMO> {response.get('message', '')}")
+    if response.get("memory_status"):
+        print(f"KARMO> memory={response['memory_status']}")
     if response.get("kind") == "karmolab_read":
         print(
             "KARMO> verification="

@@ -44,7 +44,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install --disable-pip-version-check pytest "psycopg[binary]"
+      - run: python -m pip install --disable-pip-version-check pytest "psycopg[binary]" qdrant-client
       - name: Run Core service suite (includes real-PostgreSQL persistence tests)
         working-directory: core-service
         run: python -m pytest -q tests
