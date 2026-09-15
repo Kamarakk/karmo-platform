@@ -6,17 +6,181 @@ the KARMO Large Autonomous Review of PR #14–#21 and the Post-Foundation
 Overnight Readiness/Core v2 Engineering Blueprint programs earlier in
 this sequence. See MASTER_INDEX.md for status-tag definitions.
 
-**Partial reconciliation added 2026-09-15 for one specific workstream
-(Durable Memory Core integration) below — see that section.** The
-2026-09-11 through 2026-09-14 period (Access & Connection Registry,
-Core/Worker productionization rollout to `karmo-ai01`, Tailscale
-enrollment, dual-worker Commander READ Pack deployment, model-stack
-work) is **NEEDS VERIFICATION** against this file — it is tracked in
-`KARMO_DASHBOARD.md` and `docs/project-state/KARMO_DEVELOPER_NOTES.md`'s
-prior entries but has not been fully reconciled into this document's
-narrative form. Treat `KARMO_DASHBOARD.md`'s "KARMO CURRENT STAGE"
-section as the more current cockpit view for that period until a full
-reconciliation is done.
+**Full reconciliation of 2026-09-11 through 2026-09-15 added 2026-09-15**
+— see "2026-09-11 through 2026-09-14 — Access rollout, Core/Worker
+productionization, dual-worker Commander, model stack" and "Durable
+Memory Core integration" below. Source records for the reconciliation:
+the eleven `PROJECT_SAVE_2026-09-1{1,2,3,4}_*.md` checkpoints in this
+directory, cross-checked against `git log`/`gh pr view` for exact merge
+commits and current PR state (not taken on the checkpoint files' word
+alone).
+
+## 2026-09-11 through 2026-09-14 — Access rollout, Core/Worker productionization, dual-worker Commander, model stack
+
+**VERIFIED (repo + operator-attested production checkpoints), reconciled
+2026-09-15.** This section covers the gap between the 2026-09-10 Worker
+Runtime v0.1 merge closeout above and the 2026-09-15 Durable Memory
+section below. Chronological summary; each PROJECT SAVE checkpoint cited
+remains the detailed source.
+
+### 2026-09-11 — Tailscale enrollment, Core v2 and Worker Runtime deployed to `karmo-ai01`
+
+- KARMO-AI01 enrolled in the existing tailnet at `100.75.239.44`
+  (production DNS acceptance disabled, Tailscale SSH not enabled, no
+  subnet routes/exit-node). KVE02 `100.75.39.34` retained as fallback.
+- **PR #33** (`feat: productionize Core v2 for approved rollout`) merged
+  (`cdbe704e577919c2f63569df41dc3f777dc47c4f`): consolidated the rollout
+  branch onto one canonical `core-service/` implementation (the
+  `core-v2-prototypes/` tree remains design/evidence only, never copied
+  into production), local-only, no listener, no DB/Qdrant writes.
+- Read-only host preflight found no path/service-name collisions but
+  also found `lofason` lacks non-interactive sudo on `karmo-ai01` —
+  privileged install required an interactive session, deferred one
+  checkpoint rather than proceeding unattended.
+- Once performed: `karmo-core.service` installed to
+  `/opt/karmo/core-service`, enabled, active. Deployment automation
+  gated Worker install on Core's health check passing first.
+- **PR #34** (`feat: productionize Worker Runtime behind Core`) merged
+  (`21019c1e2833b0f797e09d225639305530c48f3e`): new `worker-service/`
+  restricted production boundary — hard dependency on Core binding,
+  fail-closed if Core is unavailable, no listener, no DB/Qdrant writes,
+  no capability/job execution yet (this predates Commander). Gate C
+  evidence: `docs/evidence/worker-runtime/PRODUCTIONIZATION_GATE_C.md`.
+  `karmo-worker.service` installed, enabled, active.
+- **PR #35** (`docs: add access registry and system stewardship
+  framework`) merged (`d158fc4d252af1daf03dd77c57b066a29446ec44`):
+  `docs/access/*` registry (hosts, auth methods, connection paths,
+  recovery tree), and the Mandatory System-Fit & Reuse Review adopted
+  into agent workflow (`docs/governance/KARMO_SYSTEM_FIT_REVIEW.md`,
+  referenced from `CLAUDE.md`/`AGENTS.md` item 8).
+- A Remote Desktop Commander npm install attempt on `karmo-ai01` failed
+  (`ERR_REQUIRE_ESM`, host Node `18.19.1` too old for the current
+  dependency chain) — a tooling compatibility issue, not a KARMO defect;
+  no production change resulted from the attempt.
+- **Controlled reboot performed** (to load already-installed kernel
+  `6.8.0-139-generic`, previously running `6.8.0-138-generic`).
+  Post-reboot verification: `tailscaled`, `karmo-core.service`,
+  `karmo-worker.service`, `docker.service` all active; `loginctl
+  show-user lofason -p Linger` = `yes`; the H0.1 relay process survived
+  reboot (closing that previously-open reboot-persistence gap).
+- **Not done in this rollout**: real Worker network transport, Worker
+  capability/job execution, any DB schema change, Qdrant mutation, or
+  existing-service restart beyond Core/Worker themselves.
+
+### 2026-09-12 — Durable worker coordination hardening merged; H0.1 test-hardening pushed (not merged)
+
+- **PR #41** (`harden durable worker coordination boundaries`) merged
+  (`879b242c801f10fc141e68874847d9b9315dd304`): fail-closed current-key
+  checks, drain-before-key-rotation, live-lease ticket fencing,
+  authenticated heartbeat requirement, transactional worker audit
+  events, fail-closed finalization, bounded terminal-ticket cleanup.
+  Pre-merge CI green (Core Productionization #63, KARMO Full Predeploy
+  #124). Post-merge read-only check: both `karmo-core.service` and
+  `karmo-worker.service` active; app listeners still loopback-only
+  (5433/6333/6334/11434) plus SSH; no worker-network listener opened.
+- KVE02's host key was independently re-fingerprinted and confirmed
+  matching before being (re-)pinned on `karmo-ai01` — strict host-key
+  checking never relaxed; root SSH AI01→KVE02 remains refused by design.
+- Branch `feat/worker-transport-activation` opened from the PR #41 merge
+  point to begin Worker01/Worker02 activation, reusing the durable Core
+  coordinator rather than building a second one.
+- The H0.1 isolated failure-matrix test-hardening pass (3 real test-code
+  robustness fixes, frozen `test/h01/app/` untouched, 19 passed/2
+  skipped/0 failed) — already reconciled in this file's H0.1 section
+  above — was pushed to `staging/karmo-full-predeploy-20260912` per
+  explicit instruction not to merge that session. See
+  `PROJECT_SAVE_2026-09-12_H01_TEST_HARDENING.md`.
+
+### 2026-09-13 — Local model stack activated; Worker01 and Worker02 activated (bounded READ)
+
+- **PR #45** (`feat: activate local open model stack`) merged
+  (`37cfc110b32fde9898b7d90aa1855b1f608ab18f`): deterministic ranked
+  chat routing `qwen3:8b → ministral-3:8b → granite3.3:2b`, independent
+  verifier `mistral:7b`. DeepSeek and Gemini were evaluated and
+  explicitly dropped (reasoning-path fit and no-cloud-dependency
+  decisions respectively) — not merely unmentioned. CI green (Core
+  Productionization #117, KARMO Full Predeploy #210). Staged production
+  deploy completed all markers (`SOURCE_DEPLOY_PASS` through
+  `MODEL_STACK_CONTINUOUS_DEPLOY_PASS`); independent post-deploy recheck
+  confirmed the exact routing order, verifier, loopback-only Ollama, and
+  matching deployed source hashes. `deepseek-r1:7b`/`deepseek-r1:8b`
+  removed from AI01; `llama3.2:3b`/`qwen3:4b` remain installed but
+  inactive (not part of routing; not deleted — a deferred cleanup
+  decision).
+- **KARMO-WORKER01** activated: registered through the durable
+  coordinator, authenticated heartbeat active, capability scope limited
+  to `local_model_probe`. Required bounded READ proof job succeeded in
+  one attempt (`JOB_LEASED → EXECUTION_TICKET_ISSUED →
+  EXECUTION_TICKET_CONSUMED → RESULT_SUBMITTED → JOB_SUCCEEDED`). No new
+  listener introduced.
+- **KARMO-WORKER02** activated the same way: host fingerprint
+  `SHA256:HBMp5Pf16lETJFEBEnixIfCHaBGKBCY3fmisk24QHAg` confirmed,
+  registered as `KARMO-WORKER02` (`local_model_probe`, transport
+  `ssh_stdio`, no inbound listener), proof job `25236308-...`
+  `SUCCEEDED` in one attempt, result digest
+  `b9c2f3d672633f918fddd9863a378c129152c317b943feec07adc8ecfa7e8bde`.
+  Temporary transfer secret and temporary proof-job grants both removed
+  after activation. **Both workers independently production-proven** for
+  the bounded READ path as of this checkpoint.
+
+### 2026-09-14 — Dual-worker Commander READ Pack activated
+
+- Reviewed Commander activation merged: `1423bc7ef82ca0bb9d9f421f3be5c25dcf52c002`
+  (PR #47; PR #46 was the review-only precursor). Both workers hold the
+  identical durable capability claim: `local_model_probe 1.0.0`,
+  `commander.system_snapshot 1.0.0`, `commander.service_status 1.0.0`,
+  `commander.listener_snapshot 1.0.0`. `commander.bounded_text_read` and
+  `commander.directory_list` remain disabled — their `allowed_root`
+  wiring is not production-complete and they fail closed by design (do
+  not enable with `allowed_root=/` or `/etc` as a shortcut).
+- Worker01 canary (`commander.system_snapshot`): approval
+  `f8d15b7f-1591-40fb-8269-8d875bade029`, job
+  `f00c7b5a-cab6-43c3-83d1-256688202409`, `SUCCEEDED` in 1 attempt,
+  approval final state `EXECUTED`, result digest
+  `d3e012370e73bdae4eeda0dd85698e4059a1a22d4ddbaccf699be1c184cd5132`.
+- Worker02 canary: approval `8b75487c-f5f2-4d61-b9b3-4e93890b4958`, job
+  `65797770-00a2-4cfd-95e9-c6bbc1a45589`, `SUCCEEDED` in 1 attempt,
+  result digest
+  `3c944c6611cd209129cd0c3530942320a845d49da347146fe864d70fa5317976`.
+- **Production permission repair** (real change, recorded here as the
+  authoritative record — matches the operator's own session log):
+  ```sql
+  GRANT INSERT ON TABLE public.core_approval_records TO karmo_gateway;
+  GRANT INSERT ON TABLE public.karmo_worker_jobs TO karmo_gateway;
+  ```
+  Least-privilege, additive only — no broader role expansion. Required
+  because the already-reviewed gateway API needed these two INSERT
+  grants to actually persist the real approval/job path in production
+  (the isolated tests had not exercised the production role's actual
+  grant set).
+- No new listener on AI01 or either worker; no cloud credential
+  introduced; no arbitrary shell or unrestricted file capability
+  enabled; SSH host-key verification enforced throughout; admin private
+  key stayed on KARMO-DEV01; root SSH remains disabled on both workers.
+- **Gate closed**: both workers independently production-proven for
+  Commander READ through the full approval → job → payload → lease →
+  ticket → execution → authenticated result → event/ledger path.
+
+### Still open from this period — not yet merged, not yet deployed
+
+**PR #43** (`draft: stage KarmoLab, routing + durable recovery
+hardening`, opened 2026-09-13, base `main`, still **OPEN/DRAFT** as of
+2026-09-15) — a substantial, separate body of hardening work on the same
+`staging/karmo-full-predeploy-20260912` branch, continued past what PR
+#36 already merged from it. Four iterations, each with its own CI
+evidence per the PR description: (1) wiring the KarmoLab READ probe
+through the authoritative `CapabilityRegistry`/`CapabilityDispatcher`
+path with a closed manifest; (2) `ModelRouter` hardening (rejects
+malformed resources, frozen/normalized capabilities, hard trust-tier and
+exclusion gates); (3) operator policy hardening (explicit local-model
+trust floor, fail-closed exact-`PASS` verifier matching — no more
+prefix-match false acceptance); (4) durable restart/reconciliation
+hardening (a validation pass before the first task write, so a bad
+ledger row can no longer let earlier valid tasks be mutated first). **Do
+not treat any of this as merged, deployed, or reviewed for this
+reconciliation** — it is accurately tracked only as open in this
+section and in `NEXT_STEPS.md`, pending Kamara's decision to bring it
+through review and merge.
 
 ## Durable Memory Core integration (2026-09-15) — VERIFIED, deployed
 
