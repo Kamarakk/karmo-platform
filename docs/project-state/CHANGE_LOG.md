@@ -25,6 +25,29 @@ MASTER_INDEX.md for status-tag definitions.
   created and enabled; `loginctl enable-linger lofason` set; production
   functional test delivered one outbox event. No repo evidence file for this
   step (correct, per governance — no production data in this repo).
+- **VERIFIED** (repo, 2026-09-09) — H01-T01/H01-T18 production-read-only
+  components subsequently performed and PASSED under a separate, explicit,
+  read-only Production Access Authorization (KARMO Foundation v1 closeout,
+  Workload 2): `docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`.
+  `docs/evidence/h01/H01_FAILURE_MATRIX_REPORT.md`'s original 2026-09-06
+  BLOCKED recording is retained as the historical record of what the
+  isolated suite alone could verify at the time; it now cross-references
+  this later resolution.
+- **VERIFIED** (repo, 2026-09-12, branch
+  `staging/karmo-full-predeploy-20260912`, not yet merged) — code review of
+  `test/h01/tests/test_h01_failure_matrix.py` found three test-code
+  robustness/coverage gaps (H01-T17 host/container clock-skew-sensitive
+  latency comparison; H01-T10 duplicate-delivery proved by direct `_upsert`
+  calls rather than the real claim/finish path; H01-T06/H01-T07
+  environment-dependent real-socket fault injection). All three fixed in
+  `test/h01/conftest.py` and `test/h01/tests/test_h01_failure_matrix.py`
+  (deterministic test doubles, monotonic in-process timing, and a genuine
+  crash/redelivery cycle through `OutboxRelay`); no file under
+  `test/h01/app/` touched (SHA-256 unchanged). Full matrix re-run: 19
+  passed, 2 skipped (H01-T01/H01-T18, unaffected), 0 failed. Evidence
+  regenerated: `docs/evidence/h01/H01_FAILURE_MATRIX_REPORT.md`,
+  `h01-failure-matrix-run.txt`, `h01-failure-matrix-junit.xml`. See
+  `docs/project-state/PROJECT_SAVE_2026-09-12_H01_TEST_HARDENING.md`.
 
 ## H0.2 — Knowledge Lifecycle & Vector Versioning
 

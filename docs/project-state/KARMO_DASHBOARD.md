@@ -9,12 +9,13 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Foundation & Reliability Layer (Foundation v1) — ✅ COMPLETE
 - KARMO Control & Approval Layer (Core) — ✅ DEPLOYED TO KARMO-AI01
 - Trusted Computer Worker System (Worker Runtime local service boundary) — ✅ DEPLOYED TO KARMO-AI01
-- Direct remote network path to KARMO-AI01 over Tailscale — ✅ ENROLLED; direct client SSH smoke still needs verification
-- Real Worker Runtime network transport / remote job execution — ⛔ NOT ENABLED
+- Direct remote network path to KARMO-AI01 over Tailscale — ✅ ACTIVE (`100.75.239.44`)
+- Real Worker Runtime network transport / remote job execution — ✅ ENABLED (SSH stdio gateway; corrected 2026-09-15 — this line was stale since ~2026-09-13/14; see `CURRENT_STATE.md`'s reconciliation section for verification of all 5 previously-deferred security items, all now closed: cryptographic worker credential, subprocess env allowlisting, symlink-escape test, result-authenticity binding, durable Postgres-backed coordinator persistence)
 - KARMO Access & Connection Registry — ✅ MERGED
 - KARMO System Stewardship design — ✅ MERGED; workers not yet implemented/deployed
-- BloomBoss Historical Data Intelligence (Phase 1) — ✅ PR #32 BUILD GATE READY; NOT MERGED OR DEPLOYED
-- KARMO-FIRST Orchestration Direction — 🟡 ARCHITECTURE LOCKED IN PRINCIPLE; implementation scaffold pending
+- Durable Memory Core integration (conversation/semantic/document recall in `chat`) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
+- KARMO PR #43 hardening (approval authority binding, model routing policy, recovery hardening) — ✅ MERGED (2026-09-15); NOT yet deployed to KARMO-AI01
+- BloomBoss Historical Data Intelligence (Phase 1) — 🟡 reconciled against current `main` 2026-09-15; merge/promotion decision pending
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -31,19 +32,23 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-Preserve BloomBoss Phase 1 at its existing gate while designing the next KARMO control-plane slice around:
-
-`KARMO Orchestration Layer -> Model Router -> Common KARMO Capability Interface -> Core Approval -> Worker Execution -> Independent Verification -> Durable Memory/Audit`
-
-At the same time, recover and verify the original three-node KVE compute design before assigning distributed roles or recommending new hardware.
+Durable Memory Core integration and PR #43's hardening are both merged
+and canary-verified/tested as of 2026-09-15. PR #43 is not yet deployed
+to `karmo-ai01`. BloomBoss Phase 1 (PR #32) has just been reconciled
+against current `main` (2026-09-15) and awaits Kamara's merge/promotion
+decision — see `NEXT_STEPS.md`.
 
 ## CURRENT ISSUE
 
-No active BloomBoss code blocker.
+No active code blocker. KARMO-AI01, KVE01–03, and both workers are all
+verified reachable and healthy as of the 2026-09-11–15 reconciliation
+(`CURRENT_STATE.md`) — the Sept-11-era Remote Desktop Commander/Proxmox
+reachability concern previously noted here is resolved.
 
-The immediate infrastructure blocker is management-path verification: Remote Desktop Commander currently knows only `karmo-ai01`, which was observed offline during this session; KVE01/KVE03 were separately shown reachable by SSH from KARMO-DEV01, while KVE02's LAN target is user-supplied and still needs live verification.
-
-Palmstreet's built-in order export is currently unreliable/unavailable in the observed account/session even for a one-day range. Seller Hub table evidence is therefore staged as a fallback source, not as the long-term primary ingestion design.
+Palmstreet's built-in order export was unreliable/unavailable as of the
+Phase 1 build session; Seller Hub table evidence remains staged as a
+fallback source pending re-verification, not the long-term primary
+ingestion design.
 
 ## NEW GOVERNING RULE
 
@@ -53,17 +58,12 @@ External systems should be sources, destinations, or adapters — not KARMO's br
 
 ## NEXT GATE
 
-Before any distributed deployment or Proxmox changes:
-
-1. Restore/verify KARMO-AI01 management availability.
-2. Perform read-only reachability checks from KARMO-controlled infrastructure to KVE01/KVE02/KVE03.
-3. Verify hostnames, cluster state, and real hardware capacity.
-4. Persist that truth in KARMO records.
-5. Only then assign workload roles and decide whether hardware upgrades are justified.
+1. Kamara's merge/promotion decision on BloomBoss Phase 1 (PR #32, now reconciled against current `main`).
+2. Deploy PR #43's merged hardening to `karmo-ai01` (code merge only so far).
+3. Choose the next KARMO capability track once the above are resolved.
 
 ## AFTER THIS
 
-- Scaffold orchestration task/job state, model-provider abstraction, common capability registry, approval/risk contract, Worker job contract, verification-result contract, and audit/event format in non-production scope.
 - Extend Palmstreet staging so all verified Seller Hub fields, including Buyer Note and Seller Note, are represented and tested without storing unnecessary customer PII in source control.
 - Keep Palmstreet purchases and sales as structured platform evidence when possible; screenshots/invoices remain fallback evidence only.
 - Continue BloomBoss reconciliation only when source evidence can be reliably mapped to canonical inventory without invented matches.
@@ -71,24 +71,28 @@ Before any distributed deployment or Proxmox changes:
 
 ## ACTIVE SAFETY / AUTHORITY BOUNDARY
 
-- PR #32 / `feat/bloomboss-historical-intelligence` remains isolated from production
-- GitHub/dev scope only for current architecture/scaffolding work
-- No marketplace writes or customer actions
-- No OBS
-- No BloomBoss deployment or merge
-- No secrets
-- No Proxmox cluster/network/configuration changes until live state is verified
-- No new daemon/model service installation merely for convenience
+- Core is production-deployed, local-only, and has no network listener.
+- Worker service boundary is production-deployed with real SSH-stdio Worker network transport enabled (corrected 2026-09-15) and bounded READ-only capability execution (`commander.system_snapshot`/`service_status`/`listener_snapshot`, `local_model_probe`) — still no arbitrary shell, no write/destructive capability, no inbound listener on either worker.
+- Tailscale provides direct network reachability only; Tailscale SSH is not enabled.
+- KVE02 remains the documented fallback remote path.
+- Production access remains task-specific and approval-gated.
+- BloomBoss (PR #32) remains isolated dev/GitHub scope only: no production DB implementation, no marketplace writes, no customer actions, no OBS, no deployment or merge until Kamara's separate high-level decision.
 
-## DEFERRED BEFORE ANY REAL WORKER NETWORK EXPOSURE
+## CLOSED (2026-09-15 correction) — previously listed as deferred before real Worker network exposure
 
-1. Cryptographic worker credential
-2. Subprocess environment allowlisting
-3. Dedicated symlink-escape test
-4. Result-authenticity cryptographic binding
-5. Coordinator persistence
-
-These remain blockers for real Worker network exposure.
+All 5 previously-named blockers were closed between roughly 2026-09-13 and
+2026-09-14, verified present in code 2026-09-15: cryptographic worker
+credential (`worker-runtime/app/crypto_boundary.py`), subprocess
+environment allowlisting (fixed `env={...}` on every Commander subprocess
+call), a dedicated symlink-escape test
+(`worker-runtime/tests/test_runtime_file_security.py`,
+`test_predeploy_security_hardening.py`), result-authenticity
+cryptographic binding (`ResultAuthenticator`), and durable
+Postgres-backed coordinator persistence (`PostgresWorkerCoordinatorStore`
+— not in-memory). Real Worker network transport (SSH stdio gateway) is
+now enabled and production-proven for Worker01/Worker02's Commander READ
+path. This section previously listed these as still deferred; that was
+stale.
 
 ## SESSION STATUS FORMAT
 
@@ -110,4 +114,4 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 
 Keep it short. Historical detail belongs in `CHANGE_LOG.md`, `CURRENT_STATE.md`, and dated PROJECT SAVE files.
 
-Last refreshed: 2026-09-11
+Last refreshed: 2026-09-15

@@ -341,6 +341,26 @@ def test_h01_t09_crash_after_qdrant_write_before_delivered_update(pg_conn, qdran
     assert points[0].id == event_id or str(points[0].id) == str(event_id)
 
 
+def _crash_after_upsert(relay, pg_conn, event_id):
+    """Drive one real claim -> authoritative-content -> embed -> Qdrant-upsert
+    delivery attempt through the relay, then "crash" before _finish is ever
+    called -- exactly the path an actual duplicate/redelivered event takes
+    (e.g. a worker that upserts and then dies before recording completion).
+    Rewinds claimed_at so the next relay's stale-claim reclaim picks the
+    event back up, as in the crash-recovery tests above."""
+    claimed = relay.claim_batch(batch_size=10)
+    assert [event.event_id for event in claimed] == [event_id]
+    event = claimed[0]
+    conversation_id, content, created_at = relay._authoritative_user_content(event)
+    vector = relay._embedding(content)
+    relay._upsert(event, conversation_id, content, created_at, vector)
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "UPDATE public.karmo_outbox SET claimed_at = %s WHERE event_id = %s",
+            (datetime.now(timezone.utc) - timedelta(seconds=10), event_id),
+        )
+
+
 # ---------------------------------------------------------------------------
 # H01-T10 -- Duplicate delivery
 # Injection/action: Deliver the same event at least three times
@@ -349,19 +369,25 @@ def test_h01_t09_crash_after_qdrant_write_before_delivered_update(pg_conn, qdran
 # ---------------------------------------------------------------------------
 def test_h01_t10_triple_duplicate_delivery(pg_conn, qdrant_client):
     event_id = remember_exchange("delivered three times", "ack")
-    relay = _relay(worker_id="relay-1", client=qdrant_client, embedding_function=deterministic_embedding)
 
-    claimed = relay.claim_batch(batch_size=10)
-    assert len(claimed) == 1
-    event = claimed[0]
-    conversation_id, content, created_at = relay._authoritative_user_content(event)
-    vector = relay._embedding(content)
+    # Two independent workers each genuinely deliver the event end-to-end
+    # (claim -> authoritative content -> embed -> Qdrant upsert) and then
+    # crash before finishing, forcing lease-recovery redelivery, before a
+    # third worker completes the full claim -> ... -> finish path. That is
+    # three real deliveries of the same event through the real relay code
+    # path, not three direct calls into the upsert helper.
+    relay_1 = _relay(worker_id="dup-1", lease_seconds=1, client=qdrant_client, embedding_function=deterministic_embedding)
+    _crash_after_upsert(relay_1, pg_conn, event_id)
 
-    for _ in range(3):
-        relay._upsert(event, conversation_id, content, created_at, vector)
+    relay_2 = _relay(worker_id="dup-2", lease_seconds=1, client=qdrant_client, embedding_function=deterministic_embedding)
+    _crash_after_upsert(relay_2, pg_conn, event_id)
 
-    finished = relay._finish(event, "delivered")
-    assert finished is True
+    relay_3 = _relay(worker_id="dup-3", lease_seconds=1, client=qdrant_client, embedding_function=deterministic_embedding)
+    outcomes = relay_3.process_once()
+    assert outcomes == [(event_id, "delivered")]
+
+    status, *_rest = _outbox_row(pg_conn, event_id)
+    assert status == "delivered"
 
     points = qdrant_client.retrieve(collection_name=COLLECTION, ids=[event_id])
     assert len(points) == 1
@@ -578,29 +604,36 @@ def test_h01_t16_digest_mismatch_marks_dead(pg_conn, qdrant_client):
 #                    error
 # ---------------------------------------------------------------------------
 def test_h01_t17_healthy_delivery_latency(pg_conn, qdrant_client):
-    started_at = {}
+    # Elapsed time is measured with a single monotonic clock inside this
+    # process, wrapped directly around each event's delivery cycle. This
+    # avoids comparing an application-side wall-clock timestamp against a
+    # Postgres-side timestamp from a different (Docker) clock source, which
+    # would make the assertion sensitive to host/container clock skew rather
+    # than actual delivery latency.
+    relay = _relay(worker_id="relay-1", client=qdrant_client, embedding_function=deterministic_embedding)
+
     event_ids = []
     for i in range(20):
-        started_at_ts = datetime.now(timezone.utc)
         event_id = remember_exchange(f"warm event {i}", f"ack {i}")
-        started_at[event_id] = started_at_ts
-        event_ids.append(event_id)
+        started_at = time.monotonic()
+        outcomes = relay.process_once(batch_size=1)
+        elapsed = time.monotonic() - started_at
 
-    relay = _relay(worker_id="relay-1", client=qdrant_client, embedding_function=deterministic_embedding)
-    outcomes = drain(relay, batch_size=20)
-
-    assert len(outcomes) == 20
-    assert all(outcome == "delivered" for _eid, outcome in outcomes)
-
-    for event_id in event_ids:
-        status, *_rest, processed_at, err = _outbox_row(pg_conn, event_id)
-        assert status == "delivered"
-        assert err is None
-        latency = (processed_at - started_at[event_id]).total_seconds()
-        assert 0 <= latency < HEALTHY_DEADLINE_SECONDS, (
-            f"event {event_id} took {latency}s, exceeding the "
+        assert outcomes == [(event_id, "delivered")]
+        assert elapsed < HEALTHY_DEADLINE_SECONDS, (
+            f"event {event_id} took {elapsed:.3f}s to deliver, exceeding the "
             f"{HEALTHY_DEADLINE_SECONDS}s healthy-delivery deadline"
         )
+        event_ids.append(event_id)
+
+    for event_id in event_ids:
+        status, *_rest, err = _outbox_row(pg_conn, event_id)
+        assert status == "delivered"
+        assert err is None
+
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM public.karmo_outbox WHERE status = 'delivered'")
+        assert cur.fetchone()[0] == 20
 
     count = qdrant_client.count(collection_name=COLLECTION, exact=True).count
     assert count == 20

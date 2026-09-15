@@ -15,6 +15,7 @@ for a capability_id never gets to redefine what that ID means.
 
 from dataclasses import dataclass, field
 
+from commander_readonly_manifest import COMMANDER_READONLY_CAPABILITIES
 from tool_registry_reuse import CapabilityClass, compute_approval_requirement
 
 
@@ -181,6 +182,7 @@ SAFE_CAPABILITIES = {
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
 }
+SAFE_CAPABILITIES.update(COMMANDER_READONLY_CAPABILITIES)
 
 # Explicitly, permanently excluded from this workload's capability set --
 # named here so their absence is a deliberate, visible design choice, not

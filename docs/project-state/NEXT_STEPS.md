@@ -1,5 +1,62 @@
 # KARMO Next Steps
 
+## 2026-09-15 update (read this first)
+
+**2026-09-11 through 2026-09-15 is now fully reconciled** into
+`CURRENT_STATE.md` — see its "2026-09-11 through 2026-09-14 — Access
+rollout, Core/Worker productionization, dual-worker Commander, model
+stack" and "Durable Memory Core integration" sections. Covers: Tailscale
+enrollment, Core v2 + Worker Runtime productionized and deployed to
+`karmo-ai01` (PRs #33–#35), durable worker coordination hardening (PR
+#41), the local open model stack (`qwen3:8b`/`ministral-3:8b`/
+`mistral:7b`/`granite3.3:2b`, PR #45), Worker01 + Worker02 activation,
+dual-worker Commander READ Pack activation (PR #47) with its
+`karmo_gateway` grant repair, and durable memory in Core chat (PR
+#48/#49). Everything below this point (Foundation v1 through Worker
+Runtime v0.1 merge closeout) remains historical context from
+2026-09-09/10 and is unaffected.
+
+### 2026-09-15 (later same day) — PR #43 merged
+
+**PR #43 has been reconciled and merged** (`f2ba1a49ebe8baf664a93cf59dc74693506db42a`) —
+no longer an open decision. Its full 12+ iterations (approval
+authority-binding fix, `ModelRouter`/`ModelResource` validation and hard
+policy gates, KarmoLab wired through the registry/dispatcher, verifier
+exact-match strictness, durable recovery preflight validation, terminal
+invocation status allowlisting, worker document-size cap) are now part
+of `main`, independently security-reviewed (no HIGH/MEDIUM findings) and
+test-verified (148/111/161/2 passing across all four suites). Three
+merge conflicts resolved by hand (`model_router.py`, `operator.py`,
+`capabilities.py`) — see `docs/project-state/KARMO_DEVELOPER_NOTES.md`
+for the full reconciliation narrative, including the explicit policy
+decision to keep chat's 3-way model fallback rather than let the new
+trust floor silently narrow it to 2-way.
+
+**Not yet deployed to `karmo-ai01`** — this is a code merge only. Next
+step for this workstream, when ready: build the deployment gate
+(tarball + SHA-256 + backup pattern already established), deploy, and
+run one bounded production canary — same pattern as the durable-memory
+deployment above.
+
+### Items requiring Kamara's decision (current, as of 2026-09-15)
+
+1. **PR #32** (`feat: start BloomBoss Historical Data Intelligence`,
+   open since 2026-09-11) — untouched by this reconciliation.
+3. **PR #26** (learning program branch) — untouched, predates current
+   `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile
+   before any merge attempt.
+4. **Choose the next KARMO capability** to build now that durable memory
+   is live — BloomBoss (PR #32 continuation), further Worker Commander
+   capabilities (`bounded_text_read`/`directory_list`, currently
+   fail-closed pending `allowed_root` design), or something else.
+5. Two small non-blocking housekeeping items from the 2026-09-14/15
+   sessions: `llama3.2:3b`/`qwen3:4b` remain installed on AI01 but
+   inactive (deferred cleanup decision); two
+   `/opt/karmo/core-service.bak.*` trees from the durable-memory
+   redeploy remain on AI01 (harmless, uncleaned).
+
+---
+
 See MASTER_INDEX.md for status-tag definitions. **KARMO FOUNDATION v1 was
 declared COMPLETE on 2026-09-09.** Two further repository-only,
 zero-production-access programs ran the same day: the Post-Foundation

@@ -1,6 +1,5 @@
 import hashlib
 import os
-import socket
 import sys
 from pathlib import Path
 
@@ -90,20 +89,32 @@ def deterministic_embedding(content, size=VECTOR_SIZE):
 
 
 def unavailable_embedding_endpoint(content):
-    """Simulates the isolated worker's embedding endpoint (Ollama) being down.
+    """Deterministic double for the isolated worker's embedding endpoint
+    (Ollama) being unavailable.
 
-    Connects to a local port nothing listens on so the call fails the same
-    way it would if the isolated Ollama/embedding endpoint were blocked -- a
-    real connection failure, not a hand-raised exception.
+    Raises the same exception class a real refused connection to the
+    embedding endpoint would, without depending on any real socket/network
+    behavior -- unlike connecting to a closed local port, this is reliable
+    across sandboxed and CI network policies (no dependency on how the
+    environment handles connection attempts to unused ports).
     """
-    with socket.create_connection(("127.0.0.1", 1), timeout=0.3):
-        pass  # pragma: no cover -- connection refused before this executes
+    raise ConnectionRefusedError(
+        "isolated test double: embedding endpoint unavailable"
+    )
+
+
+class _UnavailableQdrantClient:
+    """Deterministic double for the isolated Qdrant target being
+    unavailable. Exposes only what OutboxRelay._upsert calls, and raises the
+    same exception class a real connection failure would -- without
+    depending on real network/port-refusal behavior."""
+
+    def upsert(self, *args, **kwargs):
+        raise ConnectionError("isolated test double: Qdrant target unavailable")
 
 
 def unavailable_qdrant_client():
-    """A QdrantClient pointed at a closed local port, simulating the isolated
-    Qdrant target being blocked/unavailable."""
-    return QdrantClient(url="http://127.0.0.1:1", timeout=1)
+    return _UnavailableQdrantClient()
 
 
 def drain(relay, batch_size=10, max_iterations=50):

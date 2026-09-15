@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "worker_id": "KARMO-WORKER01",
+  "key_id": "worker01-v1",
+  "ai01_host": "192.168.1.235",
+  "ai01_user": "karmo-gateway",
+  "identity_file": "/etc/karmo/worker01/ssh_identity",
+  "known_hosts_file": "/etc/karmo/worker01/known_hosts",
+  "worker_key_file": "/etc/karmo/worker01/worker.key",
+  "capabilities": {
+    "local_model_probe": "1.0.0"
+  },
+  "timeout_seconds": 30,
+  "poll_interval_seconds": 5,
+  "heartbeat_lease_seconds": 90
+}

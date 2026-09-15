@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  exit 64
+fi
+
+case "$1" in
+  ''|*[!A-Za-z0-9_-]*) exit 64 ;;
+esac
+
+export PYTHONPATH="/opt/karmo/core-service:/opt/karmo/worker-runtime/app"
+exec /usr/bin/python3 -m core_service.worker_gateway_runtime "$1"
