@@ -16,17 +16,31 @@ dual-worker Commander READ Pack activation (PR #47) with its
 Runtime v0.1 merge closeout) remains historical context from
 2026-09-09/10 and is unaffected.
 
+### 2026-09-15 (later same day) — PR #43 merged
+
+**PR #43 has been reconciled and merged** (`f2ba1a49ebe8baf664a93cf59dc74693506db42a`) —
+no longer an open decision. Its full 12+ iterations (approval
+authority-binding fix, `ModelRouter`/`ModelResource` validation and hard
+policy gates, KarmoLab wired through the registry/dispatcher, verifier
+exact-match strictness, durable recovery preflight validation, terminal
+invocation status allowlisting, worker document-size cap) are now part
+of `main`, independently security-reviewed (no HIGH/MEDIUM findings) and
+test-verified (148/111/161/2 passing across all four suites). Three
+merge conflicts resolved by hand (`model_router.py`, `operator.py`,
+`capabilities.py`) — see `docs/project-state/KARMO_DEVELOPER_NOTES.md`
+for the full reconciliation narrative, including the explicit policy
+decision to keep chat's 3-way model fallback rather than let the new
+trust floor silently narrow it to 2-way.
+
+**Not yet deployed to `karmo-ai01`** — this is a code merge only. Next
+step for this workstream, when ready: build the deployment gate
+(tarball + SHA-256 + backup pattern already established), deploy, and
+run one bounded production canary — same pattern as the durable-memory
+deployment above.
+
 ### Items requiring Kamara's decision (current, as of 2026-09-15)
 
-1. **PR #43** (`draft: stage KarmoLab, routing + durable recovery
-   hardening`, open, draft, base `main`) — 4 iterations of real hardening
-   work (KarmoLab wired through the registry/dispatcher, `ModelRouter`
-   hardening, operator/verifier policy hardening, durable
-   restart/reconciliation hardening), each with its own CI evidence per
-   the PR description, but **not independently re-verified in this
-   reconciliation** and not merged. Decide whether to bring it through
-   review now or leave it staged.
-2. **PR #32** (`feat: start BloomBoss Historical Data Intelligence`,
+1. **PR #32** (`feat: start BloomBoss Historical Data Intelligence`,
    open since 2026-09-11) — untouched by this reconciliation.
 3. **PR #26** (learning program branch) — untouched, predates current
    `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile

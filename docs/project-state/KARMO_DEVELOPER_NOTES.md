@@ -165,3 +165,124 @@ Access Authorization Gate. See authorization record in `CURRENT_STATE.md`.
 
 **Next action:** none required for this workstream — durable memory is
 deployed and verified. See `NEXT_STEPS.md` for what's next.
+
+---
+
+## 2026-09-15 (continued) — Registry-repair dry run, dashboard staleness fix, and PR #43 reconciliation
+
+**Change ID / commits:** PR #52 (docs, dashboard fix), evidence commit
+`7554c25` (H0.4 dry-run + audit record, PR #53), PR #54 (code merge,
+`f2ba1a49ebe8baf664a93cf59dc74693506db42a`).
+
+### Dashboard staleness found and fixed (VERIFIED)
+While auditing "merged but not running" items at Kamara's request,
+found `KARMO_DASHBOARD.md` still claimed real Worker network transport
+was disabled and listed 5 security items as still deferred. Verified in
+code that all 5 are closed (`crypto_boundary.py`, subprocess env
+allowlisting, symlink tests, `ResultAuthenticator`,
+`PostgresWorkerCoordinatorStore`) and a real SSH-stdio transport has
+been live since ~2026-09-13/14. Corrected; no production change.
+
+### `registry_repair.py` deployed and run — the one real "merged but never run" gap (VERIFIED)
+Deployed the reviewed, tested `h04/app/registry_repair.py` (merged
+2026-09-09, never executed against production) as a new file alongside
+the existing H0.4 modules at `/home/lofason/karmo-ai/core/app/`, SHA-256
+verified before use, run in default dry-run mode (no `--apply`, zero
+writes by the tool's own construction). Also ran a fresh full
+`auditor.py` pass via a small one-off wrapper. Result:
+`READY_TO_REGISTER: 0`, and every finding across both runs (18
+`LEGACY_PROVENANCE_UNVERIFIED`, 2 `ORPHAN_VECTOR`, 3
+`ACTIVE_STATE_MISMATCH`) traced to the same 5 known pre-H0.2 legacy
+documents, behaving exactly as already documented on 2026-09-09. No new
+or real data-integrity problem. Full detail:
+`docs/evidence/h04/H04_2026-09-15_FULL_AUDIT_AND_REPAIR_DRY_RUN.md`.
+Two lessons recorded in that evidence file for next time: the DSN-file
+*directory* permissions matter as much as the file's own (mode 700 on
+`/etc/karmo/core` blocked traversal even after the file itself was
+readable), and `KARMO_DB_PASSWORD` for the older H0.4 stack comes from
+`/home/lofason/karmo-ai/compose/.env`'s `POSTGRES_PASSWORD`, not a
+separate credential.
+
+### PR #43 reconciled into `main` (VERIFIED, merged, NOT deployed)
+Kamara asked what PR #43 was and why it hadn't been merged — checked the
+full comment history (10 comments, 12+ iterations): **no rejection was
+ever recorded.** It was an open-ended staging/hardening exploration that
+kept finding and fixing real issues (each iteration's own note ended
+"keep draft, next safe action is X") and simply never reached a
+promotion decision before other work took priority. By 2026-09-15 the
+branch (29 real commits) had diverged 94 commits behind `main` (common
+ancestor `879b242c`, the PR #41 merge point).
+
+**What actually shipped in it** (verified by reading every file in full,
+not just the diff):
+- **The real security fix**: an approval could be reused across a
+  different requester or a different computed authority-requirement
+  class than it was issued under. Closed at both the shared
+  `CapabilityDispatcher` (`_require_approval_authority_binding`) and,
+  independently, `PostgresExecutionCoordinator.claim()` — two layers,
+  no gap between them (confirmed by reading both call paths end to end).
+- `ModelResource`/`ModelRouter` input validation and hard
+  `require_local`/`minimum_trust_tier`/`excluded_providers` eligibility
+  gates (previously `prefer_local` only affected ordering).
+- KarmoLab wired through the authoritative registry + dispatcher with a
+  closed manifest.
+- Verifier acceptance changed from `startswith("PASS")` to exact
+  normalized `PASS` — closes a prior false-accept path.
+- Durable recovery: a full validation pass over the unfinished-invocation
+  set before any task write (previously a bad ledger row could mutate
+  earlier valid tasks before being detected); atomic commit semantics
+  (in-memory `state_version` only advances after the DB transaction
+  actually commits, not before).
+- Terminal invocation status allowlisting (`EXECUTED`/`FAILED` only)
+  before ledger/coordinator writes.
+- Worker document-processing size cap (8 MB, checked before
+  `read_text()`).
+
+**Merge conflicts (3 files), each resolved by combining both branches'
+work rather than picking one side:**
+- `model_router.py`: kept PR #43's validation/hard-gate `route()`/
+  `verifier_for()` as a strict superset; re-added `ranked()` (absent on
+  the staging branch entirely) so `main`'s multi-candidate chat fallback
+  chain still has a list to iterate, with `route()`/`verifier_for()`
+  both delegating to it.
+- `operator.py`: combined PR #43's routing-policy enforcement with
+  `main`'s durable-memory integration (`_memory_context`,
+  `remember_exchange`, `_combine_memory_status`) in one `_chat()`.
+- `capabilities.py`: trivial — PR #43 predates Commander entirely, kept
+  `main`'s handler registrations.
+
+**A real policy conflict surfaced and was resolved by explicit decision,
+not silently:** PR #43's `OPERATOR_PRIMARY_MIN_TRUST_TIER=30`, applied
+uniformly, would have silently excluded `granite3.3:2b` (trust_tier 20,
+the deliberate "fast fallback") from ordinary chat's fallback chain
+entirely — narrowing live production resilience from 3-way to 2-way
+fallback without anyone deciding that on purpose. **Kamara's explicit
+call, asked directly rather than assumed**: the trust floor governs only
+the KarmoLab status/verification path (`_models()`); ordinary chat keeps
+its full fallback chain. Proven by a replacement test
+(`test_chat_still_uses_local_model_below_verification_trust_floor`)
+in place of one that asserted the rejected behavior.
+
+**One stale test found and fixed** (diagnosed, not silently patched):
+`test_operator_verifier_strictness.py`'s fake verifier client checked
+`model == "llama3.2:3b"` — the verifier *before* the 2026-09-13
+model-stack activation (PR #45) switched it to `mistral:7b`. The
+branch's last update predated that switch.
+
+**Independent security review** (this session, before push): read every
+changed file in full. No HIGH/MEDIUM findings — the authority-binding
+fix is correctly scoped and doubly enforced; every other change is
+strictly additive validation or internal consistency/atomicity hardening
+over non-attacker-facing data.
+
+**Validation**: all four suites green post-merge — core-service 148
+passed/33 skipped, worker-runtime 111 passed, core-v2-prototypes 161
+passed, worker-service 2 passed + healthy CLI. CI on PR #54: 5/5 green.
+
+**Production status: NOT DEPLOYED.** This is a code merge only.
+GitHub auto-marked PR #43 itself as merged once its commits became
+ancestors of `main` via this reconciliation.
+
+**Next action:** deployment to `karmo-ai01` when Kamara chooses to
+proceed — same tarball/SHA-256/backup/canary pattern as the durable-memory
+deployment above.

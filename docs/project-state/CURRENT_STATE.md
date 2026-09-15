@@ -182,6 +182,26 @@ reconciliation** — it is accurately tracked only as open in this
 section and in `NEXT_STEPS.md`, pending Kamara's decision to bring it
 through review and merge.
 
+## PR #43 reconciliation — approval authority binding, model routing policy, recovery hardening (2026-09-15) — VERIFIED, merged, NOT deployed
+
+29 commits of staged Core/Worker hardening work (open since
+2026-09-13, no rejection ever recorded — just never brought to a
+promotion decision) reconciled against 94 commits of diverged `main`
+history and merged at `f2ba1a49ebe8baf664a93cf59dc74693506db42a`. Key
+content: a real approval-reuse security fix (an approval could
+previously be consumed across a different requester or authority-class
+than it was issued under — now bound and independently checked at both
+the dispatcher and the durable execution coordinator),
+`ModelRouter`/`ModelResource` hard policy gates and validation, KarmoLab
+wired through the registry/dispatcher, exact-match verifier strictness,
+durable recovery preflight validation, terminal-status allowlisting, and
+a worker document-size cap. 3 merge conflicts resolved (see
+`docs/project-state/KARMO_DEVELOPER_NOTES.md` for full detail, including
+the explicit decision to keep chat's 3-way model fallback rather than
+let the new trust floor silently narrow it). Independent security
+review: no HIGH/MEDIUM findings. All four test suites green post-merge.
+**Not yet deployed to `karmo-ai01`** — code merge only.
+
 ## Durable Memory Core integration (2026-09-15) — VERIFIED, deployed
 
 PR #48 (`feat/durable-memory-core-integration`, merge commit
