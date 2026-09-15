@@ -10,7 +10,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - KARMO Control & Approval Layer (Core) — ✅ DEPLOYED TO KARMO-AI01
 - Trusted Computer Worker System (Worker Runtime local service boundary) — ✅ DEPLOYED TO KARMO-AI01
 - Direct remote network path to KARMO-AI01 over Tailscale — ✅ ACTIVE (`100.75.239.44`)
-- Real Worker Runtime network transport / remote job execution — ⛔ NOT ENABLED
+- Real Worker Runtime network transport / remote job execution — ✅ ENABLED (SSH stdio gateway; corrected 2026-09-15 — this line was stale since ~2026-09-13/14; see `CURRENT_STATE.md`'s reconciliation section for verification of all 5 previously-deferred security items, all now closed: cryptographic worker credential, subprocess env allowlisting, symlink-escape test, result-authenticity binding, durable Postgres-backed coordinator persistence)
 - KARMO Access & Connection Registry — ✅ MERGED
 - KARMO System Stewardship design — ✅ MERGED; workers not yet implemented/deployed
 - Durable Memory Core integration (conversation/semantic/document recall in `chat`) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
@@ -64,20 +64,26 @@ These are maintenance/verification actions, not a reason to reopen architecture 
 ## ACTIVE SAFETY / AUTHORITY BOUNDARY
 
 - Core is production-deployed, local-only, and has no network listener.
-- Worker service boundary is production-deployed, local-only, and has no real Worker network transport or capability execution enabled.
+- Worker service boundary is production-deployed with real SSH-stdio Worker network transport enabled (corrected 2026-09-15) and bounded READ-only capability execution (`commander.system_snapshot`/`service_status`/`listener_snapshot`, `local_model_probe`) — still no arbitrary shell, no write/destructive capability, no inbound listener on either worker.
 - Tailscale provides direct network reachability only; Tailscale SSH is not enabled.
 - KVE02 remains the documented fallback remote path.
 - Production access remains task-specific and approval-gated.
 
-## DEFERRED BEFORE ANY REAL WORKER NETWORK EXPOSURE
+## CLOSED (2026-09-15 correction) — previously listed as deferred before real Worker network exposure
 
-1. Cryptographic worker credential
-2. Subprocess environment allowlisting
-3. Dedicated symlink-escape test
-4. Result-authenticity cryptographic binding
-5. Coordinator persistence
-
-These are blockers for real Worker network exposure, not for the currently deployed local-only Worker boundary.
+All 5 previously-named blockers were closed between roughly 2026-09-13 and
+2026-09-14, verified present in code 2026-09-15: cryptographic worker
+credential (`worker-runtime/app/crypto_boundary.py`), subprocess
+environment allowlisting (fixed `env={...}` on every Commander subprocess
+call), a dedicated symlink-escape test
+(`worker-runtime/tests/test_runtime_file_security.py`,
+`test_predeploy_security_hardening.py`), result-authenticity
+cryptographic binding (`ResultAuthenticator`), and durable
+Postgres-backed coordinator persistence (`PostgresWorkerCoordinatorStore`
+— not in-memory). Real Worker network transport (SSH stdio gateway) is
+now enabled and production-proven for Worker01/Worker02's Commander READ
+path. This section previously listed these as still deferred; that was
+stale.
 
 ## SESSION STATUS FORMAT
 
