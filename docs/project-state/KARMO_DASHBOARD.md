@@ -29,12 +29,12 @@ Human-friendly working dashboard for keeping the active project stage visible du
 ## CURRENT TASK
 
 Durable Memory Core integration is deployed and canary-verified
-(2026-09-15) — no open item on that workstream. Remaining housekeeping:
-a fuller reconciliation of 2026-09-11–15 (access rollout, Core/Worker
-productionization, Commander dual-worker deployment) into
-`CURRENT_STATE.md`'s narrative is still owed (flagged `NEEDS
-VERIFICATION` there). Otherwise, return focus to useful KARMO
-capabilities instead of more infrastructure churn.
+(2026-09-15). The full 2026-09-11–15 reconciliation into
+`CURRENT_STATE.md`'s narrative is now done — no outstanding
+documentation debt from that period. Open decisions (PR #43 staged
+hardening work, PR #32 BloomBoss, choice of next capability) are listed
+in `NEXT_STEPS.md`. Otherwise, return focus to useful KARMO capabilities
+instead of more infrastructure churn.
 
 ## CURRENT ISSUE
 
