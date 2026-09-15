@@ -69,7 +69,7 @@ class ModelRouter:
             raise ModelRoutingError(f"{field_name} must contain only non-empty strings")
         return normalized
 
-    def route(
+    def ranked(
         self,
         *,
         required_capabilities=(),
@@ -79,13 +79,16 @@ class ModelRouter:
         excluded_models=(),
         excluded_providers=(),
     ):
-        """Select one model using Core-owned policy constraints.
+        """Return every eligible model, best-ordered first; never raises for zero matches.
 
         ``prefer_local`` only affects ordering. ``require_local`` and
         ``minimum_trust_tier`` are hard eligibility gates and therefore cannot
         silently fall back to a less-trusted model. Exclusions are also hard
         gates, which lets verifier selection refuse a model/provider when an
         independent implementation is required by the caller's policy.
+        Callers that need a fallback chain (try the next candidate if one
+        fails at call time) should use this method directly; ``route``
+        wraps it and fails closed when the result is empty.
         """
         if not isinstance(prefer_local, bool) or not isinstance(require_local, bool):
             raise ModelRoutingError("prefer_local and require_local must be boolean")
@@ -103,12 +106,6 @@ class ModelRouter:
             and resource.trust_tier >= minimum_trust_tier
             and required.issubset(resource.capabilities)
         ]
-        if not candidates:
-            raise ModelRoutingError(
-                "no enabled model satisfies routing policy: "
-                f"capabilities={sorted(required)}, require_local={require_local}, "
-                f"minimum_trust_tier={minimum_trust_tier}"
-            )
         candidates.sort(
             key=lambda resource: (
                 1 if prefer_local and resource.local else 0,
@@ -117,6 +114,34 @@ class ModelRouter:
             ),
             reverse=True,
         )
+        return candidates
+
+    def route(
+        self,
+        *,
+        required_capabilities=(),
+        prefer_local=False,
+        require_local=False,
+        minimum_trust_tier=0,
+        excluded_models=(),
+        excluded_providers=(),
+    ):
+        """Select exactly one model using Core-owned policy constraints, or fail closed."""
+        candidates = self.ranked(
+            required_capabilities=required_capabilities,
+            prefer_local=prefer_local,
+            require_local=require_local,
+            minimum_trust_tier=minimum_trust_tier,
+            excluded_models=excluded_models,
+            excluded_providers=excluded_providers,
+        )
+        if not candidates:
+            required = self._capability_set(required_capabilities, field_name="required_capabilities")
+            raise ModelRoutingError(
+                "no enabled model satisfies routing policy: "
+                f"capabilities={sorted(required)}, require_local={require_local}, "
+                f"minimum_trust_tier={minimum_trust_tier}"
+            )
         return candidates[0]
 
     def verifier_for(

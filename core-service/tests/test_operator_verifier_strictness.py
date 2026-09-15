@@ -6,7 +6,7 @@ class AmbiguousVerifierClient:
         self.verifier_reply = verifier_reply
 
     def chat(self, *, model, messages, temperature=0.2):
-        if model == "llama3.2:3b":
+        if model == "mistral:7b":
             return self.verifier_reply
         return "hostname karmo-test mode READ_ONLY"
 

@@ -64,12 +64,18 @@ def test_status_read_is_not_executed_when_only_remote_models_satisfy_capabilitie
     assert client.calls == []
 
 
-def test_chat_fails_closed_when_local_model_is_below_operator_trust_floor():
+def test_chat_still_uses_local_model_below_verification_trust_floor():
+    """Ordinary chat has no trust-tier gate -- only the KarmoLab status/
+    verification path (via _models()) enforces OPERATOR_PRIMARY_MIN_TRUST_TIER.
+    A local, low-trust model remains a valid chat fallback rather than
+    causing chat to fail closed, so degrading to a lower-trust local model
+    beats refusing to answer at all when no higher-trust model is available.
+    """
     client = RecordingClient()
     operator = KarmoOperator(
         model_client=client,
         resources=[
-            _resource("local-low", {"chat"}, trust_tier=29, local=True),
+            _resource("local-low", {"chat"}, trust_tier=5, local=True),
             _resource("remote-high", {"chat"}, trust_tier=99, local=False),
         ],
     )
@@ -77,9 +83,8 @@ def test_chat_fails_closed_when_local_model_is_below_operator_trust_floor():
     response = operator.handle("hello")
 
     assert response["kind"] == "chat"
-    assert response["error"] == "ModelRoutingError"
-    assert "fail-closed" in response["message"]
-    assert client.calls == []
+    assert response.get("model") == "local-low"
+    assert client.calls == ["local-low"]
 
 
 def test_status_read_fails_closed_when_verifier_is_below_verifier_trust_floor():

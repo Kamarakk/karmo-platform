@@ -1,5 +1,48 @@
 # KARMO Next Steps
 
+## 2026-09-15 update (read this first)
+
+**2026-09-11 through 2026-09-15 is now fully reconciled** into
+`CURRENT_STATE.md` — see its "2026-09-11 through 2026-09-14 — Access
+rollout, Core/Worker productionization, dual-worker Commander, model
+stack" and "Durable Memory Core integration" sections. Covers: Tailscale
+enrollment, Core v2 + Worker Runtime productionized and deployed to
+`karmo-ai01` (PRs #33–#35), durable worker coordination hardening (PR
+#41), the local open model stack (`qwen3:8b`/`ministral-3:8b`/
+`mistral:7b`/`granite3.3:2b`, PR #45), Worker01 + Worker02 activation,
+dual-worker Commander READ Pack activation (PR #47) with its
+`karmo_gateway` grant repair, and durable memory in Core chat (PR
+#48/#49). Everything below this point (Foundation v1 through Worker
+Runtime v0.1 merge closeout) remains historical context from
+2026-09-09/10 and is unaffected.
+
+### Items requiring Kamara's decision (current, as of 2026-09-15)
+
+1. **PR #43** (`draft: stage KarmoLab, routing + durable recovery
+   hardening`, open, draft, base `main`) — 4 iterations of real hardening
+   work (KarmoLab wired through the registry/dispatcher, `ModelRouter`
+   hardening, operator/verifier policy hardening, durable
+   restart/reconciliation hardening), each with its own CI evidence per
+   the PR description, but **not independently re-verified in this
+   reconciliation** and not merged. Decide whether to bring it through
+   review now or leave it staged.
+2. **PR #32** (`feat: start BloomBoss Historical Data Intelligence`,
+   open since 2026-09-11) — untouched by this reconciliation.
+3. **PR #26** (learning program branch) — untouched, predates current
+   `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile
+   before any merge attempt.
+4. **Choose the next KARMO capability** to build now that durable memory
+   is live — BloomBoss (PR #32 continuation), further Worker Commander
+   capabilities (`bounded_text_read`/`directory_list`, currently
+   fail-closed pending `allowed_root` design), or something else.
+5. Two small non-blocking housekeeping items from the 2026-09-14/15
+   sessions: `llama3.2:3b`/`qwen3:4b` remain installed on AI01 but
+   inactive (deferred cleanup decision); two
+   `/opt/karmo/core-service.bak.*` trees from the durable-memory
+   redeploy remain on AI01 (harmless, uncleaned).
+
+---
+
 See MASTER_INDEX.md for status-tag definitions. **KARMO FOUNDATION v1 was
 declared COMPLETE on 2026-09-09.** Two further repository-only,
 zero-production-access programs ran the same day: the Post-Foundation
