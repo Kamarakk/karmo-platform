@@ -29,7 +29,7 @@ _WRITE_WORDS = re.compile(
     re.IGNORECASE,
 )
 _STATUS_WORDS = re.compile(
-    r"\b(status|health|healthy|karmolab|host|cpu|memory|ram|disk|service|services|"
+    r"\b(status|health|healthy|karmolab|host|cpu|ram|disk|service|services|"
     r"docker|container|containers|running|online)\b",
     re.IGNORECASE,
 )
@@ -210,12 +210,12 @@ class KarmoOperator:
             "evidence": evidence,
         }
 
-    def _memory_context(self, text: str) -> tuple[str, str]:
+    def _memory_context(self, text: str) -> tuple[str, str | None]:
         try:
             context = self.memory_backend.build_context(text).render()
         except Exception as exc:
             return "", f"DEGRADED_READ_FAILED:{type(exc).__name__}"
-        return context[:MAX_MEMORY_CONTEXT_CHARS], self.memory_status
+        return context[:MAX_MEMORY_CONTEXT_CHARS], None
 
     @staticmethod
     def _with_memory_status(response: dict, memory_status: str) -> dict:
@@ -232,7 +232,7 @@ class KarmoOperator:
                 "error": "ModelRoutingError",
             }
 
-        memory_context, memory_status = self._memory_context(text)
+        memory_context, read_failure = self._memory_context(text)
         system_content = (
             "You are KARMO, Kamara's local AI control-plane interface. "
             "You are currently in bounded activation mode. You may converse and explain, "
@@ -267,10 +267,11 @@ class KarmoOperator:
                 last_error = type(exc).__name__
                 continue
 
+            write_failure = None
             try:
                 self.memory_backend.remember_exchange(text, answer)
             except Exception as exc:
-                memory_status = f"DEGRADED_WRITE_FAILED:{type(exc).__name__}"
+                write_failure = f"DEGRADED_WRITE_FAILED:{type(exc).__name__}"
 
             return self._with_memory_status(
                 {
@@ -278,7 +279,7 @@ class KarmoOperator:
                     "message": answer,
                     "model": candidate.model_id,
                 },
-                memory_status,
+                self._combine_memory_status(read_failure, write_failure),
             )
 
         return self._with_memory_status(
@@ -287,8 +288,17 @@ class KarmoOperator:
                 "message": "Local chat models are unavailable. KARMO control plane remains fail-closed.",
                 "error": last_error or "OllamaClientError",
             },
-            memory_status,
+            self._combine_memory_status(read_failure, None),
         )
+
+    def _combine_memory_status(self, read_failure: str | None, write_failure: str | None) -> str:
+        if read_failure and write_failure:
+            return f"{read_failure}+{write_failure}"
+        if read_failure:
+            return read_failure
+        if write_failure:
+            return write_failure
+        return self.memory_status
 
     def handle(self, text: str) -> dict:
         text = text.strip()
