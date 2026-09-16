@@ -28,6 +28,8 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Trusted Computer Worker System (Worker service boundary) — production-local Worker shell bound to Core; no network listener, no real worker transport, no capability execution, no persistent writes.
 - KARMO Access & Connection Registry — durable machine-readable host, route, authentication-reference, and recovery knowledge for humans and agents.
 - KARMO System Stewardship — planned QA, Security, Reliability/Maintenance, Housekeeping/Data-Hygiene, and Agent-Governance roles implemented over existing Core/Worker architecture rather than separate infrastructure stacks.
+- BloomBoss Historical Data Intelligence — normalizes purchase, sales, listing, propagation, and Palmstreet staging history; preserves unknowns and provenance; validates contradictions; fingerprints raw evidence; and calculates reproducible business/quality metrics.
+- KARMO-FIRST Orchestration — target control plane where KARMO owns durable task state, routing, capabilities, approvals, execution authority, verification evidence, and audit while ChatGPT/Claude/local/future models remain replaceable intelligence adapters.
 
 ## CURRENT TASK
 
@@ -40,28 +42,34 @@ useful KARMO capabilities instead of more infrastructure churn.
 
 ## CURRENT ISSUE
 
-No active Core/Worker deployment blocker.
+No active code blocker. KARMO-AI01, KVE01–03, and both workers are all
+verified reachable and healthy as of the 2026-09-11–15 reconciliation
+(`CURRENT_STATE.md`) — the Sept-11-era Remote Desktop Commander/Proxmox
+reachability concern previously noted here is resolved.
 
-One host-maintenance item is pending: Ubuntu installed kernel `6.8.0-139-generic` while KARMO-AI01 is currently running `6.8.0-138-generic`. A planned reboot is needed later to load the new kernel; no reboot was performed during this rollout.
+Palmstreet's built-in order export was unreliable/unavailable as of the
+Phase 1 build session; Seller Hub table evidence remains staged as a
+fallback source pending re-verification, not the long-term primary
+ingestion design.
 
-Direct OpenSSH over KARMO-AI01's new Tailscale address from KARMO-DEV01 remains a client-side verification item. The tailnet enrollment itself is verified and KARMO-AI01 is visible at `100.75.239.44`.
+## NEW GOVERNING RULE
+
+**KARMO FIRST:** Before recommending an app, SaaS product, manual export, cloud folder, phone shortcut, or third-party workflow, first determine whether KARMO can own the capability using infrastructure already available.
+
+External systems should be sources, destinations, or adapters — not KARMO's brain, workflow engine, authority layer, or source of truth.
 
 ## NEXT GATE
 
-At the next convenient maintenance window:
-
-1. verify direct `ssh lofason@100.75.239.44` from KARMO-DEV01;
-2. schedule one controlled KARMO-AI01 reboot for the pending kernel update;
-3. after reboot, verify Tailscale, Core, Worker, and existing KARMO services once.
-
-These are maintenance/verification actions, not a reason to reopen architecture work.
+1. Kamara's merge/promotion decision on BloomBoss Phase 1 (PR #56, now reconciled against current `main`).
+2. Deploy PR #43's merged hardening to `karmo-ai01` (code merge only so far).
+3. Choose the next KARMO capability track once the above are resolved.
 
 ## AFTER THIS
 
-- Resume useful capability work, with BloomBoss still the leading practical domain unless Kamara chooses another track.
-- Use the new System-Fit & Reuse Review before adding new tools/services.
-- Build stewardship roles by reusing Core/Worker rather than creating separate daemons or platforms.
-- Keep real Worker network exposure deferred until the previously recorded security blockers are addressed.
+- Extend Palmstreet staging so all verified Seller Hub fields, including Buyer Note and Seller Note, are represented and tested without storing unnecessary customer PII in source control.
+- Keep Palmstreet purchases and sales as structured platform evidence when possible; screenshots/invoices remain fallback evidence only.
+- Continue BloomBoss reconciliation only when source evidence can be reliably mapped to canonical inventory without invented matches.
+- Production remains separately approval-gated.
 
 ## ACTIVE SAFETY / AUTHORITY BOUNDARY
 
@@ -70,6 +78,7 @@ These are maintenance/verification actions, not a reason to reopen architecture 
 - Tailscale provides direct network reachability only; Tailscale SSH is not enabled.
 - KVE02 remains the documented fallback remote path.
 - Production access remains task-specific and approval-gated.
+- BloomBoss (PR #32) remains isolated dev/GitHub scope only: no production DB implementation, no marketplace writes, no customer actions, no OBS, no deployment or merge until Kamara's separate high-level decision.
 
 ## CLOSED (2026-09-15 correction) — previously listed as deferred before real Worker network exposure
 
@@ -105,6 +114,6 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 - next approval or verification gate
 - immediate post-task direction
 
-Keep it short. Historical detail belongs in `CHANGE_LOG.md` and `CURRENT_STATE.md`, not here.
+Keep it short. Historical detail belongs in `CHANGE_LOG.md`, `CURRENT_STATE.md`, and dated PROJECT SAVE files.
 
 Last refreshed: 2026-09-15

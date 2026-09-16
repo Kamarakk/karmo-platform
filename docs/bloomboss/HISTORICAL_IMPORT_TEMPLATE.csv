@@ -1,0 +1,2 @@
+batch_id,unit_id,cultivar,status,supplier,purchase_date,batch_quantity,batch_item_cost_total,batch_shipping_total,batch_duties_fees_total,allocated_landed_cost,acquired_date,sale_id,sale_price,sale_channel,sale_date,selling_fees,outbound_shipping_cost,external_order_id,external_line_item_id
+BATCH-EXAMPLE-001,UNIT-EXAMPLE-001,Example Cultivar,growing,Example Supplier,2026-01-01,1,100,20,,120,2026-01-01,,,,,,,,

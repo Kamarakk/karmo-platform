@@ -1,0 +1,2 @@
+propagation_id,parent_unit_id,child_unit_id,cultivar,method,status,propagation_date,acquired_date,allocated_landed_cost,notes
+PROP-EXAMPLE-001,UNIT-PARENT-001,UNIT-CHILD-001,Example Cultivar,cutting,growing,2026-01-10,2026-02-01,,Example propagated child
