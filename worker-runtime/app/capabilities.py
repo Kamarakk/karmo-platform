@@ -10,10 +10,13 @@ sandbox.resolve_within_sandbox.
 """
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import resource_discovery
@@ -212,6 +215,58 @@ def _local_model_probe(payload, *, sandbox_root, allowed_root, timeout_seconds):
 
 
 register_handler("local_model_probe", _local_model_probe)
+
+
+# --- MODEL CHAT -------------------------------------------------------------
+# See docs/architecture/KARMO_WORKER_MODEL_INFERENCE_ROUTING.md. The handler
+# calls this worker's own loopback Ollama -- never a remote endpoint -- and
+# returns the completion through the same signed-result/ticket path every
+# other capability already uses. Validation lives here because
+# capability_manifest.py's input_schema is a declared contract, not something
+# sandbox.run_capability enforces automatically (same as every other handler
+# in this file).
+_ALLOWED_MODEL_CHAT_MODELS = frozenset({"qwen3:8b", "ministral-3:8b", "mistral:7b", "granite3.3:2b"})
+MAX_MODEL_CHAT_PROMPT_CHARS = 8000
+_OLLAMA_GENERATE_URL = "http://127.0.0.1:11434/api/generate"
+
+
+def _call_ollama_generate(model, prompt, timeout_seconds):
+    """Isolated so tests can monkeypatch this one function rather than the
+    network, matching the shape of the actual call without requiring a real
+    Ollama instance in CI/dev."""
+    body = json.dumps({"model": model, "prompt": prompt, "stream": False}).encode("utf-8")
+    req = urllib.request.Request(
+        _OLLAMA_GENERATE_URL,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _model_chat(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    model = payload.get("model")
+    prompt = payload.get("prompt")
+    if model not in _ALLOWED_MODEL_CHAT_MODELS:
+        raise SandboxError(f"model not in allowed set for model_chat: {model!r}")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise SandboxError("prompt must be non-empty text")
+    if len(prompt) > MAX_MODEL_CHAT_PROMPT_CHARS:
+        raise SandboxError(f"prompt exceeds {MAX_MODEL_CHAT_PROMPT_CHARS} characters")
+
+    try:
+        result = _call_ollama_generate(model, prompt, timeout_seconds)
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        raise SandboxError(f"model_chat call to local Ollama failed: {type(exc).__name__}: {exc}") from exc
+
+    response_text = result.get("response", "")
+    output = {"response": response_text}
+    summary = f"model_chat: {model} ({len(response_text)} chars)"
+    return output, summary, []
+
+
+register_handler("model_chat", _model_chat)
 
 
 def _document_processing_test(payload, *, sandbox_root, allowed_root, timeout_seconds):
