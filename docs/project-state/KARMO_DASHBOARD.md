@@ -16,7 +16,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Durable Memory Core integration (conversation/semantic/document recall in `chat`) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
 - KARMO PR #43 hardening (approval authority binding, model routing policy, recovery hardening) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
 - Keyword dispatch false-positive fix (PR #57) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
-- BloomBoss Historical Data Intelligence (Phase 1) — 🟡 reconciled against current `main` (PR #56); merge/promotion decision pending
+- BloomBoss Historical Data Intelligence (Phase 1) — ✅ MERGED to `main` (PR #56, 2026-09-16); isolated dev/GitHub scope only, no production deployment
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -34,11 +34,11 @@ Human-friendly working dashboard for keeping the active project stage visible du
 ## CURRENT TASK
 
 Durable memory, PR #43's hardening, and the keyword false-positive fix
-are all deployed and canary-verified on `karmo-ai01` as of 2026-09-15.
-No outstanding documentation debt. The one open decision is BloomBoss
-Phase 1 (PR #56, reconciled and tested, awaiting Kamara's
-merge/promotion call) — see `NEXT_STEPS.md`. Otherwise, return focus to
-useful KARMO capabilities instead of more infrastructure churn.
+are all deployed and canary-verified on `karmo-ai01`. BloomBoss Phase 1
+(PR #56) is merged to `main` (2026-09-16) on Kamara's explicit decision —
+still isolated/dev-only, no production deployment. Next: spot-check
+BloomBoss's analytics output against known real sales, then choose the
+next KARMO capability track — see `NEXT_STEPS.md`.
 
 ## CURRENT ISSUE
 
@@ -60,9 +60,9 @@ External systems should be sources, destinations, or adapters — not KARMO's br
 
 ## NEXT GATE
 
-1. Kamara's merge/promotion decision on BloomBoss Phase 1 (PR #56, now reconciled against current `main`).
-2. Deploy PR #43's merged hardening to `karmo-ai01` (code merge only so far).
-3. Choose the next KARMO capability track once the above are resolved.
+1. ~~Kamara's merge/promotion decision on BloomBoss Phase 1~~ — done, merged (PR #56).
+2. Spot-check BloomBoss Phase 1's analytics output against known real sales/purchases.
+3. Choose the next KARMO capability track.
 
 ## AFTER THIS
 
@@ -78,7 +78,7 @@ External systems should be sources, destinations, or adapters — not KARMO's br
 - Tailscale provides direct network reachability only; Tailscale SSH is not enabled.
 - KVE02 remains the documented fallback remote path.
 - Production access remains task-specific and approval-gated.
-- BloomBoss (PR #32) remains isolated dev/GitHub scope only: no production DB implementation, no marketplace writes, no customer actions, no OBS, no deployment or merge until Kamara's separate high-level decision.
+- BloomBoss (PR #56, merged 2026-09-16) remains isolated dev/GitHub scope only: no production DB implementation, no marketplace writes, no customer actions, no OBS, no production deployment.
 
 ## CLOSED (2026-09-15 correction) — previously listed as deferred before real Worker network exposure
 
@@ -116,4 +116,4 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 
 Keep it short. Historical detail belongs in `CHANGE_LOG.md`, `CURRENT_STATE.md`, and dated PROJECT SAVE files.
 
-Last refreshed: 2026-09-15
+Last refreshed: 2026-09-16

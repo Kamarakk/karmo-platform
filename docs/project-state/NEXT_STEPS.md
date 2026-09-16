@@ -40,26 +40,43 @@ write-intent request) — fixed systematically in PR #57
 (`fbaf42752e7a4a124379778b9c7a3ea55fdc62c4`), also deployed and
 re-verified same day. No open item remains for this workstream.
 
-### 2026-09-15 (later same day) — BloomBoss Phase 1 (PR #32) reconciled, awaiting decision
+### 2026-09-15/16 — BloomBoss Phase 1 (PR #32) reconciled and MERGED
 
-**PR #56 supersedes PR #32** — reconciled against current `main` (147
-commits ahead / 238 behind, but only one file conflicted), all 62
-BloomBoss tests pass, no risky code patterns found. **Deliberately not
-merged** — PR #32's own text reserves that for Kamara's separate
-high-level merge/promotion decision, given real financial/business logic
-is involved. Ready whenever that decision is made.
+**PR #56 supersedes PR #32** — reconciled against current `main`, a
+second time to catch up with the concurrently-merged PR #43/#57/#58 work
+(one further conflict, in `KARMO_DASHBOARD.md` only, resolved in favor of
+the more current side), then re-verified: 183 core-service tests, 62
+BloomBoss tests, 111 worker-runtime tests, 161 core-v2-prototypes tests,
+2 worker-service tests, all pass. **Merged into `main`**
+(`e8cda4f9c755d1d2cdd302c3c7cc7f0e8439e8fd`) on Kamara's explicit
+merge/promotion decision, given via an approved plan in this session.
+`bloomboss/` now exists on `main`. Still isolated/dev-only per the build
+plan's own first-implementation boundary: **no production deployment, no
+marketplace writes, no customer actions** — those remain future,
+separately-scoped decisions (see `docs/plans/BLOOMBOSS_BUILD_PLAN.md`
+Phases 2-7).
 
-### Items requiring Kamara's decision (current, as of 2026-09-15)
+This merge also closed a real risk: two sessions had been working on
+KARMO concurrently and independently on 2026-09-15/16 (this session and
+another), including two divergent fixes for the same `operator.py`
+keyword-dispatch bug. The broader, better-tested fix (PR #57, already
+merged separately) is what's actually deployed on `karmo-ai01` — verified
+directly on the host, not assumed from git history.
 
-1. **PR #56** (BloomBoss Phase 1, reconciled, supersedes PR #32) —
-   merge/promotion decision.
+### Items requiring Kamara's decision (current, as of 2026-09-16)
+
+1. ~~**PR #56** (BloomBoss Phase 1)~~ — **merged**, `e8cda4f9`.
+2. **Spot-check BloomBoss Phase 1's analytics output** against 2-3 known
+   real purchases/sales, before trusting it further — not yet done.
 3. **PR #26** (learning program branch) — untouched, predates current
    `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile
    before any merge attempt.
 4. **Choose the next KARMO capability** to build now that durable memory
-   is live — BloomBoss (PR #32 continuation), further Worker Commander
-   capabilities (`bounded_text_read`/`directory_list`, currently
-   fail-closed pending `allowed_root` design), or something else.
+   and BloomBoss Phase 1 are both live — BloomBoss Phase 2+ (marketplace
+   research), further Worker Commander capabilities
+   (`bounded_text_read`/`directory_list`, currently fail-closed pending
+   `allowed_root` design), the Tool/Capability Registry (needed before any
+   KARMO-to-Claude/GPT task-dispatch work), or something else.
 5. Two small non-blocking housekeeping items from the 2026-09-14/15
    sessions: `llama3.2:3b`/`qwen3:4b` remain installed on AI01 but
    inactive (deferred cleanup decision); two
