@@ -63,6 +63,18 @@ keyword-dispatch bug. The broader, better-tested fix (PR #57, already
 merged separately) is what's actually deployed on `karmo-ai01` — verified
 directly on the host, not assumed from git history.
 
+### 2026-09-16 — "working with KARMO directly" (all 4 access options) CLOSED
+
+`core_service.webui` (PR #60, loopback-only; PR #61, added an explicit
+Tailscale-interface bind mode on Kamara's choice) is deployed to
+`karmo-ai01`, running in `tailscale` mode, verified reachable at
+`http://100.75.239.44:8787` with a live chat round-trip returning
+`memory_status: ACTIVE`. `karmo-chat`/`karmo-web` shell helpers added on
+KARMO-DEV01. All 4 items from this session's approved plan (finish the
+canary, Mac-side access without manual SSH, a nicer browser interface,
+mobile/remote reach) are done — see "KARMO webui" section in
+`CURRENT_STATE.md` for full detail.
+
 ### Items requiring Kamara's decision (current, as of 2026-09-16)
 
 1. ~~**PR #56** (BloomBoss Phase 1)~~ — **merged**, `e8cda4f9`.
