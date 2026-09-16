@@ -1,16 +1,23 @@
-"""Loopback-only browser chat UI for the KARMO Core operator.
+"""Browser chat UI for the KARMO Core operator.
 
-Manually started, stdlib-only development convenience. Not a systemd
-service, not reachable off-host: binds 127.0.0.1 only. Reach it from
-another machine through an SSH port-forward to this host, never by
-exposing the port on any network interface. Every request goes through
-the same KarmoOperator.handle() used by the chat CLI -- no separate
-authority path.
+Manually started, stdlib-only development convenience -- not a systemd
+service. Two allowed bind modes, chosen explicitly, never inferred:
+
+- loopback (default): 127.0.0.1 only, reached from another machine
+  through an SSH port-forward.
+- tailscale: binds this host's own Tailscale interface IP (resolved via
+  `tailscale ip -4`, never a caller-supplied address), reachable directly
+  from any device already authenticated on the same private tailnet --
+  never the open internet, never a wildcard/all-interfaces bind.
+
+Every request goes through the exact same KarmoOperator.handle() used by
+the chat CLI -- no separate authority path, no new capability.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from .operator import KarmoOperator
@@ -101,12 +108,30 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def serve(bind: str = DEFAULT_BIND, port: int = DEFAULT_PORT) -> int:
-    if bind not in ("127.0.0.1", "localhost"):
-        raise ValueError("karmo webui must bind loopback only")
+def _resolve_tailscale_ip() -> str:
+    result = subprocess.run(
+        ["tailscale", "ip", "-4"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=True,
+    )
+    ip = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+    if not ip:
+        raise RuntimeError("tailscale ip -4 returned no address")
+    return ip
+
+
+def serve(mode: str = "loopback", port: int = DEFAULT_PORT) -> int:
+    if mode == "loopback":
+        bind = DEFAULT_BIND
+    elif mode == "tailscale":
+        bind = _resolve_tailscale_ip()
+    else:
+        raise ValueError(f"unsupported webui bind mode: {mode!r} (use 'loopback' or 'tailscale')")
     _Handler.operator = KarmoOperator()
     server = HTTPServer((bind, port), _Handler)
-    print(f"KARMO webui listening on http://{bind}:{port} (loopback only)")
+    print(f"KARMO webui listening on http://{bind}:{port} (mode={mode})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

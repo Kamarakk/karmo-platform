@@ -83,7 +83,8 @@ def chat() -> int:
 def webui() -> int:
     from .webui import serve
 
-    return serve()
+    mode = sys.argv[2] if len(sys.argv) > 2 else "loopback"
+    return serve(mode=mode)
 
 
 def main():
