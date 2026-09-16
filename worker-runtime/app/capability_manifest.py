@@ -181,6 +181,35 @@ SAFE_CAPABILITIES = {
         idempotent=True,
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
+    # See docs/architecture/KARMO_WORKER_MODEL_INFERENCE_ROUTING.md for the
+    # full design/System-Fit/Invariant review this capability implements.
+    # READ, not EXTERNAL_ACTION: a chat completion has no persistent side
+    # effect, same classification principle as local_model_probe and
+    # karmolab.read_status. network_required stays False -- the handler
+    # calls the worker's OWN loopback Ollama (127.0.0.1:11434), never a
+    # remote endpoint; the prompt/response reach Core only over the
+    # existing authenticated SSH-stdio job transport.
+    "model_chat": dict(
+        capability_id="model_chat",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["qwen3:8b", "ministral-3:8b", "mistral:7b", "granite3.3:2b"]},
+                "prompt": {"type": "string", "maxLength": 8000},
+            },
+            "required": ["model", "prompt"],
+        },
+        output_schema={"type": "object", "properties": {"response": {"type": "string"}}},
+        timeout_seconds=120,
+        resource_requirements={"cpu": "high", "memory_mb": 8192},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
 }
 SAFE_CAPABILITIES.update(COMMANDER_READONLY_CAPABILITIES)
 

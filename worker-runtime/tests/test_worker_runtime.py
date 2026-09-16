@@ -1120,6 +1120,60 @@ def test_capability_local_model_probe_reports_truthful_model_status():
     assert output["ollama_installed"] == acceleration["ollama_installed"]
 
 
+def test_capability_model_chat_calls_local_ollama_and_returns_response(monkeypatch):
+    def fake_call(model, prompt, timeout_seconds):
+        assert (model, prompt, timeout_seconds) == ("qwen3:8b", "what is 2+2?", 120)
+        return {"response": "the answer is 4"}
+
+    monkeypatch.setattr(capabilities, "_call_ollama_generate", fake_call)
+
+    output, summary, duration, evidence = run_capability(
+        "model_chat", {"model": "qwen3:8b", "prompt": "what is 2+2?"}, timeout_seconds=120,
+    )
+
+    assert output == {"response": "the answer is 4"}
+    assert "qwen3:8b" in summary
+
+
+def test_capability_model_chat_refuses_model_outside_allowed_set(monkeypatch):
+    monkeypatch.setattr(capabilities, "_call_ollama_generate", lambda *a, **k: {"response": "should not run"})
+
+    with pytest.raises(SandboxError, match="model not in allowed set"):
+        run_capability("model_chat", {"model": "gpt-4", "prompt": "hi"}, timeout_seconds=120)
+
+
+def test_capability_model_chat_refuses_empty_prompt(monkeypatch):
+    monkeypatch.setattr(capabilities, "_call_ollama_generate", lambda *a, **k: {"response": "should not run"})
+
+    with pytest.raises(SandboxError, match="prompt must be non-empty"):
+        run_capability("model_chat", {"model": "qwen3:8b", "prompt": "   "}, timeout_seconds=120)
+
+
+def test_capability_model_chat_refuses_oversized_prompt(monkeypatch):
+    monkeypatch.setattr(capabilities, "_call_ollama_generate", lambda *a, **k: {"response": "should not run"})
+    huge_prompt = "x" * (capabilities.MAX_MODEL_CHAT_PROMPT_CHARS + 1)
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability("model_chat", {"model": "qwen3:8b", "prompt": huge_prompt}, timeout_seconds=120)
+
+
+def test_capability_model_chat_wraps_ollama_call_failure(monkeypatch):
+    def failing_call(model, prompt, timeout_seconds):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(capabilities, "_call_ollama_generate", failing_call)
+
+    with pytest.raises(SandboxError, match="model_chat call to local Ollama failed"):
+        run_capability("model_chat", {"model": "qwen3:8b", "prompt": "hi"}, timeout_seconds=120)
+
+
+def test_capability_model_chat_manifest_matches_registered_allowed_models():
+    manifest = SAFE_CAPABILITIES["model_chat"]
+    assert manifest["authority_class"] == CapabilityClass.READ
+    allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
+    assert allowed == capabilities.__dict__["_ALLOWED_MODEL_CHAT_MODELS"]
+
+
 def test_capability_document_processing_synthetic_chunking():
     output, summary, duration, evidence = run_capability(
         "document_processing_test", {"path": "sample_document.txt"}, timeout_seconds=30, allowed_root=FIXTURES,
