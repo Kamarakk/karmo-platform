@@ -88,6 +88,19 @@ human-operated Claude/ChatGPT session reads/completes tasks via
 `karmo-ai01`, including both negative-path guards. **Not yet used for a
 real piece of work** — only a synthetic canary task so far.
 
+### 2026-09-16 — Worker01/Worker02 model activation (closes the 2026-09-13 checkpoint gap)
+
+Both workers now run a `karmo-ollama` Docker container (matching
+`karmo-ai01`'s exact pattern) hosting the same 4 models Core actually
+uses (`qwen3:8b`, `ministral-3:8b`, `mistral:7b`, `granite3.3:2b`),
+digest-identical to `karmo-ai01`'s copies, functionally smoke-tested on
+both, loopback-only. See "Worker model activation" in `CURRENT_STATE.md`
+for the full record, including the access-path note (LAN-only, `karmo`
+admin account, reached via SSH agent forwarding through `karmo-ai01`)
+and the explicit correction to the 2026-09-13 checkpoint's stale
+Qwen+DeepSeek+Gemini+Mistral target. **Core is not wired to use these
+yet** — that's a new, deliberately-scoped capability (not started).
+
 ### Items requiring Kamara's decision (current, as of 2026-09-16)
 
 1. ~~**PR #56** (BloomBoss Phase 1)~~ — **merged**, `e8cda4f9`.
@@ -111,6 +124,15 @@ real piece of work** — only a synthetic canary task so far.
    inactive (deferred cleanup decision); two
    `/opt/karmo/core-service.bak.*` trees from the durable-memory
    redeploy remain on AI01 (harmless, uncleaned).
+6. **Design worker-hosted model inference routing** — Worker01/Worker02
+   now have real model capacity (see 2026-09-16 entry above) but Core's
+   `OllamaChatClient` is deliberately loopback-only and refuses remote
+   endpoints (PR #37's stated security boundary). Actually using the
+   workers' models means a new capability, not a config toggle — most
+   likely routed through the existing Worker Runtime job/ticket/approval
+   path (the same pattern Commander already uses), not by relaxing the
+   Ollama client's existing refusal. Needs its own System-Fit Review and
+   Invariant Impact Review before any implementation.
 
 ---
 

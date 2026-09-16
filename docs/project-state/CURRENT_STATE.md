@@ -312,6 +312,68 @@ from-scratch registry build.
   BloomBoss Phase 1 spot-check itself through `task create`/`task
   complete` once Kamara provides the real sales data.
 
+## Worker model activation — Worker01/Worker02 (2026-09-16) — VERIFIED, DEPLOYED
+
+Closes the gap named in `docs/checkpoints/KARMO_ACTIVATION_CHECKPOINT_20260913.md`
+("KARMO-AI01 has approximately 8 GB RAM. Loading both local activation
+models materially saturates available memory... this is the reason the
+next infrastructure phase is the two approved HP worker nodes") — the
+two worker nodes were reachable and Commander-active since 2026-09-14
+but had never actually been given any model workload; that checkpoint's
+step 2 ("Activate the approved worker-model target") was never done
+until now.
+
+**Correction to that checkpoint's stated target**: it named "Qwen +
+DeepSeek + Gemini + Mistral." That's stale — a later decision explicitly
+removed DeepSeek and rejected Gemini (a cloud model, conflicting with
+KARMO's local-first principle), and the model set actually shipped in
+`core_service.operator.default_model_resources()` is `qwen3:8b` /
+`ministral-3:8b` / `mistral:7b` / `granite3.3:2b`. That's the set
+installed here, matching what's live, not the superseded list.
+
+- **Access path note**: Worker01 (`192.168.1.251`)/Worker02
+  (`192.168.1.252`) are LAN-only, not Tailscale-enrolled, and use a
+  distinct admin account (`karmo`, not `lofason`) with the same
+  `karmo_admin_ed25519` key — reached from KARMO-DEV01 via SSH agent
+  forwarding through `karmo-ai01` (`ssh -A lofason@100.75.239.44` then
+  `ssh karmo@192.168.1.25{1,2}`), since KARMO-DEV01 has no direct LAN
+  route to the workers. Documented here because it wasn't recorded
+  anywhere and took real trial-and-error to find (see
+  `docs/runbooks/WORKER01_EXACT_ACTIVATION.md` for the original
+  provisioning record that named the `karmo` account).
+- **Docker + `karmo-ollama` container installed on both workers**,
+  matching `karmo-ai01`'s exact existing pattern (`ollama/ollama:latest`,
+  loopback-bound `127.0.0.1:11434`, named volume) rather than a native
+  install — reuses the proven approach instead of introducing a second
+  deployment pattern. `docker.io` installed via `apt-get` (Ubuntu
+  24.04.4, same as `karmo-ai01`).
+- All 4 models pulled on both workers, digests verified byte-identical
+  to `karmo-ai01`'s copies (`ministral-3:8b` `1922accd5827`, `qwen3:8b`
+  `500a1f067a9f`, `mistral:7b` `6577803aa9a0`, `granite3.3:2b`
+  `07bd1f170855`).
+- **Functional smoke test passed on both**: a real `granite3.3:2b`
+  generate call against each worker's own loopback Ollama API returned a
+  real completion (not just a successful pull).
+- **Listener boundary verified unchanged** on both workers (`ss -H
+  -lntu`): Ollama bound to `127.0.0.1:11434` only, no new LAN/tailnet-
+  facing port on either host.
+- **Explicitly NOT done**: Core's `OllamaChatClient` remains
+  loopback-only by deliberate security design (refuses remote endpoints,
+  refuses HTTP redirects — PR #37's stated boundary, "no remote model
+  endpoint"). Installing models on the workers does **not** by itself let
+  `KarmoOperator` route inference to them — that would require a new,
+  deliberately-designed capability (most likely worker-hosted inference
+  routed through the existing Worker Runtime job/ticket/approval path,
+  the same pattern Commander already uses, rather than relaxing the
+  Ollama client's existing remote-endpoint refusal). Not started; a
+  separate, security-relevant design decision for later, not something
+  to build by extension of tonight's provisioning work.
+- **Production access this work**: install (apt package, Docker
+  container, model pull) + one read-only generate call per worker, within
+  the same broad authorization already covering tonight's session. No
+  KARMO application code changed, no listener beyond loopback, no
+  approval/authority boundary touched.
+
 29 commits of staged Core/Worker hardening work (open since
 2026-09-13, no rejection ever recorded — just never brought to a
 promotion decision) reconciled against 94 commits of diverged `main`
