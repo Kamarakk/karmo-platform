@@ -166,6 +166,58 @@ class PostgresWorkerCoordinatorStore:
                 },
             )
 
+    def update_capabilities(self, *, worker_id, add_capabilities):
+        """Monotonically grant additional capability claims to an ACTIVE
+        worker. Only ever adds -- never removes an existing claim; narrowing
+        a worker's claims is a separate, explicit decision this method does
+        not make (revoke_worker exists for taking a worker fully offline).
+        Refuses while the worker has LEASED work, same discipline as
+        rotate_key, so a claim change can never race an in-flight job.
+        A capability the worker already claims is a silent no-op, not an
+        error -- this call states a desired end state, not a delta."""
+        add_capabilities = sorted(set(add_capabilities))
+        if not add_capabilities:
+            raise WorkerCoordinationError("add_capabilities must be non-empty")
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT capabilities, status FROM public.karmo_workers "
+                "WHERE worker_id=%s FOR UPDATE",
+                (worker_id,),
+            )
+            worker = cur.fetchone()
+            if worker is None or worker[1] != "ACTIVE":
+                raise WorkerCoordinationError(
+                    "capability update refused: worker is inactive/revoked or does not exist"
+                )
+            cur.execute(
+                "SELECT 1 FROM public.karmo_worker_jobs "
+                "WHERE worker_id=%s AND state='LEASED' LIMIT 1 FOR UPDATE",
+                (worker_id,),
+            )
+            if cur.fetchone() is not None:
+                raise WorkerCoordinationError(
+                    "capability update refused while worker has leased work; drain or reconcile it first"
+                )
+            current = set(worker[0] or [])
+            updated = sorted(current | set(add_capabilities))
+            if updated == sorted(current):
+                return tuple(updated)
+            cur.execute(
+                "UPDATE public.karmo_workers SET capabilities=%s::jsonb "
+                "WHERE worker_id=%s AND status='ACTIVE' RETURNING worker_id",
+                (_json(updated), worker_id),
+            )
+            if cur.fetchone() is None:
+                raise WorkerCoordinationError("worker state changed concurrently")
+            self._append_event(
+                cur,
+                event_key=f"worker:{worker_id}:capabilities-updated:{'+'.join(add_capabilities)}",
+                event_type="WORKER_CAPABILITIES_UPDATED",
+                worker_id=worker_id,
+                payload={"added": add_capabilities, "capabilities": updated},
+            )
+        return tuple(updated)
+
     def revoke_worker(self, worker_id):
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
