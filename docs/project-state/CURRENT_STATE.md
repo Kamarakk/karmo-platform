@@ -206,6 +206,55 @@ PR #32's original stated gate. `bloomboss/` is now on `main`, still
 isolated/dev-only — no production deployment, marketplace write, or
 customer-facing action authorized or performed.
 
+## KARMO webui — loopback and Tailscale-interface bind modes (2026-09-16) — VERIFIED, merged, DEPLOYED
+
+Closes the remaining two items of "working with KARMO directly" (a
+nicer browser interface, and mobile/remote access) from this session's
+approved plan.
+
+- **PR #60** (`core_service.webui`, loopback-only): a stdlib-only
+  (`http.server`, zero new dependencies) local chat page, every request
+  routed through the exact same `KarmoOperator.handle()` the CLI `chat`
+  command uses — no separate authority path. `serve()` refuses any
+  non-loopback bind by raising `ValueError`; not a systemd unit, manually
+  started. 7 new tests (page served, 404 routing, chat round-trip,
+  malformed/oversized/non-string body rejection, bind guard). Merged
+  `5051875a630c2ac92c9212cdf5c492f385d4e4c3`.
+- **PR #61** (Tailscale bind mode, Kamara's explicit choice after being
+  shown the SSH-tunnel-only alternative): adds a second, explicitly-named
+  mode (`"tailscale"`) that resolves this host's own Tailscale interface
+  IP via `tailscale ip -4` (never a caller-supplied address) and binds
+  only that — no wildcard/`0.0.0.0` bind is possible; any mode string
+  other than `"loopback"`/`"tailscale"` raises `ValueError`. This reuses
+  the already-VERIFIED `karmo-ai01-direct-tailscale` path in
+  `docs/access/CONNECTION_PATHS.yaml` (`TRAVEL_REMOTE` context) rather
+  than opening a new network boundary — still no public internet
+  exposure. 2 new tests (mocked `tailscale ip -4` success and
+  empty-output-rejected paths). Merged
+  `f64b44ea2dce3982b4ec036f6dce5c199443a6e8`.
+- **Deployed and verified on `karmo-ai01`**: running in `tailscale` mode,
+  bound to `100.75.239.44:8787` only (confirmed via `ss -H -lntu`, not
+  `0.0.0.0`). A direct chat round-trip from KARMO-DEV01 over the tailnet
+  returned `memory_status: ACTIVE`. Reachable from any device already
+  enrolled in the same tailnet (Mac or phone) with no SSH client needed
+  for the browser path.
+- `karmo-chat` and `karmo-web` shell functions added to KARMO-DEV01's
+  `~/.zshrc` (a new file — none existed before) for one-command access
+  from the Mac.
+- One operational note recorded for future deploys: `pkill -f
+  "core_service webui"` run over the same SSH invocation that contains
+  that literal string in its own script text will self-match and kill
+  the invoking shell (happened once this session, recovered cleanly, no
+  data/service impact) — use a PID captured from `pgrep` instead, never a
+  broad `pkill -f` string that could match the deploying script itself.
+- Core service tests: 192 passed, 33 skipped (no local Postgres in dev
+  environment; those run and pass in CI against a real container).
+- **Production access this work**: deploy (file replace + process
+  start/stop) only, within the same session-scoped authorization already
+  covering this session's durable-memory deployment work. No schema
+  change, no new credential, no change to `karmo-core.service` itself
+  (webui is a separate, manually-managed process).
+
 29 commits of staged Core/Worker hardening work (open since
 2026-09-13, no rejection ever recorded — just never brought to a
 promotion decision) reconciled against 94 commits of diverged `main`
