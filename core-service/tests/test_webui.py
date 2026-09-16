@@ -105,6 +105,36 @@ def test_chat_post_rejects_oversized_body(running_server):
     assert fake.calls == []
 
 
-def test_serve_refuses_non_loopback_bind():
+def test_serve_refuses_unsupported_mode():
     with pytest.raises(ValueError):
-        webui.serve(bind="0.0.0.0")
+        webui.serve(mode="everywhere")
+
+
+def test_resolve_tailscale_ip_uses_tailscale_cli(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+
+        class Result:
+            stdout = "100.75.239.44\n"
+
+        return Result()
+
+    monkeypatch.setattr(webui.subprocess, "run", fake_run)
+    ip = webui._resolve_tailscale_ip()
+
+    assert ip == "100.75.239.44"
+    assert calls == [["tailscale", "ip", "-4"]]
+
+
+def test_resolve_tailscale_ip_rejects_empty_output(monkeypatch):
+    def fake_run(cmd, **kwargs):
+        class Result:
+            stdout = ""
+
+        return Result()
+
+    monkeypatch.setattr(webui.subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError):
+        webui._resolve_tailscale_ip()
