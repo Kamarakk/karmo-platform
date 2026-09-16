@@ -194,9 +194,17 @@ merge line. Fixed systematically in PR #57
 (`fbaf42752e7a4a124379778b9c7a3ea55fdc62c4`), deployed and re-verified
 the same day. Full narrative:
 `docs/project-state/KARMO_DEVELOPER_NOTES.md`'s second 2026-09-15 entry.
-Also reconciled BloomBoss Phase 1 (PR #56) in parallel — tested and
-ready, **deliberately not merged**, pending Kamara's own
-merge/promotion decision per PR #32's original stated gate.
+Also reconciled BloomBoss Phase 1 (PR #56) in parallel — a second
+reconciliation pass was needed once this PR #43 work (and PR #57/#58)
+landed on `main` after PR #56 was first opened, since both were being
+worked concurrently in different sessions the same night; resolved
+(one dashboard-doc conflict only), re-verified (183 core-service, 62
+BloomBoss, 111 worker-runtime, 161 core-v2-prototypes, 2 worker-service
+tests, all pass), and **merged** on Kamara's explicit merge/promotion
+decision (`e8cda4f9c755d1d2cdd302c3c7cc7f0e8439e8fd`, 2026-09-16) per
+PR #32's original stated gate. `bloomboss/` is now on `main`, still
+isolated/dev-only — no production deployment, marketplace write, or
+customer-facing action authorized or performed.
 
 29 commits of staged Core/Worker hardening work (open since
 2026-09-13, no rejection ever recorded — just never brought to a
