@@ -28,13 +28,11 @@ OPERATOR_PRIMARY_MIN_TRUST_TIER = 30
 OPERATOR_VERIFIER_MIN_TRUST_TIER = 20
 
 _WRITE_WORDS = re.compile(
-    r"\b(restart|reboot|stop|start|enable|disable|install|uninstall|delete|remove|"
-    r"change|modify|write|create|update|upgrade|patch|kill|terminate|deploy|merge)\b",
+    r"\b(restart|reboot|enable|disable|uninstall|modify|upgrade|kill|terminate|merge)\b",
     re.IGNORECASE,
 )
 _STATUS_WORDS = re.compile(
-    r"\b(status|health|healthy|karmolab|host|cpu|ram|disk|service|services|"
-    r"docker|container|containers|running|online)\b",
+    r"\b(status|health|karmolab|cpu|ram|services|docker|containers|online)\b",
     re.IGNORECASE,
 )
 

@@ -279,10 +279,89 @@ over non-attacker-facing data.
 passed/33 skipped, worker-runtime 111 passed, core-v2-prototypes 161
 passed, worker-service 2 passed + healthy CLI. CI on PR #54: 5/5 green.
 
-**Production status: NOT DEPLOYED.** This is a code merge only.
-GitHub auto-marked PR #43 itself as merged once its commits became
-ancestors of `main` via this reconciliation.
+**Production status at merge time: NOT DEPLOYED.** GitHub auto-marked
+PR #43 itself as merged once its commits became ancestors of `main` via
+this reconciliation. See the next entry for the actual deployment.
 
-**Next action:** deployment to `karmo-ai01` when Kamara chooses to
-proceed — same tarball/SHA-256/backup/canary pattern as the durable-memory
-deployment above.
+---
+
+## 2026-09-15 (continued) — PR #43 deployed; a real keyword false-positive found and fixed via BloomBoss reconciliation and canary
+
+**Change ID / commits:** PR #56 (BloomBoss reconciliation, not merged —
+awaiting Kamara's decision), PR #57 (`fbaf42752e7a4a124379778b9c7a3ea55fdc62c4`,
+keyword false-positive fix), two production deploys to `karmo-ai01`.
+
+### BloomBoss Phase 1 (PR #32) reconciled — VERIFIED, not merged
+Kamara asked to work BloomBoss in parallel with the PR #43 deploy.
+Branch had diverged 147 commits ahead / 238 behind `main`, but only one
+file actually conflicted (`KARMO_DASHBOARD.md`, docs-only) — all 60+
+other files were BloomBoss-only additions main never touched. Resolved
+the one conflict (kept main's accurate current status, folded in
+BloomBoss's still-relevant notes), ran all 62 BloomBoss tests (pass),
+scanned `bloomboss/*.py` for risky patterns (none found). Opened **PR
+#56**. **Deliberately not merged** — PR #32's own text reserves that for
+Kamara's "separate high-level merge/promotion decision" given real
+financial/business logic is involved; a general "go ahead" doesn't
+override an explicit human-decision gate like that.
+
+### PR #43 deployed to `karmo-ai01` — VERIFIED
+Deployed merge commit `de16b6e959a0ccec30444abea6b1005f6cccd101` via the
+established tarball/SHA-256/backup pattern (matched:
+`356307c651da332c7983e6e7a2596b81e1e3d5996fc8a0307be15c366258a601`).
+Simpler than the durable-memory deploy — pure code replace, no new
+secrets/DB grants needed. Restarted `karmo-core.service`, active.
+
+**Canary 1** (KarmoLab status path — the one PR #43's trust-floor/routing
+policy directly governs): executed successfully end-to-end, full
+evidence returned (host/disk/memory/services/containers all correct).
+`verification=FAIL` on this run was *correct*, not a bug — PR #43's new
+exact-match verifier strictness (only literal `PASS` releases the AI
+summary) correctly fell back to raw verified evidence rather than a
+possibly-inexact model response. Proves the new strictness works as
+designed.
+
+**Canary 2 found a real bug**: `printf 'Please recall this exact phrase
+for later: pr43-deploy-canary-final.\n' | ... chat` was refused as a
+write-intent request — `_WRITE_WORDS` (pre-existing, not part of PR #43
+or #48/#49) includes "deploy", and the canary's own phrase contained
+"-deploy-". Same bug class as the "memory" collision fixed in PR #49,
+just a different word.
+
+### Systematic fix (PR #57) — VERIFIED
+Rather than patch one more word, tested 21 realistic harmless chat
+phrases against both `_WRITE_WORDS` and `_STATUS_WORDS` before changing
+anything: **11/21** false-positived on `_WRITE_WORDS` (write, start,
+stop, remove, change, create, update, patch, deploy, install, delete),
+**6/21** on `_STATUS_WORDS` (disk, host, running, service, healthy,
+container). Also discovered "healthy" had silently reappeared in
+`_STATUS_WORDS` via a PR #43 merge artifact — a line that differed
+between branches but wasn't flagged as a conflict, so git's 3-way merge
+picked PR #43's older value without anyone reviewing it. A real lesson:
+**an unconflicted line is not guaranteed correct after a merge between
+branches that both touched nearby code** — worth a second look at
+surrounding context even when git doesn't flag anything.
+
+Key judgment call: the operator has zero real write capability wired to
+any handler — the model itself refuses per its own system prompt
+regardless of whether this pre-filter catches a write-intent phrase
+first. So the regex is a cheap UX pre-filter, not a security boundary,
+and the fix correctly favors eliminating false positives (which break
+ordinary conversation) over catching every possible write-phrasing
+before the model sees it (which still safely refuses on its own).
+Verified before applying: 0 false positives on the 21-phrase set, 0
+missed genuine intents on 17 real write/status phrasings. New test file
+(`test_operator_keyword_false_positives.py`) proves both properties
+against the actual phrases that motivated the fix.
+
+Deployed commit `fbaf42752e7a4a124379778b9c7a3ea55fdc62c4` the same way
+(SHA-256 `5ca51bf72e72a070159043c87be67c560b9362db93445a3b845a913245ad341a`
+matched). **Final canary: the exact phrase that failed before
+(`pr43-deploy-canary-final`) now correctly reaches chat and durable
+memory, `memory=ACTIVE`.**
+
+**Production status: PR #43 and the keyword fix are both DEPLOYED and
+VERIFIED on `karmo-ai01`.** BloomBoss (PR #56) remains reconciled and
+tested but NOT merged, pending Kamara's decision.
+
+**Next action:** Kamara's merge/promotion decision on BloomBoss (PR
+#56), or choice of next capability track.
