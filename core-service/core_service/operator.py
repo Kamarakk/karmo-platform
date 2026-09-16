@@ -11,12 +11,25 @@ import json
 import re
 from dataclasses import dataclass
 
-from .control import ApprovalEngine, CapabilityClass
-from .dispatcher import CapabilityDispatcher
+from .control import ApprovalEngine, CapabilityClass, CoreControlError
+from .dispatcher import CapabilityDispatcher, DispatchError
 from .durable_memory import NullMemoryBackend, build_default_memory_backend
 from .karmolab import read_status
 from .model_router import ModelResource, ModelRouter, ModelRoutingError
 from .ollama_client import OllamaChatClient, OllamaClientError
+from .orchestration import (
+    CLAIM_TASK_TOOL,
+    COMPLETE_TASK_TOOL,
+    CREATE_TASK_TOOL,
+    LIST_TASKS_TOOL,
+    TOOL_VERSION as ORCHESTRATION_TOOL_VERSION,
+    build_default_task_store,
+    claim_task_handler,
+    complete_task_handler,
+    create_task_handler,
+    list_tasks_handler,
+    manifests as orchestration_manifests,
+)
 from .registry import CapabilityRegistry
 
 KARMOLAB_STATUS_TOOL = "karmolab.read_status"
@@ -118,6 +131,7 @@ class KarmoOperator:
         resources=None,
         status_reader=None,
         memory_backend=None,
+        task_store=None,
     ):
         self.model_client = model_client or OllamaChatClient()
         self.router = ModelRouter(resources or default_model_resources())
@@ -139,6 +153,96 @@ class KarmoOperator:
             approval_engine=ApprovalEngine(),
         )
         self.dispatcher.bind(KARMOLAB_STATUS_TOOL, KARMOLAB_STATUS_VERSION, self.status_reader)
+
+        if task_store is not None:
+            self.task_store = task_store
+            self.orchestration_status = "ACTIVE"
+        else:
+            try:
+                self.task_store = build_default_task_store()
+                self.orchestration_status = "ACTIVE"
+            except Exception as exc:
+                self.task_store = None
+                self.orchestration_status = f"DEGRADED_CONFIG_ERROR:{type(exc).__name__}"
+        if self.task_store is not None:
+            for manifest in orchestration_manifests():
+                self.registry.register(manifest)
+            self.dispatcher.bind(CREATE_TASK_TOOL, ORCHESTRATION_TOOL_VERSION, create_task_handler(self.task_store))
+            self.dispatcher.bind(LIST_TASKS_TOOL, ORCHESTRATION_TOOL_VERSION, list_tasks_handler(self.task_store))
+            self.dispatcher.bind(CLAIM_TASK_TOOL, ORCHESTRATION_TOOL_VERSION, claim_task_handler(self.task_store))
+            self.dispatcher.bind(COMPLETE_TASK_TOOL, ORCHESTRATION_TOOL_VERSION, complete_task_handler(self.task_store))
+
+    def _dispatch_write(self, *, tool_id: str, version: str, arguments: dict, actor: str):
+        """Request + approve + execute a REVERSIBLE_WRITE tool within one trusted,
+        human-invoked call -- the same pattern __main__.health() already uses for
+        core.health, and the same shape the worker-canary scripts already used for
+        Commander dispatch. The human-in-the-loop gate is invoking this process at
+        all (a local CLI run by/for Kamara), not a second interactive approval
+        step; approver and requester are always the same explicit, named actor,
+        never a model's own identity standing in for hers."""
+        pending = self.dispatcher.dispatch(
+            requester=actor,
+            tool_id=tool_id,
+            version=version,
+            arguments=arguments,
+            executor_identity="karmo-core-operator",
+        )
+        try:
+            self.dispatcher.approval_engine.approve(
+                pending.approval_id, approver=actor, authorized_executor="karmo-core-operator",
+            )
+        except CoreControlError as exc:
+            raise DispatchError(str(exc)) from exc
+        return self.dispatcher.dispatch(
+            requester=actor,
+            tool_id=tool_id,
+            version=version,
+            arguments=arguments,
+            executor_identity="karmo-core-operator",
+            approval_id=pending.approval_id,
+        )
+
+    def _require_orchestration(self):
+        if self.task_store is None:
+            raise DispatchError(f"orchestration task board unavailable: {self.orchestration_status}")
+
+    def create_task(self, *, objective: str, context: str | None = None, actor: str) -> dict:
+        self._require_orchestration()
+        decision = self._dispatch_write(
+            tool_id=CREATE_TASK_TOOL, version=ORCHESTRATION_TOOL_VERSION,
+            arguments={"objective": objective, "context": context, "requested_by": actor},
+            actor=actor,
+        )
+        return decision.result
+
+    def list_tasks(self, *, status: str | None = None, limit: int = 20) -> list[dict]:
+        self._require_orchestration()
+        decision = self.dispatcher.dispatch(
+            requester="karmo-core-operator",
+            tool_id=LIST_TASKS_TOOL,
+            version=ORCHESTRATION_TOOL_VERSION,
+            arguments={"status": status, "limit": limit},
+            executor_identity="karmo-core-operator",
+        )
+        return decision.result["tasks"]
+
+    def claim_task(self, *, task_id: str, actor: str) -> dict:
+        self._require_orchestration()
+        decision = self._dispatch_write(
+            tool_id=CLAIM_TASK_TOOL, version=ORCHESTRATION_TOOL_VERSION,
+            arguments={"task_id": task_id, "claimed_by": actor},
+            actor=actor,
+        )
+        return decision.result
+
+    def complete_task(self, *, task_id: str, result: str, actor: str) -> dict:
+        self._require_orchestration()
+        decision = self._dispatch_write(
+            tool_id=COMPLETE_TASK_TOOL, version=ORCHESTRATION_TOOL_VERSION,
+            arguments={"task_id": task_id, "result": result, "completed_by": actor},
+            actor=actor,
+        )
+        return decision.result
 
     def _models(self) -> OperatorModels:
         primary = self.router.route(
