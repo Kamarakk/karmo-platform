@@ -80,6 +80,12 @@ def chat() -> int:
         _render_operator_response(response)
 
 
+def webui() -> int:
+    from .webui import serve
+
+    return serve()
+
+
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else "health"
     if command == "health":
@@ -88,6 +94,8 @@ def main():
         return operator_status()
     if command == "chat":
         return chat()
+    if command == "webui":
+        return webui()
     print(json.dumps({"status": "error", "reason": f"unsupported command: {command}"}))
     return 2
 
