@@ -18,6 +18,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Keyword dispatch false-positive fix (PR #57) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-15), canary-verified
 - BloomBoss Historical Data Intelligence (Phase 1) — ✅ MERGED to `main` (PR #56, 2026-09-16); isolated dev/GitHub scope only, no production deployment
 - KARMO webui (loopback + Tailscale-interface bind modes) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-16), running in `tailscale` mode at `http://100.75.239.44:8787`, verified reachable and chat-round-trip tested; `karmo-chat`/`karmo-web` shell helpers added on KARMO-DEV01
+- KARMO orchestration task board (first KARMO↔Claude/GPT slice, no API keys/billing) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-16), full create→list→claim→complete canary verified via `python3 -m core_service task ...`, including both negative-path guards (double-claim, wrong-claimant completion)
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -34,14 +35,15 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-Durable memory, PR #43's hardening, the keyword false-positive fix, and
-the webui (loopback + Tailscale modes, PR #60/#61) are all deployed and
-verified on `karmo-ai01`. BloomBoss Phase 1 (PR #56) is merged to `main`
-(2026-09-16) on Kamara's explicit decision — still isolated/dev-only, no
-production deployment. "Working with KARMO directly" (all 4 access
-options) is now fully closed. Next: spot-check BloomBoss's analytics
-output against known real sales, then choose the next KARMO capability
-track — see `NEXT_STEPS.md`.
+Durable memory, PR #43's hardening, the keyword false-positive fix, the
+webui (loopback + Tailscale modes, PR #60/#61), and the orchestration
+task board (PR #63) are all deployed and verified on `karmo-ai01`.
+BloomBoss Phase 1 (PR #56) is merged to `main` (2026-09-16) on Kamara's
+explicit decision — still isolated/dev-only, no production deployment.
+"Working with KARMO directly" (all 4 access options) is fully closed.
+Next: spot-check BloomBoss's analytics output against known real sales
+(now itself a candidate first real task for the orchestration board), or
+choose the next KARMO capability track — see `NEXT_STEPS.md`.
 
 ## CURRENT ISSUE
 

@@ -75,20 +75,37 @@ canary, Mac-side access without manual SSH, a nicer browser interface,
 mobile/remote reach) are done — see "KARMO webui" section in
 `CURRENT_STATE.md` for full detail.
 
+### 2026-09-16 — KARMO orchestration task board (PR #63) deployed
+
+First KARMO↔Claude/GPT collaboration slice: 4 tools
+(`create_task`/`list_tasks`/`claim_task`/`complete_task`) registered on
+the already-implemented Tool/Capability Registry (correcting a stale
+"design only" claim elsewhere in this doc's history — see "KARMO
+orchestration task board" in `CURRENT_STATE.md`). Deliberately not
+automated model dispatch — no API keys, no per-token billing, a human or
+human-operated Claude/ChatGPT session reads/completes tasks via
+`python3 -m core_service task ...`. Deployed and canary-verified on
+`karmo-ai01`, including both negative-path guards. **Not yet used for a
+real piece of work** — only a synthetic canary task so far.
+
 ### Items requiring Kamara's decision (current, as of 2026-09-16)
 
 1. ~~**PR #56** (BloomBoss Phase 1)~~ — **merged**, `e8cda4f9`.
 2. **Spot-check BloomBoss Phase 1's analytics output** against 2-3 known
-   real purchases/sales, before trusting it further — not yet done.
+   real purchases/sales, before trusting it further — not yet done. Now
+   also a natural candidate for the first *real* orchestration task once
+   Kamara provides the data.
 3. **PR #26** (learning program branch) — untouched, predates current
    `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile
    before any merge attempt.
-4. **Choose the next KARMO capability** to build now that durable memory
-   and BloomBoss Phase 1 are both live — BloomBoss Phase 2+ (marketplace
-   research), further Worker Commander capabilities
-   (`bounded_text_read`/`directory_list`, currently fail-closed pending
-   `allowed_root` design), the Tool/Capability Registry (needed before any
-   KARMO-to-Claude/GPT task-dispatch work), or something else.
+4. **Choose the next KARMO capability** to build now that durable memory,
+   BloomBoss Phase 1, and the orchestration task board are all live —
+   BloomBoss Phase 2+ (marketplace research), further Worker Commander
+   capabilities (`bounded_text_read`/`directory_list`, currently
+   fail-closed pending `allowed_root` design), a report-only registry
+   auditor (reconciling `tool_registry` against actual invocations,
+   matching `h04/app/auditor.py`'s pattern — recommended before the
+   registry carries much more than 5 tools), or something else.
 5. Two small non-blocking housekeeping items from the 2026-09-14/15
    sessions: `llama3.2:3b`/`qwen3:4b` remain installed on AI01 but
    inactive (deferred cleanup decision); two

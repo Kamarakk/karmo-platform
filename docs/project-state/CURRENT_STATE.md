@@ -255,6 +255,63 @@ approved plan.
   change, no new credential, no change to `karmo-core.service` itself
   (webui is a separate, manually-managed process).
 
+## KARMO orchestration task board (2026-09-16) — VERIFIED, merged, DEPLOYED
+
+First slice of KARMO↔Claude/GPT collaboration, on Kamara's explicit
+request and explicit constraint: stays entirely within her existing
+Claude/ChatGPT subscriptions, no API keys, no per-token billing anywhere
+in this feature.
+
+**Correction to prior project-state records**: the Tool/Capability
+Registry was documented (Post-Foundation Overnight Readiness Program,
+2026-09-09) as "DESIGN ONLY, not implemented." That was true at the time
+but is now stale — `core_service.control`/`registry`/`dispatcher`
+(`CapabilityClass`, `ApprovalRequirement`, `compute_approval_requirement`,
+`CapabilityRegistry`, `CapabilityDispatcher`, `ApprovalEngine`) are
+production code, already serving `karmolab.read_status` since the Core
+v2 productionization work. This session's orchestration work is the
+first *new* domain registered on that existing machinery, not a
+from-scratch registry build.
+
+- **PR #63**: 4 new tools in a `karmo-orchestration` domain —
+  `create_task`/`claim_task`/`complete_task` (`REVERSIBLE_WRITE`,
+  `EXPLICIT_PER_SESSION_OR_TASK` floor per I-09, verified by test) and
+  `list_tasks` (`READ`, `NONE` floor). `financial_action`/
+  `destructive_action` both `False` on all four (verified by test).
+  Deliberately **not** automated model dispatch: no outbound model API
+  call, no API key, anywhere in `core_service/orchestration.py`. A human
+  (Kamara) or a human-operated Claude Code/ChatGPT session reads a task
+  via `KARMO_ACTOR=<actor> python3 -m core_service task list` and
+  reports back via `task complete` — every write still goes through the
+  exact same registry/dispatcher/`ApprovalEngine` path already proven for
+  `karmolab.read_status`, no new governance mechanism.
+  `KarmoOperator._dispatch_write` performs request+approve+execute in one
+  trusted call, the same pattern `__main__.health()` and the worker-
+  canary scripts already established — the human-in-the-loop gate is
+  invoking the CLI at all (SSH to `karmo-ai01` with the admin key), not a
+  second interactive approval step; approver/executor identity is always
+  the explicit named actor, never a model's own identity standing in for
+  a human's. Own least-privilege `karmo_orchestration` DB role and DSN
+  file, separate from `durable_memory`'s — matches the registry
+  architecture doc's own failure-isolation requirement. Merged
+  `bbd091b1bc0bc64ff33274f774079b5219b016eb`.
+- **Deployed and verified on `karmo-ai01`** via a full CLI canary: create
+  → list(OPEN) → claim (as `claude-code`) → a second claim attempt (as
+  `chatgpt`) correctly refused (`TaskStateError`) → complete attempted by
+  the wrong actor correctly refused → complete by the actual claimant
+  succeeds → confirmed durable in `public.karmo_orchestration_tasks` via
+  direct query. No new listener introduced (`ss -H -lntu` baseline
+  unchanged); `karmo-core.service`/`karmo-worker.service` both remained
+  `active`.
+- Core service tests: 205 passed (was 192), 38 skipped (5 new
+  Postgres-contract tests skip without local Postgres in dev; all 5 ran
+  and passed in CI against a real container).
+- **Next step, not done yet**: a real KARMO→Claude/GPT task actually
+  worked end-to-end through this mechanism (the canary task above was a
+  synthetic proof, not a real piece of work) — e.g. routing the pending
+  BloomBoss Phase 1 spot-check itself through `task create`/`task
+  complete` once Kamara provides the real sales data.
+
 29 commits of staged Core/Worker hardening work (open since
 2026-09-13, no rejection ever recorded — just never brought to a
 promotion decision) reconciled against 94 commits of diverged `main`
