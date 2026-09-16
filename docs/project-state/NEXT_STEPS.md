@@ -127,12 +127,15 @@ yet** — that's a new, deliberately-scoped capability (not started).
 6. **Design worker-hosted model inference routing** — Worker01/Worker02
    now have real model capacity (see 2026-09-16 entry above) but Core's
    `OllamaChatClient` is deliberately loopback-only and refuses remote
-   endpoints (PR #37's stated security boundary). Actually using the
-   workers' models means a new capability, not a config toggle — most
-   likely routed through the existing Worker Runtime job/ticket/approval
-   path (the same pattern Commander already uses), not by relaxing the
-   Ollama client's existing refusal. Needs its own System-Fit Review and
-   Invariant Impact Review before any implementation.
+   endpoints (PR #37's stated security boundary). ~~Needs its own
+   System-Fit Review~~ — **scoped 2026-09-16**, see
+   `docs/architecture/KARMO_WORKER_MODEL_INFERENCE_ROUTING.md`: a new
+   `model_chat` worker capability routed through the existing job/ticket/
+   approval path (not a change to `OllamaChatClient`), with a real
+   benchmark already run (workers ~13% faster per-token than `karmo-ai01`
+   for `qwen3:8b`, confirming the RAM-pressure theory). **Design only —
+   not implemented.** Formal Invariant Impact Review and actual
+   implementation remain a future decision.
 
 ---
 
