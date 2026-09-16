@@ -417,6 +417,72 @@ def test_register_worker_cannot_silently_rotate_existing_worker_key():
     coordinator.authenticate_heartbeat(credential_token=new_credential, worker_id="worker-1")
 
 
+def test_update_capabilities_grants_new_claim_to_active_worker():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1", capabilities=["commander.system_snapshot"])
+
+    updated = store.update_capabilities(worker_id="worker-1", add_capabilities=["model_chat"])
+
+    assert updated == ("commander.system_snapshot", "model_chat")
+
+
+def test_update_capabilities_appends_a_durable_event():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+
+    store.update_capabilities(worker_id="worker-1", add_capabilities=["model_chat"])
+
+    with psycopg.connect(_conninfo()) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT event_type FROM public.karmo_worker_events WHERE worker_id=%s ORDER BY created_at DESC LIMIT 1",
+            ("worker-1",),
+        )
+        assert cur.fetchone()[0] == "WORKER_CAPABILITIES_UPDATED"
+
+
+def test_update_capabilities_is_a_noop_if_already_claimed():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1", capabilities=["model_chat"])
+
+    updated = store.update_capabilities(worker_id="worker-1", add_capabilities=["model_chat"])
+
+    assert updated == ("model_chat",)
+
+
+def test_update_capabilities_refuses_nonexistent_worker():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+
+    with pytest.raises(WorkerCoordinationError, match="inactive/revoked or does not exist"):
+        store.update_capabilities(worker_id="ghost-worker", add_capabilities=["model_chat"])
+
+
+def test_update_capabilities_refuses_revoked_worker():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    store.revoke_worker("worker-1")
+
+    with pytest.raises(WorkerCoordinationError, match="inactive/revoked or does not exist"):
+        store.update_capabilities(worker_id="worker-1", add_capabilities=["model_chat"])
+
+
+def test_update_capabilities_refuses_while_worker_has_leased_work():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    worker_auth, tickets, results = _crypto()
+    coordinator = WorkerCoordinator(store, worker_authenticator=worker_auth, ticket_authority=tickets, result_authenticator=results)
+    _setup_leased_job(store, worker_auth, coordinator)
+
+    with pytest.raises(WorkerCoordinationError, match="leased work"):
+        store.update_capabilities(worker_id="worker-1", add_capabilities=["model_chat"])
+
+
+def test_update_capabilities_rejects_empty_grant():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+
+    with pytest.raises(WorkerCoordinationError, match="non-empty"):
+        store.update_capabilities(worker_id="worker-1", add_capabilities=[])
+
+
 def test_revoked_worker_cannot_consume_ticket_or_submit_result_midflight():
     """HIGH regression: revocation must be effective against work already
     leased/ticketed, not just against future heartbeats/leases."""
