@@ -130,8 +130,11 @@ def test_list_tasks_tool_is_not_offered_when_task_store_is_unconfigured():
 
     operator.handle("what tasks are open right now?")
 
-    # Never even offered the tool -- not "offered but refused".
-    assert client.requests[0]["tools"] == []
+    # Never even offered the tool -- not "offered but refused". Other
+    # configured-by-default tools (e.g. bloomboss_report) may still be
+    # offered; this asserts specifically about list_tasks.
+    offered_names = {t["function"]["name"] for t in client.requests[0]["tools"]}
+    assert "list_tasks" not in offered_names
 
 
 def test_round_cap_stops_a_model_that_never_stops_calling_tools():
