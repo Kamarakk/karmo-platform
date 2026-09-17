@@ -117,7 +117,29 @@ yet** — that's a new, deliberately-scoped capability (not started).
    this spot-check). **Phase 1's engine is confirmed trustworthy on real
    data.** Real business figures/customer data were kept out of the
    repo (ephemeral scratchpad only), matching the standing no-real-data-
-   in-git constraint.
+   in-git constraint. Since then (PR #72), the EMgarden invoice's business
+   facts were separately reconstructed to all 75 real units (zero
+   `relationship_issues`, landed cost reconciles exactly to the invoice's
+   $5,416.80 total) and committed as the first real file in
+   `docs/bloomboss/historical_data/` — the source invoice image itself
+   (carried Kamara's home address/phone) was never committed, moved to
+   her home directory instead.
+2a. **New deferred investigation, found 2026-09-17**: `model_chat` jobs
+    dispatched to a worker's *long-running systemd service* got stuck in
+    `LEASED` past lease expiry 4 times tonight (3× Worker01, 1×
+    Worker02), with zero trace in `journalctl` even with PR #70's new
+    logging in place. Every time, a fresh manual `--once` run on the same
+    host succeeded cleanly within ~1 minute. See "Worker model_chat
+    activation on both workers, and a new deferred finding" in
+    `CURRENT_STATE.md` for full detail. Leading hypothesis: a resource/fd
+    leak specific to sustained polling-loop operation, not the capability
+    itself. The 4 orphaned jobs were reconciled via the existing
+    `recover_expired_leases()` method → `RECOVERY_REQUIRED` (not
+    `FAILED` — that method deliberately never guesses a stale job's real
+    outcome). **`model_chat` has a manual-invocation proof on both
+    workers, not yet an unattended-service proof** — needs its own
+    dedicated investigation before being trusted under normal automatic
+    polling.
 3. **PR #26** (learning program branch) — untouched, predates current
    `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile
    before any merge attempt.

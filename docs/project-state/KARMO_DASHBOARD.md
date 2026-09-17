@@ -19,7 +19,8 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - BloomBoss Historical Data Intelligence (Phase 1) — ✅ MERGED to `main` (PR #56, 2026-09-16); isolated dev/GitHub scope only, no production deployment
 - KARMO webui (loopback + Tailscale-interface bind modes) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-16), running in `tailscale` mode at `http://100.75.239.44:8787`, verified reachable and chat-round-trip tested; `karmo-chat`/`karmo-web` shell helpers added on KARMO-DEV01
 - KARMO orchestration task board (first KARMO↔Claude/GPT slice, no API keys/billing) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-16), full create→list→claim→complete canary verified via `python3 -m core_service task ...`, including both negative-path guards (double-claim, wrong-claimant completion)
-- Worker01/Worker02 local model hosting (`qwen3:8b`/`ministral-3:8b`/`mistral:7b`/`granite3.3:2b` via `karmo-ollama` Docker container) — ✅ DEPLOYED (2026-09-16), functional smoke-tested on both, loopback-only, closes the 2026-09-13 checkpoint's "next infrastructure phase" gap; Core is **not yet** wired to route inference to them (separate future decision)
+- Worker01/Worker02 local model hosting (`qwen3:8b`/`ministral-3:8b`/`mistral:7b`/`granite3.3:2b` via `karmo-ollama` Docker container) — ✅ DEPLOYED (2026-09-16), functional smoke-tested on both, loopback-only, closes the 2026-09-13 checkpoint's "next infrastructure phase" gap
+- `model_chat` worker capability (PRs #68/#69/#70) — ✅ GRANTED to both Worker01 and Worker02, **real `SUCCEEDED` job proven on each** via manual `--once` invocation; ⚠️ NOT yet proven reliable under the normal long-running systemd service (jobs got stuck 4× tonight with zero log trace — see "new deferred finding" in `CURRENT_STATE.md`); 4 orphaned jobs reconciled via `recover_expired_leases()` → `RECOVERY_REQUIRED`
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 

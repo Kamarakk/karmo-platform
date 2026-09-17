@@ -374,6 +374,57 @@ installed here, matching what's live, not the superseded list.
   KARMO application code changed, no listener beyond loopback, no
   approval/authority boundary touched.
 
+## Worker model_chat activation on both workers, and a new deferred finding (2026-09-17)
+
+Phase 1 of `docs/architecture/KARMO_WORKER_MODEL_INFERENCE_ROUTING.md`
+(PR #68's `model_chat` capability) plus PR #70's submit_result fix
+(#70) were carried through to a full, real, end-to-end proof on **both**
+Worker01 and Worker02 — not just designed and merged, actually exercised
+against live infrastructure:
+
+- `update_capabilities` (PR #69) granted `model_chat` to both workers via
+  the real gateway identity (Kamara ran the grant script interactively,
+  since `sudo -u karmo-gateway` isn't in the `root`-only NOPASSWD sudoers
+  list — a real, pre-existing access gap, documented rather than worked
+  around by weakening anything).
+- Each worker's flat `timeout_seconds` config (used for *every*
+  capability on the SSH remote transport, not looked up per-capability
+  from the manifest — a real, separate, pre-existing limitation) was
+  raised from 30 to 150 to accommodate `model_chat`'s real generation
+  time.
+- **Both workers proven `SUCCEEDED` on a real `model_chat` job**, run
+  manually via `python3 -m remote_worker_runtime ... --once` (not just
+  the systemd service) — a real Ollama-generated response, signed,
+  reported back to Core, durable `SUCCEEDED` state confirmed by direct
+  query.
+- **New deferred finding, not root-caused tonight**: `model_chat` jobs
+  dispatched to the *long-running systemd service* (not a fresh `--once`
+  invocation) got stuck in `LEASED` past lease expiry multiple times
+  (3× Worker01, 1× Worker02), with **zero trace in `journalctl`** even
+  with PR #70's new logging in place — meaning `run_loop`'s exception
+  handler was never entered; something blocks without raising. Every
+  time, a fresh manual `--once` run on the same host succeeded cleanly
+  within the expected ~1 minute. This points at something specific to
+  *sustained* operation of the polling loop (a resource/fd leak across
+  many poll cycles is the leading hypothesis) rather than the capability
+  or the fix from tonight. **Needs its own dedicated investigation**
+  before `model_chat` (or any future long-running capability) is trusted
+  under normal unattended service operation — right now it only has a
+  manual-invocation proof, not an unattended-service proof.
+- The 4 jobs orphaned by that finding were reconciled via the existing
+  `PostgresWorkerCoordinatorStore.recover_expired_leases()` method
+  (already built, never exercised in anger before tonight) — moved to
+  `RECOVERY_REQUIRED`, not blindly marked `FAILED`, per that method's own
+  explicit "never guess a stale job's outcome" design. All 4 confirmed
+  moved; zero non-terminal `karmo_worker_jobs` rows remain.
+- `docs/bloomboss/historical_data/emgarden_invoice_2026040040.csv` (PR
+  #72) — first real BloomBoss historical import, extracted from a real
+  supplier invoice with all personal contact information stripped before
+  it ever reached the repo. BloomBoss Phase 1's spot-check (`NEXT_STEPS.md`
+  item 2) is now closed against this real data plus 10 real sales:
+  `python -m bloomboss.report` ran clean, all figures independently
+  hand-verified.
+
 29 commits of staged Core/Worker hardening work (open since
 2026-09-13, no rejection ever recorded — just never brought to a
 promotion decision) reconciled against 94 commits of diverged `main`
