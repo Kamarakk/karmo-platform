@@ -21,7 +21,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - KARMO orchestration task board (first KARMO↔Claude/GPT slice, no API keys/billing) — ✅ DEPLOYED TO KARMO-AI01 (2026-09-16), full create→list→claim→complete canary verified via `python3 -m core_service task ...`, including both negative-path guards (double-claim, wrong-claimant completion)
 - Worker01/Worker02 local model hosting (`qwen3:8b`/`ministral-3:8b`/`mistral:7b`/`granite3.3:2b` via `karmo-ollama` Docker container) — ✅ DEPLOYED (2026-09-16), functional smoke-tested on both, loopback-only, closes the 2026-09-13 checkpoint's "next infrastructure phase" gap
 - `model_chat` worker capability (PRs #68/#69/#70) — ✅ GRANTED to both Worker01 and Worker02, **real `SUCCEEDED` job proven on each** via manual `--once` invocation; 4 orphaned jobs reconciled via `recover_expired_leases()` → `RECOVERY_REQUIRED`
-- **Sustained-service hang root-caused and fixed (PR #74, 2026-09-17)** — `run_capability()`'s job sandbox switched `multiprocessing` context from `fork` to `spawn`. Root cause: a long-lived worker makes thousands of subprocess/SSH calls between jobs; `fork()` only clones the calling thread, so a lock held by another thread at the instant of a fork could be inherited permanently locked in the child with no thread left to release it — a silent, untraceable deadlock, matching every observed symptom (service-only, zero exceptions, no crash). Diagnosed jointly with GPT (second opinion shaped the fix's actual scope — spawn requires verified picklability, not just a context-string swap). 125/125 worker-runtime tests pass (Python 3.9 and 3.12). Merged to `main` (`af12ed8`). **Deployed to Worker01 only** (new `MainPID=107737`, `--check-config` clean) — ⚠️ NOT YET CANARY-VERIFIED under the live service (see CURRENT ISSUE below). Worker02 not yet touched with this fix.
+- **Sustained-service hang root-caused and fixed (PR #74, 2026-09-17)** — `run_capability()`'s job sandbox switched `multiprocessing` context from `fork` to `spawn`. Root cause: a long-lived worker makes thousands of subprocess/SSH calls between jobs; `fork()` only clones the calling thread, so a lock held by another thread at the instant of a fork could be inherited permanently locked in the child with no thread left to release it — a silent, untraceable deadlock, matching every observed symptom (service-only, zero exceptions, no crash). Diagnosed jointly with GPT (second opinion shaped the fix's actual scope — spawn requires verified picklability, not just a context-string swap). 125/125 worker-runtime tests pass (Python 3.9 and 3.12). Merged to `main` (`af12ed8`). **✅ DEPLOYED AND PROVEN ON BOTH WORKERS (2026-09-17)**: Worker01 (`MainPID=107737`) canary-proven, then soak-tested clean for 6 consecutive checks over ~3 hours of real sustained load (17:15–20:15 UTC — same PID throughout, zero stuck jobs every check); Worker02 (`MainPID=105750`) deployed and canary-proven (`SUCCEEDED`, ~53s, job `6bf6588c-...`). **This workstream is closed** — no further action needed on either worker.
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -38,58 +38,24 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-**Stopped mid-canary, 2026-09-17, end of a 12+ hour session — pick this
-up first.** The fork→spawn fix (PR #74) is merged and deployed to
-Worker01, but the canary that proves it under the real live service has
-NOT yet succeeded — the session ended before a working enqueue attempt
-completed. See "IMMEDIATE NEXT ACTION" below for the exact resume point.
+The `model_chat` sustained-service-hang workstream (fork→spawn fix, PR
+#74) is **fully closed as of 2026-09-17** — both workers deployed,
+canary-proven, and Worker01 additionally soak-tested clean over ~3
+hours of real load. See "Sustained-service hang" entry above for full
+detail.
 
-Once that canary is clean and Worker02 also gets the fix: spot-check
-BloomBoss's analytics output against known real sales (candidate first
-real task for the orchestration board), or choose the next KARMO
-capability track — see `NEXT_STEPS.md`.
-
-## IMMEDIATE NEXT ACTION (resume point, 2026-09-17)
-
-1. **Worker02's service is currently STOPPED** (`karmo-worker02.service`,
-   deliberately, to isolate the canary to Worker01 — this was NOT
-   restarted before the session ended). Restart it first:
-   `ssh -i ~/.ssh/karmo_admin_ed25519 karmo@192.168.1.252 'sudo systemctl start karmo-worker02.service && systemctl is-active karmo-worker02.service'`
-   — unless you specifically want it to stay down to keep isolating the
-   Worker01 canary a while longer, in which case restart it once the
-   canary below succeeds.
-2. Re-run the `model_chat` canary enqueue against `karmo-gateway` on
-   `karmo-ai01` — the last attempt failed with
-   `WorkerGatewayRuntimeError: gateway runtime dependency unavailable`
-   because only `/opt/karmo/core-service` was on `sys.path`, not
-   `/opt/karmo/worker-runtime/app` (where `crypto_boundary.py` lives).
-   Fixed script (both `sys.path.insert` lines, `-t` for the sudo TTY
-   prompt) is in the session transcript ending
-   `...KARMO-DEV/6b9897bb-2f63-4a7e-8f78-c2aeb85f423e.jsonl` — not yet
-   confirmed to run clean end-to-end.
-3. Once a `JOB_ID` comes back, check its state and Worker01's journal
-   (`sudo journalctl -u karmo-worker01.service`) to confirm a clean
-   `SUCCEEDED`/`FAILED` outcome with no silent hang.
-4. Since the original bug was a rare race needing hours of uptime to
-   surface, one clean job is necessary but not sufficient — leave
-   Worker01's service running under normal load for a few hours (or
-   overnight) before calling it proven, per the plan already agreed
-   with GPT's recommendation.
-5. Only after that window is clean: deploy the identical fix to
-   Worker02, then PROJECT SAVE.
+Next: spot-check BloomBoss's analytics output against known real sales
+(candidate first real task for the orchestration board), or choose the
+next KARMO capability track — see `NEXT_STEPS.md`'s prioritized list
+(task-board + model_chat integration, a registry auditor, remaining
+Commander read capabilities, BloomBoss Phase 2, broader model routing,
+remote/mobile access).
 
 ## CURRENT ISSUE
 
-`karmo-worker02.service` is stopped (see IMMEDIATE NEXT ACTION above) —
-not a code blocker, a deliberate paused state from tonight's canary
-isolation that still needs to be resolved (restarted, or left stopped
-intentionally) next session.
-
-Otherwise: no active code blocker. KARMO-AI01, KVE01–03, and both
-workers are all verified reachable and healthy as of the 2026-09-11–15
-reconciliation (`CURRENT_STATE.md`) — the Sept-11-era Remote Desktop
-Commander/Proxmox reachability concern previously noted here is
-resolved.
+No active code blocker. Both workers are healthy and running the
+fork-to-spawn fix. KARMO-AI01, KVE01–03, and both workers are all
+verified reachable and healthy.
 
 Palmstreet's built-in order export was unreliable/unavailable as of the
 Phase 1 build session; Seller Hub table evidence remains staged as a
@@ -160,4 +126,4 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 
 Keep it short. Historical detail belongs in `CHANGE_LOG.md`, `CURRENT_STATE.md`, and dated PROJECT SAVE files.
 
-Last refreshed: 2026-09-17
+Last refreshed: 2026-09-17 (evening — model_chat sustained-service-hang workstream closed)

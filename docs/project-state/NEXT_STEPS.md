@@ -156,22 +156,23 @@ yet** — that's a new, deliberately-scoped capability (not started).
    `docs/bloomboss/historical_data/` — the source invoice image itself
    (carried Kamara's home address/phone) was never committed, moved to
    her home directory instead.
-2a. **New deferred investigation, found 2026-09-17**: `model_chat` jobs
-    dispatched to a worker's *long-running systemd service* got stuck in
-    `LEASED` past lease expiry 4 times tonight (3× Worker01, 1×
-    Worker02), with zero trace in `journalctl` even with PR #70's new
-    logging in place. Every time, a fresh manual `--once` run on the same
-    host succeeded cleanly within ~1 minute. See "Worker model_chat
-    activation on both workers, and a new deferred finding" in
-    `CURRENT_STATE.md` for full detail. Leading hypothesis: a resource/fd
-    leak specific to sustained polling-loop operation, not the capability
-    itself. The 4 orphaned jobs were reconciled via the existing
-    `recover_expired_leases()` method → `RECOVERY_REQUIRED` (not
-    `FAILED` — that method deliberately never guesses a stale job's real
-    outcome). **`model_chat` has a manual-invocation proof on both
-    workers, not yet an unattended-service proof** — needs its own
-    dedicated investigation before being trusted under normal automatic
-    polling.
+2a. ~~**Sustained-service hang investigation**~~ — **RESOLVED, 2026-09-17**
+    (PR #74). Root-caused: `run_capability()`'s job sandbox used
+    `multiprocessing.get_context("fork")`; a long-lived worker makes
+    thousands of subprocess/SSH calls between jobs, and `fork()` only
+    clones the calling thread, so a lock held by another thread at the
+    exact instant of a fork could be inherited permanently locked in the
+    child with no thread left to release it — silent, untraceable
+    deadlock. Second opinion from GPT shaped the actual fix scope (spawn
+    requires verified picklability, not a one-line context swap; several
+    test-only handlers were fork-only closures, refactored to
+    module-level; found and fixed a real latent `EOFError`-vs-`SandboxError`
+    bug along the way). Switched to `multiprocessing.get_context("spawn")`.
+    125/125 worker-runtime tests pass (Python 3.9 and 3.12). Deployed and
+    canary-proven on both workers; Worker01 additionally soak-tested
+    clean for 6 checks over ~3 hours of real sustained load (same PID
+    throughout, 0 stuck jobs every check). `model_chat` is now trusted
+    under normal unattended polling on both workers.
 3. **PR #26** (learning program branch) — untouched, predates current
    `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile
    before any merge attempt.

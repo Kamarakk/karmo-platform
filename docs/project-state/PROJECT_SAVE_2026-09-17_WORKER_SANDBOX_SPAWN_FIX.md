@@ -1,4 +1,44 @@
-# PROJECT SAVE — 2026-09-17 — Worker sandbox fork→spawn fix (mid-canary stop)
+# PROJECT SAVE — 2026-09-17 — Worker sandbox fork→spawn fix
+
+## RESOLVED, 2026-09-17 (later same day) — workstream fully closed
+
+Continuing directly from the mid-canary stop below: both blockers were
+mechanical, not fix-related.
+
+1. The enqueue script's job never got leased because `_candidate_jobs()`
+   requires an INNER JOIN against an `APPROVED` row in
+   `core_approval_records` matching `authorized_executor`, `tool_id`,
+   `tool_version`, and `arguments_digest` — the first retry script passed
+   `approval_id=None`, which can never satisfy that join. Fixed by
+   actually issuing and approving a real `ApprovalEngine` record
+   (`authority_class="READ"`, auto-approved by the operator, matching
+   `model_chat`'s NONE-approval-requirement policy) before enqueueing.
+2. Worker01's canary then succeeded (`SUCCEEDED`, job
+   `209f8438-0730-47c8-94c1-575631605aab`, ~51s). Followed with a 6-check,
+   ~3-hour soak test (17:15–20:15 UTC) under the real live service:
+   every check showed the same `MainPID=107737` (no crash/restart) and
+   zero jobs stuck past their lease. The one stale pre-fix orphaned job
+   (`8ab2f1dc-...`, left over from before the fix was deployed) was
+   reconciled via `recover_expired_leases()` before the soak window
+   started, so the 0-stuck-jobs baseline is real, not masked.
+3. Worker02 was deployed the same way (backup/install/`--check-config`/
+   restart, `MainPID=105750`) and canary-proven independently
+   (`SUCCEEDED`, job `6bf6588c-e5df-4311-8f31-9daf8518f3ee`, ~53s) —
+   this time using the approval's `authorized_executor` field to target
+   Worker02 specifically (`_candidate_jobs()` filters candidates by
+   `a.authorized_executor = <polling worker's id>`, so this is the
+   correct way to pin a canary to one worker without needing to stop the
+   other worker's service, unlike the Worker01 canary which used that
+   cruder isolation method before this was understood).
+
+**Outcome: `model_chat` is now trusted under normal, unattended,
+long-running polling on both Worker01 and Worker02.** No further action
+needed on this workstream. `KARMO_DASHBOARD.md` and `NEXT_STEPS.md`
+updated to close item 2a.
+
+---
+
+# Original mid-canary-stop record (superseded by the above, kept for the investigation trail)
 
 Session length: 12+ hours, ended on Kamara's explicit call to stop and
 save rather than complete the canary. This is a genuine mid-task
