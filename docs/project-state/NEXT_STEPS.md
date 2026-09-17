@@ -104,10 +104,20 @@ yet** — that's a new, deliberately-scoped capability (not started).
 ### Items requiring Kamara's decision (current, as of 2026-09-16)
 
 1. ~~**PR #56** (BloomBoss Phase 1)~~ — **merged**, `e8cda4f9`.
-2. **Spot-check BloomBoss Phase 1's analytics output** against 2-3 known
-   real purchases/sales, before trusting it further — not yet done. Now
-   also a natural candidate for the first *real* orchestration task once
-   Kamara provides the data.
+2. ~~**Spot-check BloomBoss Phase 1's analytics output**~~ — **done,
+   2026-09-17**. Kamara provided 10 real sales plus a real supplier
+   invoice (EMgarden, Xiamen, 5 of the 10 cultivars cross-matched by name
+   and exact unit cost). `python3 -m bloomboss.report` ran clean against
+   this data: revenue/margin/profit/per-unit-outcome/supplier-summary
+   all computed correctly and independently hand-verified (invoice
+   arithmetic, freight allocation). No errors, no `relationship_issues`
+   beyond the expected/correct `BATCH_QUANTITY_RECONSTRUCTION_GAP` notices
+   (batch quantity vs. single-unit reconstruction — accurate, not a bug,
+   since only one unit per batch was actually tracked through to sale in
+   this spot-check). **Phase 1's engine is confirmed trustworthy on real
+   data.** Real business figures/customer data were kept out of the
+   repo (ephemeral scratchpad only), matching the standing no-real-data-
+   in-git constraint.
 3. **PR #26** (learning program branch) — untouched, predates current
    `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile
    before any merge attempt.
