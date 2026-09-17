@@ -184,11 +184,40 @@ yet** — that's a new, deliberately-scoped capability (not started).
    auditor (reconciling `tool_registry` against actual invocations,
    matching `h04/app/auditor.py`'s pattern — recommended before the
    registry carries much more than 5 tools), or something else.
-5. Two small non-blocking housekeeping items from the 2026-09-14/15
-   sessions: `llama3.2:3b`/`qwen3:4b` remain installed on AI01 but
-   inactive (deferred cleanup decision); two
-   `/opt/karmo/core-service.bak.*` trees from the durable-memory
-   redeploy remain on AI01 (harmless, uncleaned).
+5. Non-blocking housekeeping, updated 2026-09-17:
+   - ~~`llama3.2:3b`/`qwen3:4b` inactive on AI01~~ — **moot**: checked
+     live 2026-09-17, both are already gone from `karmo-ai01`'s Ollama
+     install (no record of who/when removed them; docs said they should
+     still be there, so this was a stale note, not a deletion needed).
+   - `/opt/karmo/core-service.bak.20260917T003541Z` (964K) — checked
+     live, only one such tree exists (not two as previously noted).
+     Kamara's explicit decision 2026-09-17: **leave it** — negligible
+     size, still a real rollback point, no benefit to deleting.
+   - **New, found 2026-09-17**: `worker-runtime` (the package actually
+     deployed to production on Worker01/Worker02) still directly imports
+     from `core-v2-prototypes/` (`approval_engine_reuse.py`,
+     `job_model_reuse.py`, `tool_registry_reuse.py`,
+     `capability_manifest.py`), contradicting
+     `core-v2-prototypes/README.md`'s own claim that "nothing in this
+     directory is wired into any existing KARMO application path." A
+     separate package, `worker-service/`, appears to have been an
+     earlier, abandoned attempt to fix exactly this coupling (last
+     touched 2026-09-11, `worker-runtime` kept evolving past it and
+     shipped to production with the dependency intact anyway). Nothing
+     is broken by this today — it works, and tonight's soak-tested
+     fork-to-spawn fix proves it — but the labeling is misleading
+     (`core-v2-prototypes` isn't purely a prototype anymore; parts of it
+     are load-bearing production code) and `worker-service` looks like
+     dead code nobody finished or removed. **Cleanup, not urgent**: (a)
+     decide whether to properly extract the shared
+     `approval_engine`/`job_model`/`tool_registry` code `worker-runtime`
+     actually depends on into its own real, non-"prototype" shared
+     package (or into `worker-runtime` itself), (b) decide whether
+     `worker-service/` should be finished, merged into `worker-runtime`,
+     or deleted outright, (c) correct `core-v2-prototypes/README.md`'s
+     now-false claim either way. Any deletion here goes through the
+     standing deletion-approval-gate (list candidates individually,
+     Kamara approves each).
 6. **Design worker-hosted model inference routing** — Worker01/Worker02
    now have real model capacity (see 2026-09-16 entry above) but Core's
    `OllamaChatClient` is deliberately loopback-only and refuses remote
