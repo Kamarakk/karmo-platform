@@ -1,8 +1,14 @@
 """KARMO operator entry point for the first bounded operational slice.
 
-Authority stays in KARMO Core. Models may summarize or converse, but they do
-not select arbitrary tools, mint approval, execute shell commands, or turn
-network reachability into authority.
+Authority stays in KARMO Core. Models may propose a call to one of a small,
+fixed, READ-only tool allow-list (_CHAT_EXPOSED_TOOLS) -- never an arbitrary
+tool, never one requiring approval, never shell execution. A model proposing
+a call is not the same as it being allowed to run: every proposed call still
+goes through the same CapabilityDispatcher/ApprovalEngine path every other
+KARMO caller uses, which only executes immediately when the capability's own
+computed approval requirement is NONE -- see
+docs/architecture/KARMO_CHAT_TOOL_CALLING_AND_EXTERNAL_DELEGATION.md for the
+full design and the rule for safely adding a new tool later.
 """
 
 from __future__ import annotations
@@ -35,6 +41,48 @@ from .registry import CapabilityRegistry
 KARMOLAB_STATUS_TOOL = "karmolab.read_status"
 KARMOLAB_STATUS_VERSION = "1.0.0"
 MAX_MEMORY_CONTEXT_CHARS = 12_000
+
+# The one place the model-exposed tool allow-list is built (I-06). Per
+# docs/architecture/KARMO_CHAT_TOOL_CALLING_AND_EXTERNAL_DELEGATION.md
+# Section 7.3: a capability may be added here ONLY if its computed approval
+# requirement is NONE (CapabilityClass.READ) -- the dispatcher itself also
+# enforces this (dispatch() only executes immediately at requirement NONE;
+# anything else returns an unexecuted pending decision instead), so this is
+# defense in depth, not the only guard, but it must never be worked around
+# by adding a higher-authority tool here "just this once".
+_MAX_CHAT_TOOL_ROUNDS = 4
+_CHAT_EXPOSED_TOOLS = {
+    "list_tasks": {
+        "tool_id": LIST_TASKS_TOOL,
+        "version": ORCHESTRATION_TOOL_VERSION,
+        "requires": "task_store",
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "list_tasks",
+                "description": (
+                    "List KARMO's orchestration task board, optionally filtered by status. "
+                    "Use this when Kamara asks about pending, claimed, or completed KARMO tasks."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "enum": ["OPEN", "CLAIMED", "DONE", "CANCELLED"],
+                            "description": "Optional status filter.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of tasks to return.",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+    },
+}
 
 OPERATOR_REQUIRE_LOCAL = True
 OPERATOR_PRIMARY_MIN_TRUST_TIER = 30
@@ -347,6 +395,76 @@ class KarmoOperator:
             response["memory_status"] = memory_status
         return response
 
+    def _exposed_tool_schemas(self) -> list[dict]:
+        """The tool list actually offered to the model this call -- filtered by
+        what's currently configured (e.g. list_tasks needs a live task_store),
+        never by anything the model itself controls."""
+        schemas = []
+        for entry in _CHAT_EXPOSED_TOOLS.values():
+            if entry.get("requires") == "task_store" and self.task_store is None:
+                continue
+            schemas.append(entry["schema"])
+        return schemas
+
+    def _execute_exposed_tool(self, call: dict) -> str:
+        """Runs one model-proposed tool call through the same dispatcher every
+        other KARMO caller uses. Returns a JSON string (the tool-result content
+        Ollama expects back) -- never raises, so one bad tool call can't crash
+        the whole turn; a failure is reported back to the model as data, the
+        same way every other capability failure in this codebase is reported
+        to its caller."""
+        function = call.get("function") if isinstance(call, dict) else None
+        name = function.get("name") if isinstance(function, dict) else None
+        entry = _CHAT_EXPOSED_TOOLS.get(name) if isinstance(name, str) else None
+        if entry is None:
+            return json.dumps({"error": f"tool {name!r} is not available"})
+        arguments = function.get("arguments") if isinstance(function, dict) else None
+        if not isinstance(arguments, dict):
+            arguments = {}
+        # Models routinely pass null for an omitted optional argument (verified
+        # live against a real model, not assumed) rather than leaving the key
+        # out entirely -- that would defeat a handler's own `.get(key,
+        # default)` fallback (a present None is not the same as an absent
+        # key), so normalize before it ever reaches the handler.
+        arguments = {key: value for key, value in arguments.items() if value is not None}
+        try:
+            decision = self.dispatcher.dispatch(
+                requester="karmo-chat-model",
+                tool_id=entry["tool_id"],
+                version=entry["version"],
+                arguments=arguments,
+                executor_identity="karmo-chat-model",
+            )
+        except (DispatchError, CoreControlError) as exc:
+            return json.dumps({"error": str(exc)})
+        except Exception as exc:  # noqa: BLE001 -- a tool failure is data returned to the model, never a crashed turn
+            return json.dumps({"error": f"tool call failed: {type(exc).__name__}: {exc}"})
+        if not decision.executed:
+            # Structurally unreachable today: every tool in _CHAT_EXPOSED_TOOLS
+            # is CapabilityClass.READ (computed requirement NONE), which
+            # dispatch() always executes immediately. Guarded anyway so a
+            # future mistake here fails as a visible refusal, never a silent
+            # no-op the model could mistake for a real (empty) result.
+            return json.dumps({"error": "tool call requires approval and was not executed"})
+        return json.dumps(decision.result, default=str)
+
+    def _run_tool_loop(self, model_id: str, messages: list[dict], tools: list[dict]) -> str:
+        """Drives the tool-call round trip: ask the model, run any tool calls
+        it proposes through the dispatcher, feed results back, repeat up to
+        _MAX_CHAT_TOOL_ROUNDS times. Bounded so a confused model can't loop
+        forever -- on cap exceeded, returns a plain, honest message rather
+        than hanging or fabricating an answer."""
+        messages = list(messages)
+        for _round in range(_MAX_CHAT_TOOL_ROUNDS):
+            response = self.model_client.chat_with_tools(model=model_id, messages=messages, tools=tools)
+            tool_calls = response.get("tool_calls")
+            if not tool_calls:
+                return response["content"]
+            messages.append({"role": "assistant", "content": response["content"], "tool_calls": tool_calls})
+            for call in tool_calls:
+                messages.append({"role": "tool", "content": self._execute_exposed_tool(call)})
+        return "I wasn't able to finish using KARMO's tools to answer that within the allowed steps."
+
     def _chat(self, text: str) -> dict:
         # Deliberately no require_local/minimum_trust_tier gate here: the
         # trust floor (OPERATOR_PRIMARY_MIN_TRUST_TIER) governs the
@@ -387,14 +505,12 @@ class KarmoOperator:
                 }
             )
         messages.append({"role": "user", "content": text})
+        tools = self._exposed_tool_schemas()
 
         last_error = None
         for candidate in candidates:
             try:
-                answer = self.model_client.chat(
-                    model=candidate.model_id,
-                    messages=messages,
-                )
+                answer = self._run_tool_loop(candidate.model_id, messages, tools)
             except OllamaClientError as exc:
                 last_error = type(exc).__name__
                 continue

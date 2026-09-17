@@ -10,6 +10,9 @@ class RecordingClient:
         self.calls.append(model)
         return "PASS" if "verify" in model else "ok"
 
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+        return {"content": self.chat(model=model, messages=messages, temperature=temperature), "tool_calls": None}
+
 
 def _resource(model_id, capabilities, *, trust_tier, local, provider="test-provider"):
     return ModelResource(

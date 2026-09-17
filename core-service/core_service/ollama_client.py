@@ -42,16 +42,20 @@ class OllamaChatClient:
         self.timeout = timeout
         self._opener = build_opener(_RefuseRedirect)
 
-    def chat(self, *, model: str, messages: list[dict], temperature: float = 0.2) -> str:
+    def _request_message(self, *, model: str, messages: list[dict], temperature: float,
+                         tools: list[dict] | None) -> dict:
         if not model or any(ch in model for ch in "\r\n\x00"):
             raise OllamaClientError("invalid model identifier")
-        payload = json.dumps({
+        body = {
             "model": model,
             "messages": messages,
             "stream": False,
             "think": False,
             "options": {"temperature": temperature, "num_predict": 96},
-        }).encode("utf-8")
+        }
+        if tools:
+            body["tools"] = tools
+        payload = json.dumps(body).encode("utf-8")
         request = Request(
             self.base_url + "/api/chat",
             data=payload,
@@ -67,9 +71,27 @@ class OllamaChatClient:
             raise OllamaClientError("local model response exceeded 1 MiB")
         try:
             decoded = json.loads(raw.decode("utf-8"))
-            content = decoded["message"]["content"]
+            message = decoded["message"]
         except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
             raise OllamaClientError("invalid Ollama response") from exc
-        if not isinstance(content, str):
+        if not isinstance(message, dict) or not isinstance(message.get("content"), str):
             raise OllamaClientError("invalid Ollama message content")
-        return content.strip()
+        return message
+
+    def chat(self, *, model: str, messages: list[dict], temperature: float = 0.2) -> str:
+        message = self._request_message(model=model, messages=messages, temperature=temperature, tools=None)
+        return message["content"].strip()
+
+    def chat_with_tools(self, *, model: str, messages: list[dict], tools: list[dict],
+                        temperature: float = 0.2) -> dict:
+        """Like chat(), but returns the full response message (content plus any
+        tool_calls the model requested) instead of only the answer text -- the
+        caller needs to see a tool-call request to act on it, which a bare
+        string return can't represent. tools follows Ollama's native
+        function-calling schema; pass an empty list to get a plain completion
+        shaped like chat()'s but as the full message dict."""
+        message = self._request_message(model=model, messages=messages, temperature=temperature, tools=tools)
+        tool_calls = message.get("tool_calls")
+        if tool_calls is not None and not isinstance(tool_calls, list):
+            raise OllamaClientError("invalid Ollama tool_calls field")
+        return {"content": message["content"].strip(), "tool_calls": tool_calls or None}
