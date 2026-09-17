@@ -227,16 +227,23 @@ register_handler("local_model_probe", _local_model_probe)
 # in this file).
 _ALLOWED_MODEL_CHAT_MODELS = frozenset({"qwen3:8b", "ministral-3:8b", "mistral:7b", "granite3.3:2b"})
 MAX_MODEL_CHAT_PROMPT_CHARS = 8000
-_OLLAMA_GENERATE_URL = "http://127.0.0.1:11434/api/generate"
+_DEFAULT_OLLAMA_GENERATE_URL = "http://127.0.0.1:11434/api/generate"
+
+
+def _ollama_generate_url():
+    """Resolved at call time (never cached at import time) so a test running
+    the real handler through the sandbox's spawn-context child -- which
+    re-imports this module fresh and cannot see a monkeypatched function or
+    constant from the parent process -- can still redirect the call, by
+    setting an environment variable, which spawn does inherit. Production
+    never sets this and always talks to the worker's own loopback Ollama."""
+    return os.environ.get("KARMO_OLLAMA_GENERATE_URL", _DEFAULT_OLLAMA_GENERATE_URL)
 
 
 def _call_ollama_generate(model, prompt, timeout_seconds):
-    """Isolated so tests can monkeypatch this one function rather than the
-    network, matching the shape of the actual call without requiring a real
-    Ollama instance in CI/dev."""
     body = json.dumps({"model": model, "prompt": prompt, "stream": False}).encode("utf-8")
     req = urllib.request.Request(
-        _OLLAMA_GENERATE_URL,
+        _ollama_generate_url(),
         data=body,
         headers={"Content-Type": "application/json"},
         method="POST",

@@ -79,12 +79,13 @@ def _sanitize_message(message: str, sandbox_root: Path) -> str:
 
 
 def _handler_worker(handler, payload, sandbox_root, allowed_root, timeout_seconds, conn):
-    """Runs INSIDE the forked child process. Sends ("ok", (output,
+    """Runs INSIDE the spawned child process. Sends ("ok", (output,
     stdout_summary, evidence_files)) or ("error", exception_instance) back
-    to the parent over the pipe, then exits. Using fork (not spawn) means
-    the child inherits the parent's already-configured sys.path and
-    loaded modules exactly, so every existing handler in capabilities.py
-    works unmodified."""
+    to the parent over the pipe, then exits. The child is a fresh
+    interpreter (not a fork), so `handler` must be picklable by reference
+    (a module-level function, as every handler in capabilities.py already
+    is) -- it re-imports its own module state rather than inheriting the
+    parent's in-memory objects."""
     try:
         result = handler(payload, sandbox_root=sandbox_root, allowed_root=allowed_root, timeout_seconds=timeout_seconds)
         conn.send(("ok", result))
@@ -107,7 +108,20 @@ def run_capability(capability_id, payload, *, timeout_seconds, allowed_root=None
     sandbox_dir = tempfile.mkdtemp(prefix=f"karmo-worker-{capability_id}-")
     sandbox_root = Path(sandbox_dir).resolve()
 
-    ctx = multiprocessing.get_context("fork")
+    # "spawn", not "fork": a long-lived worker process makes thousands of
+    # subprocess/SSH round trips between jobs, and CPython's subprocess
+    # implementation can leave short-lived reader threads in flight. fork()
+    # only clones the calling thread -- if another thread held a lock at the
+    # instant of the fork, the child inherits that lock permanently held with
+    # no thread left alive to release it, and can deadlock forever with no
+    # exception anywhere (the child never gets far enough to hit its own
+    # error handling). spawn starts a clean interpreter with no inherited
+    # thread/lock state, eliminating that class of hang. The cost: the
+    # handler, payload, and sandbox_root must be picklable (module-level
+    # functions and plain data -- true of every handler in capabilities.py)
+    # and the child re-imports everything itself rather than inheriting the
+    # parent's in-memory state.
+    ctx = multiprocessing.get_context("spawn")
     parent_conn, child_conn = ctx.Pipe(duplex=False)
     process = ctx.Process(
         target=_handler_worker,
@@ -116,7 +130,17 @@ def run_capability(capability_id, payload, *, timeout_seconds, allowed_root=None
 
     try:
         start = time.monotonic()
-        process.start()
+        try:
+            process.start()
+        except (TypeError, ValueError, AttributeError) as exc:
+            # pickle failures surface as one of these from multiprocessing's
+            # spawn path (e.g. a locally-defined/closure handler) -- report
+            # them the same way every other refusal in this module is
+            # reported, never as a raw pickling traceback.
+            raise SandboxError(
+                f"capability {capability_id!r} handler or payload could not be "
+                f"started under the sandbox's spawn context: {type(exc).__name__}: {exc}"
+            ) from exc
         child_conn.close()  # parent's copy of the child's write end -- must close so EOF is detectable
 
         # Wait on the CONNECTION, not process.join(), as the primary
@@ -152,7 +176,20 @@ def run_capability(capability_id, payload, *, timeout_seconds, allowed_root=None
                 f"capability {capability_id!r} produced no result (child exit code {process.exitcode}) -- refused"
             )
 
-        status, result = parent_conn.recv()
+        # poll() reports "ready" both when data has arrived and when the
+        # child closed its end without writing anything (e.g. a hard
+        # os._exit() before reaching conn.send()) -- EOF is "ready" too.
+        # recv() on that EOF case raises EOFError, which must be refused
+        # the same clean way as the no-data-within-deadline case above,
+        # never leaked as a raw EOFError.
+        try:
+            status, result = parent_conn.recv()
+        except EOFError:
+            duration = time.monotonic() - start
+            process.join(_TERMINATE_GRACE_SECONDS)
+            raise SandboxError(
+                f"capability {capability_id!r} produced no result (child exit code {process.exitcode}) -- refused"
+            )
         duration = time.monotonic() - start
         process.join(_TERMINATE_GRACE_SECONDS)
         if process.is_alive():

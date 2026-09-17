@@ -6,12 +6,23 @@ plus a handful of supporting capability/integration tests that are not
 part of the 24 but exercise the real end-to-end pull-based flow and the
 real Phase 9 capability handlers against the synthetic fixture workspace.
 
-No production data, no network access, no real model downloads anywhere
-in this file.
+No production data, no external network access, no real model downloads
+anywhere in this file. The model_chat tests use a local loopback HTTP
+test double (127.0.0.1, ephemeral port, this process only) rather than a
+real Ollama instance -- required because run_capability now executes
+handlers in a spawned (not forked) child, which re-imports capabilities.py
+fresh and cannot see a monkeypatched function or module attribute from
+the parent process; only real, externally-observable state (an actual
+socket, an env var) crosses that boundary.
 """
 
 import hashlib
+import http.server
 import json
+import multiprocessing
+import os
+import socket
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -40,6 +51,53 @@ from worker_client import WorkerClient, WorkerClientError
 from worker_registry import WorkerHealth, WorkerRegistryError, WorkerStatus
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "allowed_workspace"
+
+
+def _unused_loopback_port() -> int:
+    """A port nothing is listening on, for the connection-refused case --
+    bind-then-close guarantees it was free at the instant of the check."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+class _FakeOllamaServer:
+    """Local loopback HTTP double for Ollama's /api/generate, scoped to one
+    test. Runs in a background thread in THIS process (not the sandboxed
+    child), so recording what it received is a plain shared list -- no
+    cross-process/pickling concerns."""
+
+    def __init__(self, *, status_code=200, response_body=b'{"response": "ok"}'):
+        self.received_bodies = []
+        outer = self
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length)
+                outer.received_bodies.append(json.loads(raw.decode("utf-8")))
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(response_body)
+
+            def log_message(self, format, *args):  # noqa: A002 -- silence test output
+                pass
+
+        self._server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc_info):
+        self._server.shutdown()
+        self._server.server_close()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self._server.server_address[1]}/api/generate"
 
 
 class FakeClock:
@@ -382,18 +440,45 @@ def test_scenario_13_stale_lease_is_explicitly_reclaimable(coordinator, clock):
 
 
 # --- Scenario 14: timeout -----------------------------------------------------
+#
+# These probe handlers are module-level, not nested closures: run_capability
+# now executes handlers in a spawned child, which requires the target to be
+# picklable by reference. A function defined inside a test (and, worse, one
+# that closes over a per-test local like a tmp_path marker) cannot be
+# pickled at all -- pass any per-test data through the payload dict instead,
+# the same way a real handler receives its arguments.
 
-def test_scenario_14_execution_exceeding_timeout_is_refused(monkeypatch):
-    def _slow_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
-        time.sleep(0.2)
-        return {"ok": True}, "slow", []
+def _slow_probe_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    time.sleep(0.2)
+    return {"ok": True}, "slow", []
 
-    monkeypatch.setitem(_HANDLERS, "test_slow_probe", _slow_handler)
+
+register_handler("test_slow_probe", _slow_probe_handler)
+
+
+def _hanging_probe_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    time.sleep(2.0)
+    Path(payload["marker_path"]).write_text("i finished")  # must never happen -- killed first
+    return {"ok": True}, "should not get here", []
+
+
+register_handler("test_hanging_probe", _hanging_probe_handler)
+
+
+def _oversized_output_probe_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    huge_output = {"data": "x" * (MAX_RESULT_BYTES + 1024)}
+    return huge_output, "small summary", []
+
+
+register_handler("test_oversized_output_probe", _oversized_output_probe_handler)
+
+
+def test_scenario_14_execution_exceeding_timeout_is_refused():
     with pytest.raises(SandboxError, match="exceeded its"):
         run_capability("test_slow_probe", {}, timeout_seconds=0.05)
 
 
-def test_scenario_14_timeout_is_a_real_kill_not_a_post_hoc_check(tmp_path, monkeypatch):
+def test_scenario_14_timeout_is_a_real_kill_not_a_post_hoc_check(tmp_path):
     """Proves the deadline is actually enforced, not merely measured
     after the fact: the handler only writes its 'finished' marker file
     AFTER a long sleep. If the child process were allowed to run to
@@ -403,16 +488,9 @@ def test_scenario_14_timeout_is_a_real_kill_not_a_post_hoc_check(tmp_path, monke
     never written."""
     marker = tmp_path / "finished.marker"
 
-    def _hanging_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
-        time.sleep(2.0)
-        marker.write_text("i finished")  # must never happen -- process should be killed first
-        return {"ok": True}, "should not get here", []
-
-    monkeypatch.setitem(_HANDLERS, "test_hanging_probe", _hanging_handler)
-
     start = time.monotonic()
     with pytest.raises(SandboxError, match="exceeded its"):
-        run_capability("test_hanging_probe", {}, timeout_seconds=0.2)
+        run_capability("test_hanging_probe", {"marker_path": str(marker)}, timeout_seconds=0.2)
     elapsed = time.monotonic() - start
 
     assert elapsed < 1.5  # returned well before the handler's 2.0s sleep would have finished
@@ -421,22 +499,20 @@ def test_scenario_14_timeout_is_a_real_kill_not_a_post_hoc_check(tmp_path, monke
 
 # --- Bound the complete returned result (not only stdout_summary) -------------
 
-def test_oversized_structured_output_is_refused_not_truncated(monkeypatch):
-    def _oversized_output_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
-        huge_output = {"data": "x" * (MAX_RESULT_BYTES + 1024)}
-        return huge_output, "small summary", []
-
-    monkeypatch.setitem(_HANDLERS, "test_oversized_output_probe", _oversized_output_handler)
+def test_oversized_structured_output_is_refused_not_truncated():
     with pytest.raises(SandboxError, match="oversized result"):
         run_capability("test_oversized_output_probe", {}, timeout_seconds=5)
 
 
-def test_oversized_evidence_files_list_is_refused(monkeypatch):
-    def _too_many_evidence_files_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
-        evidence_files = [f"file-{i}.txt" for i in range(MAX_EVIDENCE_FILES + 1)]
-        return {"ok": True}, "summary", evidence_files
+def _too_many_evidence_files_probe_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    evidence_files = [f"file-{i}.txt" for i in range(MAX_EVIDENCE_FILES + 1)]
+    return {"ok": True}, "summary", evidence_files
 
-    monkeypatch.setitem(_HANDLERS, "test_too_many_evidence_probe", _too_many_evidence_files_handler)
+
+register_handler("test_too_many_evidence_probe", _too_many_evidence_files_probe_handler)
+
+
+def test_oversized_evidence_files_list_is_refused():
     with pytest.raises(SandboxError, match="too many evidence files"):
         run_capability("test_too_many_evidence_probe", {}, timeout_seconds=5)
 
@@ -920,12 +996,15 @@ def test_scenario_18_path_traversal_via_hash_verify_capability():
 
 # --- Scenario 19: oversized output -----------------------------------------------
 
-def test_scenario_19_oversized_output_is_truncated(monkeypatch):
-    def _huge_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
-        huge = "x" * (200 * 1024)  # well beyond MAX_OUTPUT_BYTES=64KB
-        return {"n": len(huge)}, huge, []
+def _huge_probe_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    huge = "x" * (200 * 1024)  # well beyond MAX_OUTPUT_BYTES=64KB
+    return {"n": len(huge)}, huge, []
 
-    monkeypatch.setitem(_HANDLERS, "test_huge_probe", _huge_handler)
+
+register_handler("test_huge_probe", _huge_probe_handler)
+
+
+def test_scenario_19_oversized_output_is_truncated():
     _, stdout_summary, _, _ = run_capability("test_huge_probe", {}, timeout_seconds=5)
     assert stdout_summary.endswith("...<truncated>")
     assert len(stdout_summary.encode("utf-8")) < 200 * 1024
@@ -1121,36 +1200,39 @@ def test_capability_local_model_probe_reports_truthful_model_status():
 
 
 def test_capability_model_chat_calls_local_ollama_and_returns_response(monkeypatch):
-    def fake_call(model, prompt, timeout_seconds):
-        assert (model, prompt, timeout_seconds) == ("qwen3:8b", "what is 2+2?", 120)
-        return {"response": "the answer is 4"}
+    with _FakeOllamaServer(response_body=b'{"response": "the answer is 4"}') as server:
+        monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", server.url)
 
-    monkeypatch.setattr(capabilities, "_call_ollama_generate", fake_call)
+        output, summary, duration, evidence = run_capability(
+            "model_chat", {"model": "qwen3:8b", "prompt": "what is 2+2?"}, timeout_seconds=120,
+        )
 
-    output, summary, duration, evidence = run_capability(
-        "model_chat", {"model": "qwen3:8b", "prompt": "what is 2+2?"}, timeout_seconds=120,
-    )
-
-    assert output == {"response": "the answer is 4"}
-    assert "qwen3:8b" in summary
+        assert output == {"response": "the answer is 4"}
+        assert "qwen3:8b" in summary
+        assert server.received_bodies == [
+            {"model": "qwen3:8b", "prompt": "what is 2+2?", "stream": False}
+        ]
 
 
 def test_capability_model_chat_refuses_model_outside_allowed_set(monkeypatch):
-    monkeypatch.setattr(capabilities, "_call_ollama_generate", lambda *a, **k: {"response": "should not run"})
+    # Validation must reject before ever reaching the network call -- point
+    # at a guaranteed-unused port so a regression that skips validation
+    # fails fast on a real connection error instead of silently succeeding.
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
 
     with pytest.raises(SandboxError, match="model not in allowed set"):
         run_capability("model_chat", {"model": "gpt-4", "prompt": "hi"}, timeout_seconds=120)
 
 
 def test_capability_model_chat_refuses_empty_prompt(monkeypatch):
-    monkeypatch.setattr(capabilities, "_call_ollama_generate", lambda *a, **k: {"response": "should not run"})
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
 
     with pytest.raises(SandboxError, match="prompt must be non-empty"):
         run_capability("model_chat", {"model": "qwen3:8b", "prompt": "   "}, timeout_seconds=120)
 
 
 def test_capability_model_chat_refuses_oversized_prompt(monkeypatch):
-    monkeypatch.setattr(capabilities, "_call_ollama_generate", lambda *a, **k: {"response": "should not run"})
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
     huge_prompt = "x" * (capabilities.MAX_MODEL_CHAT_PROMPT_CHARS + 1)
 
     with pytest.raises(SandboxError, match="exceeds"):
@@ -1158,10 +1240,10 @@ def test_capability_model_chat_refuses_oversized_prompt(monkeypatch):
 
 
 def test_capability_model_chat_wraps_ollama_call_failure(monkeypatch):
-    def failing_call(model, prompt, timeout_seconds):
-        raise OSError("connection refused")
-
-    monkeypatch.setattr(capabilities, "_call_ollama_generate", failing_call)
+    # A real connection-refused error (nothing listening on this port) --
+    # the same failure mode the original mock simulated, now exercised
+    # against the real urllib call the spawned child actually makes.
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
 
     with pytest.raises(SandboxError, match="model_chat call to local Ollama failed"):
         run_capability("model_chat", {"model": "qwen3:8b", "prompt": "hi"}, timeout_seconds=120)
@@ -1180,6 +1262,64 @@ def test_capability_document_processing_synthetic_chunking():
     )
     assert output["chunk_count"] >= 1
     assert output["char_count"] > 0
+
+
+# --- Spawn-context sandbox resilience -------------------------------------
+#
+# run_capability executes handlers via multiprocessing's "spawn" context
+# (not "fork"), specifically to avoid a class of silent worker hang: a
+# long-lived process makes many subprocess/network calls between jobs, and
+# if any of those leave a background thread holding a lock at the exact
+# instant a job triggers a fork, the forked child can inherit that lock
+# permanently held -- deadlocking forever with no exception anywhere. spawn
+# starts a clean interpreter instead, at the cost of requiring the handler,
+# payload, and result to be picklable. These tests cover that boundary.
+
+def test_unpicklable_handler_is_refused_cleanly_not_as_a_raw_pickling_error():
+    def _closure_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+        return {"ok": True}, "should never run", []
+
+    register_handler("test_unpicklable_probe", _closure_handler)
+    with pytest.raises(SandboxError, match="could not be started under the sandbox's spawn context"):
+        run_capability("test_unpicklable_probe", {}, timeout_seconds=5)
+
+
+def _exits_before_sending_result_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    os._exit(1)  # hard process exit -- never reaches conn.send(), never a Python exception
+
+
+register_handler("test_exits_before_result_probe", _exits_before_sending_result_handler)
+
+
+def test_child_exit_before_sending_result_is_refused_not_hung():
+    with pytest.raises(SandboxError, match="produced no result"):
+        run_capability("test_exits_before_result_probe", {}, timeout_seconds=5)
+
+
+def _echo_probe_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    return {"echo": payload["value"]}, "echo", []
+
+
+register_handler("test_echo_probe", _echo_probe_handler)
+
+
+def test_repeated_execution_from_one_long_lived_caller_leaves_no_leaked_children():
+    # Simulates the real production shape this bug came from: one process
+    # calling run_capability many times over its lifetime, never restarting
+    # between calls. Every call must succeed independently and leave no
+    # child process or active multiprocessing bookkeeping behind for the
+    # next one to trip over.
+    for i in range(20):
+        output, _, _, _ = run_capability("test_echo_probe", {"value": i}, timeout_seconds=5)
+        assert output == {"echo": i}
+        assert multiprocessing.active_children() == []
+
+
+def test_repeated_timeouts_from_one_long_lived_caller_leave_no_leaked_children():
+    for _ in range(5):
+        with pytest.raises(SandboxError, match="exceeded its"):
+            run_capability("test_hanging_probe", {"marker_path": "/dev/null/unused"}, timeout_seconds=0.1)
+        assert multiprocessing.active_children() == []
 
 
 def test_resource_discovery_full_report_runs_without_error():
