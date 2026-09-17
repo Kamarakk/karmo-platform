@@ -1,5 +1,37 @@
 # KARMO Next Steps
 
+## 2026-09-17 update (read this first — supersedes the 2026-09-15 note below for immediate next action)
+
+Session ended mid-canary after 12+ hours, on Kamara's explicit call to
+stop. Full detail: `PROJECT_SAVE_2026-09-17_WORKER_SANDBOX_SPAWN_FIX.md`
+in this directory, and the "IMMEDIATE NEXT ACTION" section of
+`KARMO_DASHBOARD.md`. Short version:
+
+- Root-caused the `model_chat`-hangs-only-under-the-sustained-service bug
+  from the prior session: `run_capability()` used `multiprocessing`'s
+  `fork` context; a long-lived worker's many subprocess/SSH calls between
+  jobs could leave a background thread holding a lock at the exact
+  instant a job forked, and the child could inherit that lock
+  permanently held with no thread left to release it — silent, forever,
+  no exception anywhere. Got a second opinion from GPT before
+  implementing (it correctly pushed back on treating `fork`→`spawn` as a
+  trivial one-line swap).
+- **PR #74 merged to `main`** (`af12ed8`): switched to `spawn`, fixed the
+  test suite's fork-only mocking patterns to be genuinely spawn-safe, and
+  fixed a real latent bug the new tests surfaced (a child that exits
+  without writing to the pipe raised a raw `EOFError` instead of a clean
+  `SandboxError`). 125/125 worker-runtime tests pass under Python 3.9
+  and 3.12.
+- **Deployed to Worker01 only** (new `MainPID=107737`). Not yet deployed
+  to Worker02.
+- **Canary not yet proven.** Stopped `karmo-worker02.service` to isolate
+  the canary job to Worker01, then hit a `sys.path` bug in the enqueue
+  script (`crypto_boundary` lives in `worker-runtime/app`, not
+  `core-service`) — fixed the script but never got a confirmed clean run
+  before time ran out.
+- **`karmo-worker02.service` is still stopped** — first thing to check
+  next session, per `KARMO_DASHBOARD.md`'s IMMEDIATE NEXT ACTION.
+
 ## 2026-09-15 update (read this first)
 
 **2026-09-11 through 2026-09-15 is now fully reconciled** into
