@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import stat
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -206,7 +207,14 @@ def run_loop(cfg: WorkerRuntimeConfig, *, production_permissions: bool = False) 
             time.sleep(cfg.poll_interval_seconds)
         except KeyboardInterrupt:
             return 0
-        except Exception:
+        except Exception as exc:
+            # Never swallow this silently: by this point a capability may
+            # already have executed (successfully or not) without Core ever
+            # learning the outcome, orphaning a job in LEASED state with zero
+            # operator-visible trace. journald captures stderr for this unit,
+            # so this is the only place that failure becomes visible at all.
+            message = f"{type(exc).__name__}: {exc}"
+            print(f"KARMO worker poll cycle failed: {message[:500]}", file=sys.stderr, flush=True)
             time.sleep(min(30, max(5, cfg.poll_interval_seconds)))
 
 

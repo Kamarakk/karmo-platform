@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass
 
 import capabilities  # noqa: F401 -- registers fixed sandbox handlers
@@ -20,6 +21,16 @@ from sandbox import run_capability
 
 class RemoteWorkerClientError(RuntimeError):
     pass
+
+
+# A capability may already have finished (successfully or not) by the time
+# submit_result runs -- that outcome must never be silently dropped because
+# of one transient SSH hiccup. Each attempt is already individually bounded
+# by SshStdioTransport's own subprocess timeout (<=120s), so this retry can
+# never itself hang; it can only add a few bounded, short waits before
+# finally surfacing a clear error if the gateway is genuinely unreachable.
+SUBMIT_RESULT_MAX_ATTEMPTS = 3
+SUBMIT_RESULT_RETRY_DELAY_SECONDS = 2
 
 
 @dataclass(frozen=True)
@@ -155,16 +166,32 @@ class SshRemoteWorkerClient:
             result=result,
             execution_ticket_digest=token_digest(ticket),
         )
-        final = self.transport.submit_result(
-            worker_id=self.config.worker_id,
-            credential_token=self._credential(),
-            lease=lease,
-            execution_ticket=ticket,
-            result=result,
-            envelope=envelope,
-            success=success,
-            error=error,
-        )
+        final = None
+        submit_error = None
+        for attempt in range(SUBMIT_RESULT_MAX_ATTEMPTS):
+            try:
+                final = self.transport.submit_result(
+                    worker_id=self.config.worker_id,
+                    credential_token=self._credential(),
+                    lease=lease,
+                    execution_ticket=ticket,
+                    result=result,
+                    envelope=envelope,
+                    success=success,
+                    error=error,
+                )
+                submit_error = None
+                break
+            except Exception as exc:  # noqa: BLE001 -- bounded retry; never silently drop a finished result
+                submit_error = exc
+                if attempt + 1 < SUBMIT_RESULT_MAX_ATTEMPTS:
+                    time.sleep(SUBMIT_RESULT_RETRY_DELAY_SECONDS)
+        if submit_error is not None:
+            raise RemoteWorkerClientError(
+                f"submit_result failed after {SUBMIT_RESULT_MAX_ATTEMPTS} attempts "
+                f"(capability outcome success={success} was never reported to Core): "
+                f"{type(submit_error).__name__}: {submit_error}"
+            ) from submit_error
         return {
             "job_id": lease["job_id"],
             "success": success,

@@ -1,6 +1,7 @@
 import pytest
 
 from ssh_worker_client import (
+    SUBMIT_RESULT_MAX_ATTEMPTS,
     RemoteWorkerClientError,
     RemoteWorkerConfig,
     SshRemoteWorkerClient,
@@ -53,6 +54,22 @@ class Transport:
         self.events.append("submit")
         self.submitted = kwargs
         return {"accepted": True, "state": "SUCCEEDED" if kwargs["success"] else "FAILED"}
+
+
+class FlakySubmitTransport(Transport):
+    """submit_result fails the first N calls, then behaves normally."""
+
+    def __init__(self, *, fail_times, events=None):
+        super().__init__(events=events)
+        self.fail_times = fail_times
+        self.submit_attempts = 0
+
+    def submit_result(self, **kwargs):
+        self.submit_attempts += 1
+        if self.submit_attempts <= self.fail_times:
+            self.events.append("submit_failed")
+            raise RuntimeError("transient gateway hiccup")
+        return super().submit_result(**kwargs)
 
 
 class Signer:
@@ -135,6 +152,45 @@ def test_remote_worker_reports_bounded_execution_failure_as_authenticated_result
     assert transport.submitted["success"] is False
     assert "bounded failure" in transport.submitted["error"]
     assert signer.calls[0]["result"] == transport.submitted["result"]
+
+
+def test_submit_result_retries_transient_failure_then_succeeds(monkeypatch):
+    """A capability that already finished must not be silently dropped
+    because of one momentary gateway hiccup -- this is the root-cause fix
+    for a job left permanently orphaned in LEASED state."""
+    import ssh_worker_client
+
+    monkeypatch.setattr(ssh_worker_client.time, "sleep", lambda _seconds: None)
+    events = []
+    transport = FlakySubmitTransport(fail_times=SUBMIT_RESULT_MAX_ATTEMPTS - 1, events=events)
+    signer = Signer()
+
+    def executor(*args, **kwargs):
+        return {"status": "healthy"}, "healthy", 0.01, []
+
+    result = _client(transport, signer, executor).poll_once()
+
+    assert result["success"] is True
+    assert transport.submit_attempts == SUBMIT_RESULT_MAX_ATTEMPTS
+    assert events.count("submit_failed") == SUBMIT_RESULT_MAX_ATTEMPTS - 1
+    assert events[-1] == "submit"
+
+
+def test_submit_result_raises_clear_error_after_exhausting_retries(monkeypatch):
+    import ssh_worker_client
+
+    monkeypatch.setattr(ssh_worker_client.time, "sleep", lambda _seconds: None)
+    events = []
+    transport = FlakySubmitTransport(fail_times=SUBMIT_RESULT_MAX_ATTEMPTS + 5, events=events)
+    signer = Signer()
+
+    def executor(*args, **kwargs):
+        return {"status": "healthy"}, "healthy", 0.01, []
+
+    with pytest.raises(RemoteWorkerClientError, match="submit_result failed after"):
+        _client(transport, signer, executor).poll_once()
+
+    assert transport.submit_attempts == SUBMIT_RESULT_MAX_ATTEMPTS
 
 
 def test_remote_worker_returns_none_without_work_and_does_not_authorize():
