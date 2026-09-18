@@ -32,7 +32,14 @@ class _RefuseRedirect(HTTPRedirectHandler):
 
 
 class OllamaChatClient:
-    def __init__(self, base_url: str = "http://127.0.0.1:11434", *, timeout: float = 45.0):
+    # 120s, not the original 45s: verified live on karmo-ai01's real hardware
+    # that a single tool-calling round trip against the primary model
+    # (qwen3:8b) can take 20s+ even warm, and a full tool-calling turn needs
+    # at least two round trips (the tool-call decision, then synthesizing the
+    # final answer from a potentially large tool result) -- 45s was silently
+    # timing out on every real question that used a tool, falling all the way
+    # through to the weakest fallback model with no visible trace of why.
+    def __init__(self, base_url: str = "http://127.0.0.1:11434", *, timeout: float = 120.0):
         parsed = urlparse(base_url)
         if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
             raise OllamaClientError("Ollama endpoint must be loopback HTTP")
