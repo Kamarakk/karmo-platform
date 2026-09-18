@@ -193,6 +193,32 @@ workers proven, soak-tested, closed). Since then, in order:
     committed so the repo matches production. Re-verified: shadow
     decisions now correctly read both workers' real current state. Full
     record in `CURRENT_STATE.md`.
+11. **Model Router Phase D1, part 1 built, tested, and merged** (PR #87)
+    — **not yet deployed.** Gives workers the actual ability to serve a
+    tool-calling round trip: a new `model_chat_tools` capability
+    (`worker-runtime/app/capabilities.py`/`capability_manifest.py`)
+    calling Ollama's `/api/chat` (messages + optional tools), closing
+    the gap that's blocked worker-hosted tool-calling since it was first
+    scoped (the deployed `model_chat` only ever called `/api/generate`).
+    **Deliberately a new capability, not a version bump of `model_chat`**
+    — read the live production worker config
+    (`/etc/karmo/worker01.json`) before deciding and confirmed
+    `model_chat "1.0.0"` is already declared active there; bumping it
+    in place would risk the *whole worker* failing config validation on
+    next restart if the deployed config and the manifest ever drifted
+    out of lockstep. 17 new tests, full worker-runtime suite 145 passed
+    (up from 128), full core-service suite re-run to confirm zero
+    cross-impact (283 passed, unchanged).
+
+    **Phase D1 is not complete after this PR** — this capability does
+    nothing until (a) a worker's deployed config actually declares it,
+    which hasn't happened, and (b) Core gains the poll-and-wait glue to
+    dispatch a job using it and wait for the result within a chat turn's
+    deadline, which doesn't exist yet. The plan's own required
+    queue-delay-under-load measurement also hasn't been done. **Next
+    session: build the Core-side dispatch/poll-and-wait glue, then
+    measure real queue delay under realistic load, before D2 (actually
+    routing real chat traffic to a worker) can even be proposed.**
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
