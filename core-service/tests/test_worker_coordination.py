@@ -67,11 +67,20 @@ pytestmark = pytest.mark.skipif(not _reachable(), reason="no isolated Core Postg
 
 @pytest.fixture(scope="module", autouse=True)
 def _schema():
-    migration_1 = REPO_ROOT / "core-service" / "core_service" / "migrations" / "001_core_v2_substrate.sql"
-    migration_2 = REPO_ROOT / "core-service" / "core_service" / "migrations" / "002_worker_coordination.sql"
+    migrations_dir = REPO_ROOT / "core-service" / "core_service" / "migrations"
+    migration_1 = migrations_dir / "001_core_v2_substrate.sql"
+    migration_2 = migrations_dir / "002_worker_coordination.sql"
+    # 005 adds karmo_workers.ollama_snapshot/ollama_snapshot_at (Model
+    # Router Phase A) -- this file's own tests now depend on those columns
+    # existing. 003/004 are deliberately not applied here; they're owned by
+    # the test files that actually need them (test_worker_job_payload_migration.py,
+    # orchestration-task tests), matching this file's existing per-file
+    # migration-ownership pattern rather than switching to a directory glob.
+    migration_5 = migrations_dir / "005_worker_ollama_health.sql"
     with psycopg.connect(_conninfo(), autocommit=True) as conn, conn.cursor() as cur:
         cur.execute(migration_1.read_text())
         cur.execute(migration_2.read_text())
+        cur.execute(migration_5.read_text())
 
 
 @pytest.fixture(autouse=True)
