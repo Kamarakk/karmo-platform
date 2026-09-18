@@ -1,6 +1,6 @@
 # Claude Code instructions for KARMO
 
-Before consequential KARMO work, read `AI_START_HERE.md` and follow its bootstrap/read order. It is the durable context entry point; authoritative state and governance remain in the files it references.
+Before any KARMO work — including a read-only command or a quick check, not only consequential work — read `AI_START_HERE.md` and follow its bootstrap/read order in full, including `docs/project-state/MASTER_INDEX.md` and the Mandatory Full-Context Review Rule in `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. It is the durable context entry point; authoritative state and governance remain in the files it references. There is no "just this once, it's read-only" exception — that exact exception is what let a real, already-documented target architecture (the Model Router / KARMO-FIRST Orchestration vision, 2026-09-11) go unchecked before a related capability was designed on 2026-09-17/18.
 
 You are the implementation agent in an isolated development/test environment.
 

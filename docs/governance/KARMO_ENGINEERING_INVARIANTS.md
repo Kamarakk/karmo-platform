@@ -253,6 +253,53 @@ workflow, not unlimited KARMO authority.
 
 ---
 
+## Mandatory Full-Context Review Rule
+
+**Why this exists:** on 2026-09-17/18, a real capability (KARMO chat
+tool-calling and external model delegation) was designed and approved
+without checking it against an already-documented target architecture —
+the "Model Router" / KARMO-FIRST Orchestration vision captured on
+2026-09-11. That vision was real and legitimate, but it lived in one
+dated `docs/project-state/PROJECT_SAVE_*.md` file that had never been
+folded into `MASTER_INDEX.md` or the living `docs/plans/`/`docs/architecture/`
+set — so a normally-diligent check of "the plan" did not surface it.
+Separately, `MASTER_INDEX.md` itself had fallen roughly a week behind
+actual project history at the time, missing more than twenty
+project-save records including that one. Both failures compounded: an
+agent that skipped checking history, and a history that had stopped
+being kept checkable. This rule exists so that combination cannot repeat.
+
+**The rule:**
+
+1. Before **any** KARMO action — implementation, a design proposal, a
+   recommendation, or a read-only command — read
+   `docs/project-state/MASTER_INDEX.md` in full. It is deliberately kept
+   short and skimmable (one line per document) specifically so this is
+   fast, not a burden to skip. There is no "this is just a quick
+   read-only check" exception. A read-only command run against the wrong
+   understanding of the current plan is exactly the failure this rule
+   prevents.
+2. For anything `MASTER_INDEX.md` flags as relevant to the task at hand,
+   read that document in full — not a skim, not an assumption from its
+   one-line summary. The index tells you where to look; it is never a
+   substitute for reading what it points to.
+3. This applies with no reduced scope regardless of which interface or
+   tool an agent is working through (CLI, IDE extension, web, or any
+   other surface) — the rule binds the work, not the tool used to do it.
+4. `MASTER_INDEX.md` itself must stay current for this rule to mean
+   anything. The Mandatory Project Save Completion Rule already requires
+   updating it — treat that specific line item as load-bearing, not
+   optional paperwork: an out-of-date index is what turned a real,
+   documented vision into an effectively invisible one for a week.
+5. If a design decision touches model routing, multi-model delegation,
+   or "which resource should do this work," specifically confirm
+   `PROJECT_SAVE_2026-09-11_KARMO_FIRST_ORCHESTRATION_PALMSTREET_KVE.md`
+   has been read — that document remains the target architecture for
+   this area until it is formally superseded or folded into a living
+   plan document.
+
+---
+
 ## Mandatory Phase Invariant Impact Review
 
 Every future KARMO phase must begin with an Invariant Impact Review

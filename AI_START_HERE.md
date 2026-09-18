@@ -12,17 +12,19 @@ This file is deliberately a **map, not a giant encyclopedia**. Dynamic project t
 
 Conversation history, model memory, summaries, and prior assistant recollections are useful hints but are **not authoritative project state**.
 
-Before giving consequential KARMO instructions or changing anything:
+**Before any KARMO action at all — including a read-only command, a quick check, or "just" a recommendation, not only implementation or consequential instructions:**
 
 1. Read this file.
 2. Read `AGENTS.md`.
 3. If using Claude Code, read `CLAUDE.md`.
-4. Read `docs/project-state/MASTER_INDEX.md`.
+4. Read `docs/project-state/MASTER_INDEX.md` **in full**. It is short and skimmable by design, precisely so this step is never worth skipping.
 5. Read `docs/project-state/CURRENT_STATE.md`.
 6. Read `docs/project-state/KARMO_DASHBOARD.md`.
 7. Read `docs/project-state/NEXT_STEPS.md`.
-8. Read `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`.
-9. Read the plan/spec/evidence for the specific workstream being discussed.
+8. Read `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`, including its **Mandatory Full-Context Review Rule** — read in full, not skimmed, anything `MASTER_INDEX.md` flags as relevant to the task at hand, not just the "obviously" applicable plan document.
+9. Read the plan/spec/evidence for the specific workstream being discussed — this includes dated `docs/project-state/PROJECT_SAVE_*.md` checkpoints `MASTER_INDEX.md` points to, not only `docs/plans/`/`docs/architecture/`. A real target architecture can live in a dated project-save record and nowhere else; treat `MASTER_INDEX.md`'s pointer to one as equally authoritative as a living plan doc.
+
+This applies the same way regardless of which interface or tool is being used to do the work (terminal, IDE extension, web, or anything else) — the rule binds the work itself, not the surface it's performed through. This step was skipped once (2026-09-17/18: a real capability was designed against an incomplete picture of an already-documented target architecture) specifically because a read-only-feeling task felt exempt from it. It is not exempt, ever.
 
 Do **not** ask Kamara to repeat facts that are already available in these records.
 
