@@ -17,6 +17,10 @@ import json
 import re
 from dataclasses import dataclass
 
+from .bloomboss_capability import BLOOMBOSS_REPORT_TOOL
+from .bloomboss_capability import TOOL_VERSION as BLOOMBOSS_TOOL_VERSION
+from .bloomboss_capability import handler as bloomboss_report_handler
+from .bloomboss_capability import manifest as bloomboss_manifest
 from .control import ApprovalEngine, CapabilityClass, CoreControlError
 from .dispatcher import CapabilityDispatcher, DispatchError
 from .durable_memory import NullMemoryBackend, build_default_memory_backend
@@ -79,6 +83,25 @@ _CHAT_EXPOSED_TOOLS = {
                     },
                     "required": [],
                 },
+            },
+        },
+    },
+    "bloomboss_report": {
+        "tool_id": BLOOMBOSS_REPORT_TOOL,
+        "version": BLOOMBOSS_TOOL_VERSION,
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "bloomboss_report",
+                "description": (
+                    "Report BloomBoss business analytics (revenue, margin, per-unit "
+                    "outcomes, supplier summary) from the real historical purchase/sale "
+                    "data currently imported into KARMO. Use this when Kamara asks about "
+                    "BloomBoss sales, plants, suppliers, revenue, or profit. Coverage is "
+                    "limited to what has actually been imported -- never assume it covers "
+                    "the whole business."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
             },
         },
     },
@@ -196,11 +219,13 @@ class KarmoOperator:
                 self.memory_status = f"DEGRADED_CONFIG_ERROR:{type(exc).__name__}"
         self.registry = CapabilityRegistry()
         self.registry.register(_status_manifest())
+        self.registry.register(bloomboss_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
         )
         self.dispatcher.bind(KARMOLAB_STATUS_TOOL, KARMOLAB_STATUS_VERSION, self.status_reader)
+        self.dispatcher.bind(BLOOMBOSS_REPORT_TOOL, BLOOMBOSS_TOOL_VERSION, bloomboss_report_handler)
 
         if task_store is not None:
             self.task_store = task_store
