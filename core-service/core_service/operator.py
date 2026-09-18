@@ -50,6 +50,13 @@ from .orchestration import (
     manifests as orchestration_manifests,
 )
 from .registry import CapabilityRegistry
+from .shadow_router import (
+    NullWorkerHealthReader,
+    build_default_worker_health_reader,
+    collect_shadow_signals,
+    compute_shadow_decision,
+    log_shadow_decision,
+)
 
 KARMOLAB_STATUS_TOOL = "karmolab.read_status"
 KARMOLAB_STATUS_VERSION = "1.0.0"
@@ -287,6 +294,7 @@ class KarmoOperator:
         status_reader=None,
         memory_backend=None,
         task_store=None,
+        worker_health_reader=None,
     ):
         self.model_client = model_client or OllamaChatClient()
         self.router = ModelRouter(resources or default_model_resources())
@@ -301,6 +309,16 @@ class KarmoOperator:
             except Exception as exc:
                 self.memory_backend = NullMemoryBackend()
                 self.memory_status = f"DEGRADED_CONFIG_ERROR:{type(exc).__name__}"
+        # Model Router Phase C (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
+        # Section 3.8) -- shadow routing only, never affects real chat.
+        # Same never-raise-on-construction discipline as memory_backend above.
+        if worker_health_reader is not None:
+            self.worker_health_reader = worker_health_reader
+        else:
+            try:
+                self.worker_health_reader = build_default_worker_health_reader()
+            except Exception:
+                self.worker_health_reader = NullWorkerHealthReader()
         self.registry = CapabilityRegistry()
         self.registry.register(_status_manifest())
         self.registry.register(bloomboss_manifest())
@@ -578,7 +596,36 @@ class KarmoOperator:
                 messages.append({"role": "tool", "content": self._execute_exposed_tool(call)})
         return "I wasn't able to finish using KARMO's tools to answer that within the allowed steps."
 
+    def _shadow_route(self) -> None:
+        """Model Router Phase C (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
+        Section 3.8): compute and log what the eventual Phase D routing
+        policy would choose, without ever affecting the real chat response.
+        Called from _chat() wrapped in a broad try/except at the call
+        site -- this method itself is also internally fail-safe (every
+        sub-call already degrades to "no data" rather than raising), but
+        the call site's own guard is the actual hard boundary that
+        prevents shadow observability from ever breaking real chat."""
+        capability_registry = {r.model_id: r.capabilities for r in self.router.inventory()}
+        karmo_ai01_reachable, karmo_ai01_loaded_models, worker_snapshots = collect_shadow_signals(
+            worker_health_reader=self.worker_health_reader,
+        )
+        decision = compute_shadow_decision(
+            capability_registry=capability_registry,
+            karmo_ai01_reachable=karmo_ai01_reachable,
+            karmo_ai01_loaded_models=karmo_ai01_loaded_models,
+            worker_snapshots=worker_snapshots,
+        )
+        log_shadow_decision(decision)
+
     def _chat(self, text: str) -> dict:
+        # Model Router Phase C shadow routing -- decision-only, logged,
+        # never allowed to affect the real response below. This guard is
+        # the hard boundary: any failure here is swallowed completely.
+        try:
+            self._shadow_route()
+        except Exception:
+            pass
+
         # Deliberately no require_local/minimum_trust_tier gate here: the
         # trust floor (OPERATOR_PRIMARY_MIN_TRUST_TIER) governs the
         # KarmoLab status/verification path via _models(), where an

@@ -1,3 +1,4 @@
+from core_service import operator as operator_module
 from core_service.model_router import ModelResource
 from core_service.ollama_client import OllamaClientError
 from core_service.operator import KarmoOperator
@@ -195,3 +196,29 @@ def test_chat_fallback_never_retries_the_same_candidate_twice_in_one_request():
     assert response["model"] == "secondary-tools"
     assert client.calls == ["primary-tools", "secondary-tools"]
     assert len(client.calls) == len(set(client.calls))
+
+
+def test_shadow_routing_failure_never_affects_the_real_chat_response(monkeypatch):
+    """Model Router Phase C's hard safety property (Section 3.8): shadow
+    routing is observability, not authority -- a failure anywhere inside
+    it must never change, delay-fail, or otherwise touch the real answer.
+    Forces compute_shadow_decision itself to raise, proving the outer
+    guard in _chat() (not just shadow_router's own internal try/excepts)
+    is what actually protects the real response."""
+
+    def _boom(**_kwargs):
+        raise RuntimeError("shadow routing exploded")
+
+    monkeypatch.setattr(operator_module, "compute_shadow_decision", _boom)
+
+    client = RecordingClient()
+    operator = KarmoOperator(
+        model_client=client,
+        resources=[_resource("local-only", {"chat", "tool_calling"}, trust_tier=40, local=True)],
+    )
+
+    response = operator.handle("hello")
+
+    assert response["kind"] == "chat"
+    assert response["model"] == "local-only"
+    assert response["message"] == "ok"
