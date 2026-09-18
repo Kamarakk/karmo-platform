@@ -203,6 +203,30 @@ Where known, capture:
 
 Raw historical imports and normalized canonical records must remain separable so original evidence is preserved.
 
+### Palmstreet Seller Hub — verified evidence (2026-09-11, extracted from `PROJECT_SAVE_2026-09-11_KARMO_FIRST_ORCHESTRATION_PALMSTREET_KVE.md`)
+
+Palmstreet Seller Hub's All Orders view showed 446 results across 18 pages. The built-in export action failed to produce a usable export across multiple date ranges tried, including a single day — treat the export path as **unavailable/unreliable for this account/session**, not as a reason to redesign BloomBoss around screenshots.
+
+Verified Seller Hub table fields observed directly:
+- Order ID, Customer, Full Name
+- Item QTY, Order Value, Paid Shipping Fee
+- Purchase Date, Order Status, Order Source
+- Buyer Note, Seller Note
+
+Observed status/source values included LIVE, Marketplace, Long-form Auction, Finished, Refunded/Canceled, and Partially refunded.
+
+Raw customer names/order identifiers from the source screenshots were never copied into this repository — only schema/system facts, per the standing no-PII-in-source-control constraint.
+
+The BloomBoss Palmstreet staging code was expanded (same session) to support verified Seller Hub semantics: item title, quantity values (e.g. `1 item`), money values, dates (e.g. `Sep 07, 2026`), customer username/full name, order status, order source, read-only staging before canonical inventory reconciliation. **Open follow-up, never completed**: ensure Buyer Note and Seller Note are explicitly included in the verified source mapping and tests — not yet done as of 2026-09-18.
+
+Standing rule: do not fabricate PlantUnit matches. Platform/order evidence is staged first; canonical Sale creation requires reliable reconciliation.
+
+Desired normalized source flow (unimplemented, target only):
+
+`platform purchases + platform sales + fees + shipping + platform IDs + provenance -> KARMO/BloomBoss canonical business state`
+
+Screenshots/invoices remain fallback evidence for purchases when no cleaner structured source exists — not the intended long-term primary workflow, matching the EMgarden invoice's own historical-import pattern in `docs/bloomboss/historical_data/`.
+
 ## Phase 2 — Marketplace Research Workers
 
 Build authorized research capabilities that gather legally accessible market information from BloomBoss selling channels and approved public sources.

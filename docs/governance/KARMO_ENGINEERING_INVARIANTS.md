@@ -300,6 +300,40 @@ being kept checkable. This rule exists so that combination cannot repeat.
 
 ---
 
+## Mandatory Document Labeling Rule
+
+Every substantial KARMO document — anything in `docs/architecture/`,
+`docs/plans/`, `docs/vision/`, `docs/governance/`, `docs/project-state/`,
+or anywhere else an agent is expected to consult before acting — must
+carry a fixed 3-line header block immediately under its title:
+
+```
+**Covers:** <comma-separated topics/keywords this document actually contains>
+**Read this if:** <one plain-language sentence: what task makes this relevant>
+**Status:** <one of: enduring target architecture (not yet built) / enduring
+  design (implemented, see <PR/commit>) / point-in-time facts as of
+  <date>, needs reverification / historical, superseded by <document>>
+```
+
+This is deliberately terse — three lines, always in that order, always
+short enough to read in a few seconds. Its only purpose is letting an
+agent decide whether to read the rest of the document, or move on,
+without gambling on a filename or reading the whole thing first.
+
+The `Covers` line is the only source `MASTER_INDEX.md` may use for that
+document's index entry — copy it in verbatim or near-verbatim, never
+write a separate freehand summary from scratch. This keeps the index
+and the document physically tied together so they cannot drift apart
+the way `PROJECT_SAVE_2026-09-11_KARMO_FIRST_ORCHESTRATION_PALMSTREET_KVE.md`
+did (see the Mandatory Full-Context Review Rule above).
+
+Retrofitting this header onto every existing document at once is not
+required — add it when a document is created or next substantially
+edited, so coverage grows naturally rather than becoming its own
+unbounded project.
+
+---
+
 ## Mandatory Phase Invariant Impact Review
 
 Every future KARMO phase must begin with an Invariant Impact Review
@@ -479,6 +513,28 @@ PROJECT SAVE requires:
    `MASTER_INDEX.md`, `CURRENT_STATE.md`, `CHANGE_LOG.md`,
    `SOFTWARE_INVENTORY.md`, `NETWORK_INVENTORY.md`, `DASHBOARD_INVENTORY.md`,
    `COMMAND_LOG.md`, `ROLLBACK_AND_REMOVAL.md`, `NEXT_STEPS.md`.
+
+2a. **Narrative versus enduring content — write each to its real home,
+   not just the session narrative.** A dated `PROJECT_SAVE_*.md` file
+   records what happened in a session — decisions made, facts found,
+   commands run. It is not itself the home for anything meant to outlive
+   that session. If a session produces an enduring architecture
+   decision, a standing rule, or a reusable fact (hardware/network
+   inventory, a target design, a governing principle), write that
+   content directly into its real home the same session it's
+   discovered: `docs/architecture/` or `docs/plans/` for design/
+   architecture, `NETWORK_INVENTORY.md`/`SOFTWARE_INVENTORY.md` for
+   point-in-time facts, `docs/governance/` for a new standing rule. The
+   dated save file may then briefly note that it happened and link to
+   where it now actually lives — it must never be the *only* place that
+   content exists. This is what
+   `PROJECT_SAVE_2026-09-11_KARMO_FIRST_ORCHESTRATION_PALMSTREET_KVE.md`
+   got wrong: real, enduring architecture (the Model Router / KARMO-FIRST
+   Orchestration vision), point-in-time hardware facts (KVE01-03), and
+   domain-specific findings (Palmstreet's schema) were all left sitting
+   only in one narrative file, discoverable only by reading the whole
+   thing — see the Mandatory Full-Context Review Rule above for the
+   consequence.
 
 3. Record consequential installations, configuration changes, commands
    actually executed, verified results, failures and fixes, architecture

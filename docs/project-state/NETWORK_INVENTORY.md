@@ -55,6 +55,18 @@ Do not interpret a connection timeout as a credential failure until routing/tran
 
 ## KVE local management targets
 
+**All facts in this section are from 2026-09-11 and have not been
+re-verified since — treat as NEEDS LIVE VERIFICATION in full, not just
+the row already marked that way.** Also unconfirmed since that date:
+whether KVE01/02/03 form a live 3-node Proxmox cluster, their current
+capacities, and current VM/LXC placement (per
+`docs/architecture/KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md`'s "safe
+next engineering work" list, this inventory was always meant to precede
+any distributed-role assignment, not substitute for it). One confirmed
+data point since: Worker01 is VM101, hosted on KVE01 (per
+`docs/runbooks/WORKER01_EXACT_ACTIVATION.md`) — the only concrete
+VM-to-hypervisor mapping established so far.
+
 Current user-supplied Proxmox management map:
 
 | Host | LAN SSH target | Status |

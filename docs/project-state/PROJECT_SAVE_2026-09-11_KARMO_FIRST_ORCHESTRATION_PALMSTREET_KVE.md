@@ -1,8 +1,35 @@
 # PROJECT SAVE — KARMO-FIRST Orchestration, Palmstreet Intake, and KVE Recovery
 
+**Covers:** the original 2026-09-11 session narrative this file was written as — retained verbatim below for historical record
+**Read this if:** you're researching how a specific 2026-09-11 decision or finding was originally reached; for the actual current content, use the links below instead
+**Status:** HISTORICAL — split 2026-09-18 into its proper homes; this file is no longer the place to find any of its own content
+
 Date: 2026-09-11
 Branch: `feat/bloomboss-historical-intelligence`
 Status: SESSION STATE CAPTURED — no production deployment authorized
+
+**2026-09-18 split note**: this file mixed enduring architecture,
+point-in-time hardware facts, and BloomBoss-specific findings — exactly
+the problem the Mandatory Document Labeling Rule and the Mandatory
+Project Save Completion Rule's "narrative versus enduring content"
+addition (`docs/governance/KARMO_ENGINEERING_INVARIANTS.md`) now exist
+to prevent. Each piece now lives in its real home:
+
+- Enduring architecture (KARMO FIRST rule, orchestration layer / Model
+  Router, authority model, planned components) →
+  `docs/architecture/KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md`
+- KVE hardware/network facts → `docs/project-state/NETWORK_INVENTORY.md`
+  (flagged there as needing re-verification, unconfirmed since this
+  file's original date)
+- Palmstreet Seller Hub findings → `docs/plans/BLOOMBOSS_BUILD_PLAN.md`,
+  Phase 1 section
+
+The original text below is preserved unchanged as the historical record
+of this session — read it only if you need the original narrative
+context, not as the current source of any of the facts or decisions it
+contains.
+
+---
 
 ## Why this save exists
 
