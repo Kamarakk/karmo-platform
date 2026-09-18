@@ -80,16 +80,20 @@ def _schema():
     # A) -- this file's own tests depend on those columns existing. 007
     # adds karmo_worker_job_results (Model Router Phase D1) -- the
     # dispatch_and_wait round-trip test depends on it to read back the
-    # real result content, not just a digest.
+    # real result content, not just a digest. 008 adds
+    # karmo_worker_jobs.requested_lease_seconds (Model Router Phase D1
+    # reliability fix) -- this file's lease-duration tests depend on it.
     migration_3 = migrations_dir / "003_worker_job_payloads.sql"
     migration_5 = migrations_dir / "005_worker_ollama_health.sql"
     migration_7 = migrations_dir / "007_worker_job_results.sql"
+    migration_8 = migrations_dir / "008_worker_job_lease_duration.sql"
     with psycopg.connect(_conninfo(), autocommit=True) as conn, conn.cursor() as cur:
         cur.execute(migration_1.read_text())
         cur.execute(migration_2.read_text())
         cur.execute(migration_3.read_text())
         cur.execute(migration_5.read_text())
         cur.execute(migration_7.read_text())
+        cur.execute(migration_8.read_text())
 
 
 @pytest.fixture(autouse=True)
@@ -304,6 +308,102 @@ def test_expired_lease_moves_to_recovery_required_and_never_requeues_automatical
     assert "unknown execution outcome" in state["last_error"]
     with pytest.raises(WorkerCoordinationError):
         store.lease_job(job_id=job_id, worker_id="worker-1")
+
+
+class FakeClockForLease:
+    def __init__(self):
+        self.now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    def __call__(self):
+        return self.now
+
+
+def test_lease_job_honors_the_jobs_own_requested_lease_seconds():
+    """Model Router Phase D1 reliability fix (see
+    docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md Section 6):
+    direct regression test for the real bug found via a live production
+    proof-run -- poll()'s lease_job() call passes no explicit
+    lease_seconds, so it must pick up whatever the enqueuer requested
+    instead of always falling back to the historical 60s default."""
+    clock = FakeClockForLease()
+    store = PostgresWorkerCoordinatorStore(_connection_factory, clock=clock)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    store.heartbeat(worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=300)
+    _engine, approval_id, digest = _approve(tool_id="model_chat_tools", tool_version="1.0.0")
+    task_id = str(uuid.uuid4())
+    job_id = store.enqueue_job(
+        idempotency_key=f"{task_id}:model_chat_tools", task_id=task_id, approval_id=approval_id,
+        tool_id="model_chat_tools", tool_version="1.0.0", arguments_digest=digest,
+        lease_seconds_hint=140,
+    )
+
+    # poll() never passes an explicit lease_seconds -- this call mirrors
+    # that exactly.
+    lease = store.lease_job(job_id=job_id, worker_id="worker-1")
+
+    clock.now += timedelta(seconds=100)  # would have expired under the old fixed 60s default
+    assert store.recover_expired_leases() == []  # still live at 100s under a 140s lease
+    assert lease.lease_expires_at == datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=140)
+
+
+def test_lease_job_still_defaults_to_60_seconds_when_no_hint_was_given():
+    """Backward compatibility: a job enqueued without lease_seconds_hint
+    (every job enqueued before this fix, and any caller that still
+    doesn't care) behaves exactly as before."""
+    clock = FakeClockForLease()
+    store = PostgresWorkerCoordinatorStore(_connection_factory, clock=clock)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    store.heartbeat(worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=300)
+    _engine, approval_id, digest = _approve()
+    task_id = str(uuid.uuid4())
+    job_id = store.enqueue_job(
+        idempotency_key=f"{task_id}:host_health", task_id=task_id, approval_id=approval_id,
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
+    )
+
+    lease = store.lease_job(job_id=job_id, worker_id="worker-1")
+
+    assert lease.lease_expires_at == datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=60)
+
+
+def test_lease_job_explicit_argument_still_overrides_the_stored_hint():
+    """An explicit lease_seconds argument to lease_job() itself still
+    wins over the job's own stored hint -- unchanged prior behavior,
+    still available for a caller that genuinely knows better at lease
+    time specifically."""
+    clock = FakeClockForLease()
+    store = PostgresWorkerCoordinatorStore(_connection_factory, clock=clock)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    store.heartbeat(worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=300)
+    _engine, approval_id, digest = _approve()
+    task_id = str(uuid.uuid4())
+    job_id = store.enqueue_job(
+        idempotency_key=f"{task_id}:host_health", task_id=task_id, approval_id=approval_id,
+        tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
+        lease_seconds_hint=140,
+    )
+
+    lease = store.lease_job(job_id=job_id, worker_id="worker-1", lease_seconds=30)
+
+    assert lease.lease_expires_at == datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=30)
+
+
+def test_enqueue_job_rejects_out_of_bounds_lease_seconds_hint():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    _engine, approval_id, digest = _approve()
+    task_id = str(uuid.uuid4())
+    with pytest.raises(WorkerCoordinationError, match="between 30 and 600"):
+        store.enqueue_job(
+            idempotency_key=f"{task_id}:host_health", task_id=task_id, approval_id=approval_id,
+            tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
+            lease_seconds_hint=5,
+        )
+    with pytest.raises(WorkerCoordinationError, match="between 30 and 600"):
+        store.enqueue_job(
+            idempotency_key=f"{task_id}:host_health:2", task_id=task_id, approval_id=approval_id,
+            tool_id="karmolab.host_health", tool_version="1", arguments_digest=digest,
+            lease_seconds_hint=9999,
+        )
 
 
 def test_heartbeat_persists_ollama_snapshot_and_its_own_timestamp():

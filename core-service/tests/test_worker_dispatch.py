@@ -176,3 +176,32 @@ def test_dispatch_and_wait_raises_if_job_vanishes_from_durable_state():
     store = FakeStore(states=[None])
     with pytest.raises(WorkerDispatchError, match="vanished"):
         _dispatch(store)
+
+
+def test_dispatch_and_wait_defaults_lease_seconds_to_the_total_deadline():
+    """Model Router Phase D1 reliability fix: the real bug this closes
+    was a lease shorter than the capability's own allowed execution
+    time. Tying the default lease to the caller's own stated patience
+    (rather than a second, independent duration parameter that could
+    silently drift out of sync) is the actual fix."""
+    store = FakeStore(states=["SUCCEEDED"], result={"content": "ok", "tool_calls": None})
+    _dispatch(store, total_deadline_seconds=150.0)
+
+    assert store.enqueue_calls[0]["lease_seconds_hint"] == 150
+
+
+def test_dispatch_and_wait_clamps_the_default_lease_to_the_stores_bounds():
+    store = FakeStore(states=["SUCCEEDED"], result={"content": "ok", "tool_calls": None})
+    _dispatch(store, total_deadline_seconds=5.0)
+    assert store.enqueue_calls[0]["lease_seconds_hint"] == 30  # clamped up from 5
+
+    store2 = FakeStore(states=["SUCCEEDED"], result={"content": "ok", "tool_calls": None})
+    _dispatch(store2, total_deadline_seconds=9999.0)
+    assert store2.enqueue_calls[0]["lease_seconds_hint"] == 600  # clamped down from 9999
+
+
+def test_dispatch_and_wait_honors_an_explicit_lease_seconds_override():
+    store = FakeStore(states=["SUCCEEDED"], result={"content": "ok", "tool_calls": None})
+    _dispatch(store, total_deadline_seconds=150.0, lease_seconds=45)
+
+    assert store.enqueue_calls[0]["lease_seconds_hint"] == 45
