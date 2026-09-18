@@ -108,19 +108,35 @@ def test_general_chat_uses_local_model_router_without_tool_execution():
     assert [call["model"] for call in client.calls] == ["qwen3:8b"]
 
 
-def test_general_chat_falls_back_to_ministral_then_granite():
+def test_general_chat_falls_back_from_qwen_to_ministral():
+    client = FakeModelClient(fail_models={"qwen3:8b"})
+    operator = KarmoOperator(model_client=client, status_reader=fake_status)
+
+    response = operator.handle("Good morning Karmo")
+
+    assert response["kind"] == "chat"
+    assert response["model"] == "ministral-3:8b"
+    assert [call["model"] for call in client.calls] == ["qwen3:8b", "ministral-3:8b"]
+
+
+def test_general_chat_never_falls_back_to_granite_which_is_not_tool_calling_capable():
+    """Model Router Phase B (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
+    Section 3.4) -- direct regression test, using the real production
+    registry, for the actual 2026-09-18 incident: qwen3:8b and
+    ministral-3:8b both fail (matching both timing out under contention),
+    and granite3.3:2b -- not tagged tool_calling -- must never be reached
+    at all, replacing the old (wrong) expectation that it would silently
+    take over as a third fallback."""
     client = FakeModelClient(fail_models={"qwen3:8b", "ministral-3:8b"})
     operator = KarmoOperator(model_client=client, status_reader=fake_status)
 
     response = operator.handle("Good morning Karmo")
 
     assert response["kind"] == "chat"
-    assert response["model"] == "granite3.3:2b"
-    assert [call["model"] for call in client.calls] == [
-        "qwen3:8b",
-        "ministral-3:8b",
-        "granite3.3:2b",
-    ]
+    assert response["message"] == "Local chat models are unavailable. KARMO control plane remains fail-closed."
+    assert "model" not in response
+    assert [call["model"] for call in client.calls] == ["qwen3:8b", "ministral-3:8b"]
+    assert "granite3.3:2b" not in [call["model"] for call in client.calls]
 
 
 def test_general_chat_fails_closed_when_all_chat_models_fail():
