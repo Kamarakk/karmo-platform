@@ -6,6 +6,7 @@ below are reminders of what each part needs, not a solution.
 Local Ollama only: http://127.0.0.1:11434
 No production access. No karmo-ai01.
 """
+import httpx 
 
 OLLAMA_URL = "http://127.0.0.1:11434"
 MODEL = "qwen2.5:1.5b"  # or "llama3.2:3b" -- try both for Part 6
@@ -22,7 +23,10 @@ def ask_model(prompt: str) -> str:
     - Parse the response and return the generated text.
     - Think about what should happen if the request fails or times out.
     """
-    raise NotImplementedError("Part 2: write your model call here")
+    payload = {"model": MODEL, "prompt": prompt, "stream": False}
+    response = httpx.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=30)
+    data = response.json()
+    return data["response"]
 
 
 def ask_model_for_tool_proposal(user_request: str) -> str:
@@ -45,4 +49,5 @@ if __name__ == "__main__":
     # Then call ask_model_for_tool_proposal() with a sample request and
     # print the raw (unvalidated) response -- validation happens in
     # tool_validator.py, not here.
-    pass
+    answer = ask_model("if three people was walking 2 got pick up by the bus, one got pick up by a blue car. how many people was left walking?")
+print(answer)
