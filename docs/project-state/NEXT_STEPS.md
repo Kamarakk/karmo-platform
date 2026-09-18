@@ -288,6 +288,25 @@ workers proven, soak-tested, closed). Since then, in order:
     genuine design decision (safety margin, scope — every capability or
     just slow ones) deserving its own explicit discussion, not a
     rushed patch at the end of an already-long session.
+14. **Worker job lease-duration bug fixed, tested, and merged** (PR
+    #89, Kamara's direct instruction, "fix now") — **not yet deployed.**
+    Migration 008 adds `karmo_worker_jobs.requested_lease_seconds`
+    (nullable, 30–600s bound). `enqueue_job()` gains an optional
+    `lease_seconds_hint`, set by whoever is enqueuing the job — the
+    party that actually knows which capability is being invoked.
+    `lease_job()`'s default changes from a fixed 60s to "use the job's
+    own requested hint if it set one, else 60" — `poll()` itself needs
+    zero changes, since it already calls `lease_job()` with no explicit
+    value. `dispatch_and_wait()` now defaults its lease request to
+    `total_deadline_seconds` itself (clamped 30–600s) — the actual
+    design choice that would have prevented item 13's failure
+    automatically, since a caller's own stated patience now sizes the
+    lease by default rather than needing two duration parameters kept
+    in sync by hand. 9 new/updated tests; ran against a real local
+    Postgres (colima), not just CI: full suite, 348 passed, 0 skipped,
+    0 failed — every existing lease-dependent test confirmed unaffected.
+    Next real step: deploy this and re-run item 13's exact proof-run to
+    confirm the fix actually resolves it live, not just in tests.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
