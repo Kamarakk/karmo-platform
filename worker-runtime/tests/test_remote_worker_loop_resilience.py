@@ -18,7 +18,7 @@ class FakeClient:
         self.heartbeats = 0
         self.poll_calls = 0
 
-    def heartbeat(self, lease_seconds):
+    def heartbeat(self, lease_seconds, ollama_snapshot=None):
         self.heartbeats += 1
 
     def poll_once(self):
