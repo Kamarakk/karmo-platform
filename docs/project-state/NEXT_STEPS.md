@@ -50,8 +50,29 @@ workers proven, soak-tested, closed). Since then, in order:
    testing), which is a reliability argument, not just a speed one, but
    is currently unmeasured. **Next session: resume this discussion before
    writing any code** — per the new Full-Context Review Rule, re-read
-   `PROJECT_SAVE_2026-09-11_KARMO_FIRST_ORCHESTRATION_PALMSTREET_KVE.md`
-   in full first.
+   `docs/architecture/KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md` in full
+   first (moved there from the original 2026-09-11 project-save file —
+   see item 5).
+5. **Document format/discoverability fixed at the governance level.**
+   Diagnosed why the Model Router vision was missable even with a
+   working index: the document itself gave no signal of what it
+   contained without reading all 228 lines, and it mixed three unrelated
+   kinds of content (enduring architecture, point-in-time KVE hardware
+   facts, BloomBoss/Palmstreet findings) under one narrative title. Two
+   fixes, both now in `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`:
+   a **Mandatory Document Labeling Rule** (every substantial document
+   gets a 3-line `Covers`/`Read this if`/`Status` header, and
+   `MASTER_INDEX.md` entries must be copied from that header, not
+   freehand-written) and an extension to the Project Save rule (a dated
+   save file is narrative only from now on — enduring content goes
+   directly into its real home the same session). Then actually split
+   the 2026-09-11 file using both fixes: architecture →
+   `docs/architecture/KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md`
+   (new, uses the header format as its first real example); KVE facts →
+   `NETWORK_INVENTORY.md` (flagged as unverified since 2026-09-11, not
+   just the one row previously marked that way); Palmstreet findings →
+   `BLOOMBOSS_BUILD_PLAN.md` Phase 1. Original file kept intact as
+   historical record with a pointer note, nothing deleted.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
