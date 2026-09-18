@@ -17,6 +17,10 @@ import json
 import re
 from dataclasses import dataclass
 
+from .ask_claude_capability import ASK_CLAUDE_TOOL
+from .ask_claude_capability import TOOL_VERSION as ASK_CLAUDE_TOOL_VERSION
+from .ask_claude_capability import handler as ask_claude_handler
+from .ask_claude_capability import manifest as ask_claude_manifest
 from .bloomboss_capability import BLOOMBOSS_REPORT_TOOL
 from .bloomboss_capability import TOOL_VERSION as BLOOMBOSS_TOOL_VERSION
 from .bloomboss_capability import handler as bloomboss_report_handler
@@ -102,6 +106,33 @@ _CHAT_EXPOSED_TOOLS = {
                     "the whole business."
                 ),
                 "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+    },
+    "ask_claude": {
+        "tool_id": ASK_CLAUDE_TOOL,
+        "version": ASK_CLAUDE_TOOL_VERSION,
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "ask_claude",
+                "description": (
+                    "Ask Claude (Anthropic's AI) a text question when none of KARMO's own "
+                    "local models can adequately answer it -- e.g. something needing "
+                    "broader general knowledge or more careful reasoning than a small "
+                    "local model can provide. Costs nothing extra (runs through Kamara's "
+                    "existing subscription). Pure question-and-answer only."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "The question to ask Claude.",
+                        },
+                    },
+                    "required": ["question"],
+                },
             },
         },
     },
@@ -220,12 +251,14 @@ class KarmoOperator:
         self.registry = CapabilityRegistry()
         self.registry.register(_status_manifest())
         self.registry.register(bloomboss_manifest())
+        self.registry.register(ask_claude_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
         )
         self.dispatcher.bind(KARMOLAB_STATUS_TOOL, KARMOLAB_STATUS_VERSION, self.status_reader)
         self.dispatcher.bind(BLOOMBOSS_REPORT_TOOL, BLOOMBOSS_TOOL_VERSION, bloomboss_report_handler)
+        self.dispatcher.bind(ASK_CLAUDE_TOOL, ASK_CLAUDE_TOOL_VERSION, ask_claude_handler)
 
         if task_store is not None:
             self.task_store = task_store
