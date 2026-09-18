@@ -3,19 +3,21 @@ authenticated through Kamara's existing ChatGPT subscription (never an API
 key), per docs/architecture/KARMO_CHAT_TOOL_CALLING_AND_EXTERNAL_DELEGATION.md
 Section 3.4.
 
-IMPORTANT, unlike ask_claude_capability.py's sibling: this module has NOT
-been verified against a real `codex` invocation -- the CLI was not
-installed on the machine this was built on. Everything below is built
-from OpenAI's own documentation as carefully as possible, but that
-documentation has open, acknowledged accuracy gaps for exactly the
-feature this relies on (the --json event schema): OpenAI's own GitHub
-tracks an open issue that the documented event shape is out of date
-relative to actual CLI output, and multiple independent sources report
-the schema changing across CLI versions (item_type -> type,
-assistant_message -> agent_message). Treat this capability as unverified
-until it has actually been run once for real and the output shape
-confirmed -- do not assume it works simply because it was written
-carefully.
+Verified live 2026-09-17 against codex-cli 0.154.0, logged in via
+ChatGPT subscription (not an API key): the NDJSON event shape this module
+parses (item.completed / agent_message / text) matched real CLI output
+exactly on the first try. Live testing did catch two real bugs the
+original unverified version had, both fixed here: (1) `codex exec`
+refuses to run outside a trusted git repository unless
+--skip-git-repo-check is passed, which a freshly created empty temp
+directory always needs since it's deliberately never a git repo; (2) the
+CLI prints "Reading additional input from stdin..." and reads from
+stdin by default, so stdin is now explicitly set to DEVNULL rather than
+left to inherit whatever the parent process's stdin happens to be.
+OpenAI's own docs still have an open, acknowledged accuracy gap for this
+schema across versions, so a future codex CLI upgrade could still change
+this shape -- if answers start failing to parse, re-verify live before
+assuming the code is still correct.
 
 Vendor-posture note (Section 1 of the design doc): OpenAI's own docs
 recommend API-key billing for automated/scripted Codex use, unlike
@@ -87,12 +89,10 @@ def manifest() -> dict:
 
 def _extract_answer_from_ndjson(stdout: str) -> str:
     """codex exec --json prints newline-delimited JSON events, not one
-    object (unlike Claude's --output-format json). The answer text is
-    reported to live on an `item.completed` event whose `item.type` is
-    `agent_message`, at `item.text` -- per current third-party
-    documentation and OpenAI's own (acknowledged incomplete) docs. NOT
-    independently verified against a real codex process -- see this
-    module's docstring."""
+    object (unlike Claude's --output-format json). The answer text lives
+    on an `item.completed` event whose `item.type` is `agent_message`, at
+    `item.text` -- verified live against a real codex-cli 0.154.0 process
+    (see this module's docstring)."""
     answer = None
     for line in stdout.splitlines():
         line = line.strip()
@@ -123,11 +123,12 @@ def _invoke_codex_cli(question: str) -> str:
     workdir = tempfile.mkdtemp(prefix="karmo-ask-gpt-")
     try:
         result = subprocess.run(
-            ["codex", "exec", "--json", "--sandbox", "read-only", question],
+            ["codex", "exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", question],
             cwd=workdir,
             capture_output=True,
             text=True,
             timeout=TIMEOUT_SECONDS,
+            stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired as exc:
         raise AskGptCapabilityError(f"codex CLI timed out after {TIMEOUT_SECONDS}s") from exc

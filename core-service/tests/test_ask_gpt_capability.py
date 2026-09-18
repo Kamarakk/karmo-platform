@@ -129,9 +129,12 @@ def test_uses_the_read_only_sandbox_flag(monkeypatch):
     """Locks in the one explicit safety flag this capability relies on --
     unlike ask_claude, where flags don't prevent reads, Codex's own docs
     describe --sandbox read-only as blocking both writes and shell
-    execution. Not independently verified live (see module docstring),
-    but the argument must at least be present."""
+    execution -- verified live 2026-09-17 against codex-cli 0.154.0.
+    --skip-git-repo-check is also required (verified live: codex exec
+    refuses to run at all outside a trusted git repo without it, which a
+    freshly created empty temp directory always is)."""
     seen_argv = []
+    seen_kwargs = []
 
     class _Result:
         returncode = 0
@@ -140,6 +143,7 @@ def test_uses_the_read_only_sandbox_flag(monkeypatch):
 
     def _fake_run(argv, **kwargs):
         seen_argv.append(argv)
+        seen_kwargs.append(kwargs)
         return _Result()
 
     monkeypatch.setattr(ask_gpt_capability.subprocess, "run", _fake_run)
@@ -148,6 +152,8 @@ def test_uses_the_read_only_sandbox_flag(monkeypatch):
 
     assert "--sandbox" in seen_argv[0]
     assert "read-only" in seen_argv[0]
+    assert "--skip-git-repo-check" in seen_argv[0]
+    assert seen_kwargs[0]["stdin"] == subprocess.DEVNULL
 
 
 def test_runs_in_a_fresh_temp_directory_and_cleans_up(monkeypatch):
