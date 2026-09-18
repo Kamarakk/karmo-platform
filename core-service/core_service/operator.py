@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from dataclasses import dataclass
 
 from .ask_claude_capability import ASK_CLAUDE_TOOL
@@ -602,7 +603,18 @@ class KarmoOperator:
             try:
                 answer = self._run_tool_loop(candidate.model_id, messages, tools)
             except OllamaClientError as exc:
+                # Never let this disappear silently (same lesson as the
+                # worker runtime's earlier fork/spawn fix): a candidate
+                # failing here means chat quietly degrades to a weaker
+                # fallback model with zero visible trace of why unless this
+                # is logged -- verified live that this was happening for
+                # every tool-calling question on karmo-ai01's real hardware
+                # before the timeout fix above.
                 last_error = type(exc).__name__
+                print(
+                    f"KARMO chat candidate {candidate.model_id!r} failed: {last_error}: {exc}",
+                    file=sys.stderr, flush=True,
+                )
                 continue
 
             write_failure = None
