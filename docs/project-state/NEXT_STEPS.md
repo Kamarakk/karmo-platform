@@ -1,6 +1,59 @@
 # KARMO Next Steps
 
-## 2026-09-17 update (read this first — supersedes the 2026-09-15 note below for immediate next action)
+## 2026-09-18 update (read this first — supersedes everything below for immediate next action)
+
+Everything in the 2026-09-17 section below is now resolved (both
+workers proven, soak-tested, closed). Since then, in order:
+
+1. **KARMO chat tool-calling + BloomBoss + external delegation** — built,
+   tested, merged, **deployed to `karmo-ai01`**, and a real post-deployment
+   bug (timeout too short for a real tool-calling round trip, silent
+   fallback) found and fixed (PR #80). See
+   `PROJECT_SAVE_2026-09-18_CHAT_TOOL_CALLING_BLOOMBOSS_DELEGATION.md`.
+   Deployed but not yet cleanly re-verified end-to-end in production —
+   the last real test hit a durable-memory self-contamination artifact
+   (the model kept seeing its own earlier wrong answers as "recent
+   conversation" precedent). Kamara chose to let it age out naturally
+   rather than touch production data. **Worth a fresh, clean test
+   whenever real usage has pushed those old exchanges out of the recent
+   window** — not urgent, self-resolving.
+2. **PR #26 fully closed** (was still marked "untouched" in this file —
+   stale; fixed below).
+3. **A real governance gap found and fixed.** Tonight's chat tool-calling
+   design was approved and built without checking it against an
+   already-documented 2026-09-11 "Model Router" / KARMO-FIRST
+   Orchestration vision — not because no process existed, but because
+   that vision lived in one dated project-save file that had never been
+   folded into `MASTER_INDEX.md`, and `MASTER_INDEX.md` itself had
+   fallen about a week out of date. Both are now fixed: `MASTER_INDEX.md`
+   is fully current (every project-save file listed, timeline through
+   today), and a new **Mandatory Full-Context Review Rule** is in
+   `docs/governance/KARMO_ENGINEERING_INVARIANTS.md` — read the whole
+   index before any action, read-only included, no exceptions, no matter
+   which tool/interface is doing the work.
+4. **Item 4 from the prior list (worker-hosted model inference
+   routing) is still open, now with the right context.** Kamara wants
+   Phase 2 (prove a worker can answer a chat prompt end-to-end) *and*
+   Phase 3 (teach chat to actually route to workers) — paused mid-scoping
+   when it surfaced the governance gap above. Real complexity found before
+   building anything: the deployed `model_chat` worker capability uses
+   Ollama's `/api/generate` (single prompt), not `/api/chat` (message
+   array + tools) — supporting tool-calling on workers means changing
+   worker-runtime itself and redeploying to both workers again. Worker
+   routing is also fundamentally asynchronous (enqueue a job, worker
+   polls up to 5s later, executes, submits result) — chat's current
+   synchronous call-and-get-answer model doesn't fit without new
+   poll-and-wait logic. The 13%-faster-per-token benchmark may be the
+   wrong number to weigh this on — the real value might be relieving
+   `karmo-ai01`'s resource contention (the same contention that plausibly
+   caused the 343-second outlier during tonight's post-deployment
+   testing), which is a reliability argument, not just a speed one, but
+   is currently unmeasured. **Next session: resume this discussion before
+   writing any code** — per the new Full-Context Review Rule, re-read
+   `PROJECT_SAVE_2026-09-11_KARMO_FIRST_ORCHESTRATION_PALMSTREET_KVE.md`
+   in full first.
+
+## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
 Session ended mid-canary after 12+ hours, on Kamara's explicit call to
 stop. Full detail: `PROJECT_SAVE_2026-09-17_WORKER_SANDBOX_SPAWN_FIX.md`
@@ -173,9 +226,12 @@ yet** — that's a new, deliberately-scoped capability (not started).
     clean for 6 checks over ~3 hours of real sustained load (same PID
     throughout, 0 stuck jobs every check). `model_chat` is now trusted
     under normal unattended polling on both workers.
-3. **PR #26** (learning program branch) — untouched, predates current
-   `main` by a wide margin per `AI_START_HERE.md`'s own caution; reconcile
-   before any merge attempt.
+3. ~~**PR #26**~~ — **CLOSED, 2026-09-17.** Found to have been silently
+   superseded since 2026-09-11 by the flexible apprenticeship redesign
+   already on `main` (`docs/learning/KARMO_AI_ENGINEERING_APPRENTICESHIP.md`
+   + `KARMO_LEARNING_PROGRESS.md`); the old PR was never formally closed
+   despite being obsolete. Uncommitted personal exercise progress found
+   stashed on that branch was recovered and pushed (`c958cfc`), not lost.
 4. **Choose the next KARMO capability** to build now that durable memory,
    BloomBoss Phase 1, and the orchestration task board are all live —
    BloomBoss Phase 2+ (marketplace research), further Worker Commander
