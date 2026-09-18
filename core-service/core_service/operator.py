@@ -220,11 +220,33 @@ def _status_manifest() -> dict:
 
 
 def default_model_resources() -> list[ModelResource]:
+    # "tool_calling" (Model Router Phase A -- see
+    # docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md Section 3.2)
+    # is a capability FACT, not a behavior change: _chat() below still
+    # filters on required_capabilities={"chat"}, so every model that has
+    # "chat" today remains a candidate exactly as before. Adding this tag
+    # is the data half of Section 3.2's "loaded != tool-capable"
+    # distinction; consuming it to actually gate/reorder the fallback
+    # chain is Phase B's job, not this one.
+    #
+    # Tagged only where confirmed by real evidence, never guessed:
+    # - qwen3:8b, ministral-3:8b: confirmed live 2026-09-18 -- both were
+    #   observed attempting Ollama's tool-calling contract (they timed
+    #   out mid-call, but were engaged via /api/chat with tools, not
+    #   /api/generate) during the karmo-ai01 contention investigation.
+    # - granite3.3:2b: confirmed NOT reliably tool-calling -- live testing
+    #   the same night showed it producing fluent prose naming the
+    #   `bloomboss_report` tool instead of invoking it. Deliberately left
+    #   untagged.
+    # - mistral:7b: never exercised via the chat tool-calling path at all
+    #   (verify-only capability, not in _chat()'s "chat" candidate set) --
+    #   no evidence either way, so no claim is made. NEEDS_VERIFICATION
+    #   if this model is ever considered for chat/tool-calling roles.
     return [
         ModelResource(
             model_id="qwen3:8b",
             provider="ollama-local",
-            capabilities=frozenset({"chat", "summarize", "reason"}),
+            capabilities=frozenset({"chat", "summarize", "reason", "tool_calling"}),
             trust_tier=40,
             local=True,
             metadata={"role": "primary"},
@@ -232,7 +254,7 @@ def default_model_resources() -> list[ModelResource]:
         ModelResource(
             model_id="ministral-3:8b",
             provider="ollama-local",
-            capabilities=frozenset({"chat", "summarize", "reason"}),
+            capabilities=frozenset({"chat", "summarize", "reason", "tool_calling"}),
             trust_tier=35,
             local=True,
             metadata={"role": "secondary"},
