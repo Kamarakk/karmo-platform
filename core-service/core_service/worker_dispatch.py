@@ -61,6 +61,7 @@ def dispatch_and_wait(
     requester: str = DEFAULT_REQUESTER,
     total_deadline_seconds: float = 90.0,
     poll_interval_seconds: float = 1.0,
+    lease_seconds: int | None = None,
     clock=None,
     sleep=time.sleep,
 ) -> DispatchOutcome:
@@ -80,12 +81,28 @@ def dispatch_and_wait(
     situation (success, failure, timeout) is a real, expected outcome of
     dispatching work to an independent process and is returned as a
     DispatchOutcome, never raised.
+
+    lease_seconds (Model Router Phase D1 reliability fix -- see
+    migration 008): the real gap this session's live proof-run found
+    was worker_gateway_backend.py's poll() always leasing jobs for a
+    fixed 60 seconds regardless of the capability actually being
+    executed, while model_chat/model_chat_tools both allow up to 120 --
+    a real call anywhere near that long could never report its own
+    success before its lease expired. When not given explicitly here,
+    defaults to total_deadline_seconds itself (clamped to the store's
+    30-600s bound): if a caller is willing to wait up to X seconds for a
+    result, the lease covering that job's execution should be at least
+    that long too, by default, rather than needing two separate
+    duration parameters that could silently drift apart.
     """
     now = clock or (lambda: datetime.now(timezone.utc))
     start = now()
     digest = arguments_digest(tool_id, tool_version, arguments)
     task_id = str(uuid.uuid4())
     idempotency_key = f"dispatch:{task_id}:{tool_id}:{tool_version}"
+    effective_lease_seconds = lease_seconds
+    if effective_lease_seconds is None:
+        effective_lease_seconds = max(30, min(600, int(total_deadline_seconds)))
 
     pending = approval_engine.request(
         requester=requester,
@@ -103,6 +120,7 @@ def dispatch_and_wait(
         tool_version=tool_version,
         arguments_digest=digest,
         approval_id=pending.approval_id,
+        lease_seconds_hint=effective_lease_seconds,
     )
     gateway_backend.attach_job_arguments(
         job_id=job_id,

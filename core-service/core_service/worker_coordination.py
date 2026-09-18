@@ -312,20 +312,32 @@ class PostgresWorkerCoordinatorStore:
                 raise WorkerCoordinationError("worker is not active or key mismatch")
         return True
 
-    def enqueue_job(self, *, idempotency_key, task_id, tool_id, tool_version, arguments_digest, approval_id=None):
+    def enqueue_job(self, *, idempotency_key, task_id, tool_id, tool_version, arguments_digest,
+                    approval_id=None, lease_seconds_hint=None):
+        """lease_seconds_hint (Model Router Phase D1 reliability fix, see
+        migration 008): set by whoever is enqueuing the job -- the party
+        that actually knows which capability is being invoked and roughly
+        how long it needs -- so lease_job() can size the lease
+        appropriately instead of always using a fixed default regardless
+        of the capability's own declared timeout. None means "no
+        opinion" and preserves today's default behavior exactly."""
         if not idempotency_key:
             raise WorkerCoordinationError("idempotency_key is required to enqueue a worker job")
+        if lease_seconds_hint is not None and not (30 <= int(lease_seconds_hint) <= 600):
+            raise WorkerCoordinationError("lease_seconds_hint must be between 30 and 600 seconds")
         job_id = str(uuid.uuid4())
         with self._connection_factory() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO public.karmo_worker_jobs
-                    (job_id, idempotency_key, task_id, approval_id, tool_id, tool_version, arguments_digest, state)
-                VALUES (%s::uuid, %s, %s::uuid, %s::uuid, %s, %s, %s, 'QUEUED')
+                    (job_id, idempotency_key, task_id, approval_id, tool_id, tool_version,
+                     arguments_digest, requested_lease_seconds, state)
+                VALUES (%s::uuid, %s, %s::uuid, %s::uuid, %s, %s, %s, %s, 'QUEUED')
                 ON CONFLICT (idempotency_key) DO NOTHING
                 RETURNING job_id
                 """,
-                (job_id, idempotency_key, task_id, approval_id, tool_id, tool_version, arguments_digest),
+                (job_id, idempotency_key, task_id, approval_id, tool_id, tool_version,
+                 arguments_digest, lease_seconds_hint),
             )
             if cur.fetchone() is None:
                 raise WorkerCoordinationError(f"duplicate worker-job idempotency key: {idempotency_key}")
@@ -342,11 +354,17 @@ class PostgresWorkerCoordinatorStore:
                 return None
             return {"job_id": str(row[0]), "state": row[1]}
 
-    def lease_job(self, *, job_id, worker_id, lease_seconds=60):
-        if lease_seconds <= 0:
+    def lease_job(self, *, job_id, worker_id, lease_seconds=None):
+        """lease_seconds=None (Model Router Phase D1 reliability fix, see
+        migration 008) means "use the job's own requested_lease_seconds
+        if it set one, else the historical 60-second default" -- an
+        explicit lease_seconds argument still overrides both, unchanged
+        from prior behavior. poll() itself passes no explicit value and
+        needs no changes: it now automatically picks up whatever lease
+        duration the job's enqueuer actually asked for."""
+        if lease_seconds is not None and lease_seconds <= 0:
             raise WorkerCoordinationError("lease_seconds must be positive")
         now = self._clock()
-        lease_expires = now + timedelta(seconds=lease_seconds)
         lease_token = str(uuid.uuid4())
         invocation_id = str(uuid.uuid4())
         with self._connection_factory() as conn, conn.cursor() as cur:
@@ -361,14 +379,17 @@ class PostgresWorkerCoordinatorStore:
                 raise WorkerCoordinationError("worker heartbeat lease expired or missing")
 
             cur.execute(
-                "SELECT task_id, tool_id, tool_version, arguments_digest, approval_id, attempt_count "
+                "SELECT task_id, tool_id, tool_version, arguments_digest, approval_id, attempt_count, "
+                "requested_lease_seconds "
                 "FROM public.karmo_worker_jobs WHERE job_id=%s::uuid AND state='QUEUED' FOR UPDATE",
                 (job_id,),
             )
             job = cur.fetchone()
             if job is None:
                 raise WorkerCoordinationError("job is not available for lease")
-            task_id, tool_id, tool_version, arguments_digest, approval_id, attempt_count = job
+            task_id, tool_id, tool_version, arguments_digest, approval_id, attempt_count, requested_lease_seconds = job
+            effective_lease_seconds = lease_seconds if lease_seconds is not None else (requested_lease_seconds or 60)
+            lease_expires = now + timedelta(seconds=effective_lease_seconds)
 
             if approval_id is None:
                 raise WorkerCoordinationError(
