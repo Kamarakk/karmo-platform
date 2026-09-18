@@ -21,6 +21,10 @@ from .ask_claude_capability import ASK_CLAUDE_TOOL
 from .ask_claude_capability import TOOL_VERSION as ASK_CLAUDE_TOOL_VERSION
 from .ask_claude_capability import handler as ask_claude_handler
 from .ask_claude_capability import manifest as ask_claude_manifest
+from .ask_gpt_capability import ASK_GPT_TOOL
+from .ask_gpt_capability import TOOL_VERSION as ASK_GPT_TOOL_VERSION
+from .ask_gpt_capability import handler as ask_gpt_handler
+from .ask_gpt_capability import manifest as ask_gpt_manifest
 from .bloomboss_capability import BLOOMBOSS_REPORT_TOOL
 from .bloomboss_capability import TOOL_VERSION as BLOOMBOSS_TOOL_VERSION
 from .bloomboss_capability import handler as bloomboss_report_handler
@@ -129,6 +133,32 @@ _CHAT_EXPOSED_TOOLS = {
                         "question": {
                             "type": "string",
                             "description": "The question to ask Claude.",
+                        },
+                    },
+                    "required": ["question"],
+                },
+            },
+        },
+    },
+    "ask_gpt": {
+        "tool_id": ASK_GPT_TOOL,
+        "version": ASK_GPT_TOOL_VERSION,
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "ask_gpt",
+                "description": (
+                    "Ask GPT (OpenAI's AI) a text question when neither KARMO's own local "
+                    "models nor Claude can adequately answer it. Costs nothing extra (runs "
+                    "through Kamara's existing ChatGPT subscription). Pure "
+                    "question-and-answer only."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "The question to ask GPT.",
                         },
                     },
                     "required": ["question"],
@@ -252,6 +282,7 @@ class KarmoOperator:
         self.registry.register(_status_manifest())
         self.registry.register(bloomboss_manifest())
         self.registry.register(ask_claude_manifest())
+        self.registry.register(ask_gpt_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
@@ -259,6 +290,7 @@ class KarmoOperator:
         self.dispatcher.bind(KARMOLAB_STATUS_TOOL, KARMOLAB_STATUS_VERSION, self.status_reader)
         self.dispatcher.bind(BLOOMBOSS_REPORT_TOOL, BLOOMBOSS_TOOL_VERSION, bloomboss_report_handler)
         self.dispatcher.bind(ASK_CLAUDE_TOOL, ASK_CLAUDE_TOOL_VERSION, ask_claude_handler)
+        self.dispatcher.bind(ASK_GPT_TOOL, ASK_GPT_TOOL_VERSION, ask_gpt_handler)
 
         if task_store is not None:
             self.task_store = task_store
