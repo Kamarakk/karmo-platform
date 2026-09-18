@@ -215,10 +215,43 @@ workers proven, soak-tested, closed). Since then, in order:
     which hasn't happened, and (b) Core gains the poll-and-wait glue to
     dispatch a job using it and wait for the result within a chat turn's
     deadline, which doesn't exist yet. The plan's own required
-    queue-delay-under-load measurement also hasn't been done. **Next
-    session: build the Core-side dispatch/poll-and-wait glue, then
-    measure real queue delay under realistic load, before D2 (actually
-    routing real chat traffic to a worker) can even be proposed.**
+    queue-delay-under-load measurement also hasn't been done.
+12. **Model Router Phase D1, part 2 (Core-side dispatch/wait glue) built,
+    tested, and merged** (PR #88) — **not yet deployed, not yet run
+    against a real worker.** `core_service/worker_dispatch.py` (new):
+    `dispatch_and_wait()` creates an approval pinned to a specific
+    worker, enqueues the job, attaches its arguments, and polls for a
+    terminal state within a bounded total deadline — never retries
+    internally (Section 3.5's routing-loop protection).
+
+    **Real architectural gap found and fixed while building this, not
+    assumed**: traced the existing worker job/ticket/result pipeline
+    (PR #41/#42) end to end and found it only ever durably stored a
+    result's *digest and signature*, never the actual content — built
+    to let Core *prove* a claimed result is authentic, never to let a
+    later caller retrieve *what the answer was*. That's fine for a
+    benchmark-style capability with a known expected output; impossible
+    for chat, where the model's answer can't be known in advance.
+    Closed with migration 007 (`karmo_worker_job_results`, mirroring the
+    existing job-arguments table's shape) and an additive parameter on
+    the existing result-submission path — every prior caller unaffected.
+
+    10 new tests (9 fake-based, deterministic; 1 real-DB integration
+    test driving the actual worker side through the real gateway
+    backend with real crypto signing). Verified locally against a real
+    Postgres (colima + `postgres:17-alpine`, matching CI exactly), not
+    just CI: full core-service suite, **341 passed, 0 skipped** — every
+    DB-gated test in the entire suite actually ran.
+
+    **Phase D1 is still not complete after this PR.** What's left,
+    genuinely required before D2 (routing real chat traffic to a worker)
+    can even be proposed: (1) a real live proof-run of
+    `dispatch_and_wait()` against an actual production worker with
+    `model_chat_tools` added to its deployed config (not done — this PR
+    is unit/integration-tested against simulated worker behavior, not a
+    real Ollama round trip on Worker01/02), and (2) the plan's own
+    required measurement of real queue delay under realistic load. Both
+    need a deliberate, separate session — not squeezed into this one.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
