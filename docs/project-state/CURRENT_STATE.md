@@ -1268,3 +1268,61 @@ thread. **Worker Runtime v0.1 source merge closeout: COMPLETE.**
   `karmo_h00_dense_baseline=8` (H0.1 handoff doc).
 - `karmo_documents=8` reconfirmed green during H0.2 validation (operator-attested,
   VERIFIED, matches the baseline above).
+
+## 2026-09-18 — Model Router Phase A deployed (PR #82 + PR #83)
+
+```
+PRODUCTION ACCESS AUTHORIZATION
+Task: Deploy Model Router Phase A (PR #82 + PR #83) to production
+Target system/environment: karmo-ai01 (core-service + Postgres), Worker01 (192.168.1.251), Worker02 (192.168.1.252)
+Purpose: Kamara's direct instruction ("deploy it to karmo and worker 1 and 2")
+Permitted operations: backup current deployed code, install reviewed main-branch code, run migration 005_worker_ollama_health.sql (additive nullable-column ALTER TABLE), restart karmo-core.service/karmo-worker01.service/karmo-worker02.service, verify
+Authority: READ-ONLY + WRITE (write = deploying reviewed code, the specific additive migration, and service restarts; no other writes)
+Commands/command class: backup/install/restart pattern per docs/runbooks/WORKER01_EXACT_ACTIVATION.md's update-only variant (no re-bootstrap of accounts/keys/registration -- those already exist)
+Granted: 2026-09-18, by Kamara (direct chat instruction)
+Expires: automatically on task completion
+```
+
+Deploy SHA: `95f73b6d94b7c15ea71af02f4f75436ac4553ca5` (tarball sha256
+`5e8f00718814c688d1703c27bfb162ade9818a1edc433b02e9ef8722cfc5d0d3`,
+verified identical after each transfer hop).
+
+- **karmo-ai01**: backed up to `/opt/karmo/backups/worker-deploy-20260918T181710Z`
+  (both `core-service-before` and `worker-runtime-before`, the latter
+  needed because the worker-gateway forced-command binary imports
+  `crypto_boundary.py` from `worker-runtime/app`). Migration 005 run via
+  `docker exec -i karmo-postgres psql -U karmo -d karmo < .../005_worker_ollama_health.sql`
+  — `BEGIN`/`ALTER TABLE`/`COMMIT`, verified via `\d public.karmo_workers`
+  showing both new nullable columns. `karmo-core.service` restarted:
+  `MainPID=3444922` (new), `ActiveEnterTimestamp` 18:17:26 UTC, journal
+  logged `{"status": "healthy", "network_listener": false, ...}` with no
+  crash/restart loop, `ss -lntup` showed no new KARMO listener.
+- **Worker01**: backed up to `/opt/karmo/backups/worker-deploy-20260918T181756Z`.
+  `remote_worker_runtime --check-config` exit 0 before restart.
+  `karmo-worker01.service` restarted: `MainPID=158775` (was `107737`,
+  confirming a real restart, not a no-op), journal clean, no new
+  listener (`127.0.0.1:11434` is Ollama, pre-existing).
+- **Worker02**: backed up to `/opt/karmo/backups/worker-deploy-20260918T181855Z`.
+  Same `--check-config` gate passed. `karmo-worker02.service` restarted:
+  `MainPID=136415` (was `105750`), journal clean, no new listener.
+- **End-to-end verification (not just "service is active")**: read
+  `public.karmo_workers` directly from production Postgres after each
+  worker restart. Both `KARMO-WORKER01` and `KARMO-WORKER02` show a
+  genuine `ollama_snapshot` (`{"loaded_models": []}` — correct, no model
+  currently loaded on either worker) with a fresh `ollama_snapshot_at`
+  timestamp matching the restart window, proving the full authenticated
+  chain (SSH stdio transport → gateway schema validation → backend →
+  coordinator → Postgres write) works end to end in production, not only
+  in tests.
+- All deployment tarballs and staging directories removed from
+  `/tmp` on all three hosts after verification.
+- **Rollback path** (not needed, recorded for completeness): stop the
+  affected service, restore the matching `*-before` backup directory
+  under `/opt/karmo/backups/worker-deploy-<timestamp>/`, restart —
+  identical to `docs/runbooks/WORKER01_EXACT_ACTIVATION.md`'s rollback
+  section. Migration 005 is additive-only (two nullable columns); it
+  does not need to be reverted for a code rollback to be safe, since old
+  code simply never reads or writes them.
+- **Still true after this deployment**: nothing in KARMO reads
+  `ollama_snapshot`/`ollama_snapshot_at` yet. This deployment makes the
+  data real and live; consuming it is Model Router Phase B+.

@@ -116,6 +116,29 @@ workers proven, soak-tested, closed). Since then, in order:
    both fixed, all 5 CI checks passed clean before merge. Rest of
    Phase A (memory/CPU headroom, queue depth) still not built — this PR
    is a second tested slice, not the full Section 3.1 signal set.
+8. **PR #82 + PR #83 deployed to production and verified end-to-end**
+   (Kamara's direct instruction). `karmo-ai01`: backed up
+   (`/opt/karmo/backups/worker-deploy-20260918T181710Z`), deploy SHA
+   `95f73b6` installed, migration `005_worker_ollama_health.sql` run
+   against production Postgres (`ollama_snapshot`/`ollama_snapshot_at`
+   columns confirmed present, both nullable), `karmo-core.service`
+   restarted clean (new `MainPID=3444922`, `status: healthy`, no new
+   listener). Worker01 (backup `20260918T181756Z`) and Worker02 (backup
+   `20260918T181855Z`): `--check-config` passed on both before
+   restarting; both came back `active` with new MainPIDs (Worker01
+   `158775`, was `107737`; Worker02 `136415`, was `105750`) and no new
+   listener. **Verified for real, not just "service is active"**: read
+   `karmo_workers` from production Postgres directly after each
+   restart — both workers show a genuine `ollama_snapshot` (`{"loaded_models":
+   []}`, correct — no model currently loaded) with a fresh
+   `ollama_snapshot_at`, proving the full authenticated chain (SSH
+   transport → gateway schema validation → backend → coordinator →
+   Postgres write) works end-to-end in production, not just in tests.
+   Rollback path if ever needed: stop the service, restore the
+   `*-before` backup directory, restart (same pattern as
+   `docs/runbooks/WORKER01_EXACT_ACTIVATION.md`'s rollback section);
+   migration 005 is additive-only (nullable columns) and does not need
+   reverting for a code rollback to be safe.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
