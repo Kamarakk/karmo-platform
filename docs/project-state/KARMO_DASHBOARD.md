@@ -22,6 +22,7 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Worker01/Worker02 local model hosting (`qwen3:8b`/`ministral-3:8b`/`mistral:7b`/`granite3.3:2b` via `karmo-ollama` Docker container) — ✅ DEPLOYED (2026-09-16), functional smoke-tested on both, loopback-only, closes the 2026-09-13 checkpoint's "next infrastructure phase" gap
 - `model_chat` worker capability (PRs #68/#69/#70) — ✅ GRANTED to both Worker01 and Worker02, **real `SUCCEEDED` job proven on each** via manual `--once` invocation; 4 orphaned jobs reconciled via `recover_expired_leases()` → `RECOVERY_REQUIRED`
 - **Sustained-service hang root-caused and fixed (PR #74, 2026-09-17)** — `run_capability()`'s job sandbox switched `multiprocessing` context from `fork` to `spawn`. Root cause: a long-lived worker makes thousands of subprocess/SSH calls between jobs; `fork()` only clones the calling thread, so a lock held by another thread at the instant of a fork could be inherited permanently locked in the child with no thread left to release it — a silent, untraceable deadlock, matching every observed symptom (service-only, zero exceptions, no crash). Diagnosed jointly with GPT (second opinion shaped the fix's actual scope — spawn requires verified picklability, not just a context-string swap). 125/125 worker-runtime tests pass (Python 3.9 and 3.12). Merged to `main` (`af12ed8`). **✅ DEPLOYED AND PROVEN ON BOTH WORKERS (2026-09-17)**: Worker01 (`MainPID=107737`) canary-proven, then soak-tested clean for 6 consecutive checks over ~3 hours of real sustained load (17:15–20:15 UTC — same PID throughout, zero stuck jobs every check); Worker02 (`MainPID=105750`) deployed and canary-proven (`SUCCEEDED`, ~53s, job `6bf6588c-...`). **This workstream is closed** — no further action needed on either worker.
+- **KARMO chat tool-calling + BloomBoss + external delegation (PRs #75/#79/#77/#78, 2026-09-17/18)** — full implementation of `docs/architecture/KARMO_CHAT_TOOL_CALLING_AND_EXTERNAL_DELEGATION.md`, all 4 phases, merged to `main` (`ed5ecd7`). `operator.py`'s `_chat()` now has a real, bounded tool-calling loop (Ollama native function-calling, 4-round cap) restricted at definition time to `CapabilityClass.READ`-only tools (`_CHAT_EXPOSED_TOOLS`), the dispatcher itself refusing anything else as defense in depth. Four tools live: `list_tasks` (proof, no new logic), `bloomboss_report` (wraps existing `bloomboss.report.snapshot_report()` — closes the exact "KARMO can't answer BloomBoss questions" gap that started this plan), `ask_claude` and `ask_gpt` (delegate to Anthropic/OpenAI's own CLIs under Kamara's existing subscriptions, verified zero extra cost against each vendor's own docs — Claude's docs actively endorse this pattern, OpenAI's recommend against it for automation though it works the same way; built anyway at Kamara's explicit choice). Every tool proven with a **real** local model actually choosing to call it and a real result flowing back — not mocked — including catching and fixing a real null-argument bug (`list_tasks`) and two real `codex` CLI bugs (missing `--skip-git-repo-check`, stdin hang risk) via live testing before merge. 240/240 core-service tests pass (Python 3.9 and 3.12). **Not yet deployed to `karmo-ai01`** — built/tested/merged only; production deployment is a separate future step.
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -38,18 +39,22 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-The `model_chat` sustained-service-hang workstream (fork→spawn fix, PR
-#74) is **fully closed as of 2026-09-17** — both workers deployed,
-canary-proven, and Worker01 additionally soak-tested clean over ~3
-hours of real load. See "Sustained-service hang" entry above for full
-detail.
+The KARMO chat tool-calling + BloomBoss + external delegation workstream
+is **fully built, tested, and merged to `main` as of 2026-09-18** — see
+its dashboard entry above for full detail. **Not yet deployed to
+`karmo-ai01`** — that's the next concrete action if this capability
+should go live for real conversational use, not just dev-tested.
 
-Next: spot-check BloomBoss's analytics output against known real sales
-(candidate first real task for the orchestration board), or choose the
-next KARMO capability track — see `NEXT_STEPS.md`'s prioritized list
-(task-board + model_chat integration, a registry auditor, remaining
-Commander read capabilities, BloomBoss Phase 2, broader model routing,
-remote/mobile access).
+The `model_chat` sustained-service-hang workstream (fork→spawn fix, PR
+#74) remains closed as of 2026-09-17 — both workers deployed,
+canary-proven, soak-tested. See its own entry above.
+
+Next: deploy the new chat tools to `karmo-ai01` (small, low-risk —
+`core-service`-only, no worker changes), grow BloomBoss's real imported
+data beyond the one EMgarden invoice, or choose the next KARMO
+capability track — see `NEXT_STEPS.md`'s prioritized list (a registry
+auditor, remaining Commander read capabilities, BloomBoss Phase 2,
+broader model routing, remote/mobile access).
 
 ## CURRENT ISSUE
 
@@ -126,4 +131,4 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 
 Keep it short. Historical detail belongs in `CHANGE_LOG.md`, `CURRENT_STATE.md`, and dated PROJECT SAVE files.
 
-Last refreshed: 2026-09-17 (evening — model_chat sustained-service-hang workstream closed)
+Last refreshed: 2026-09-18 (chat tool-calling + BloomBoss + ask_claude/ask_gpt merged to main)
