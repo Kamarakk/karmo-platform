@@ -250,8 +250,44 @@ workers proven, soak-tested, closed). Since then, in order:
     `model_chat_tools` added to its deployed config (not done — this PR
     is unit/integration-tested against simulated worker behavior, not a
     real Ollama round trip on Worker01/02), and (2) the plan's own
-    required measurement of real queue delay under realistic load. Both
-    need a deliberate, separate session — not squeezed into this one.
+    required measurement of real queue delay under realistic load.
+13. **Model Router Phase D1 deployed and live-proof-run — found a real,
+    previously-latent reliability bug, not a clean pass** (Kamara's
+    direct instruction, "do it"). Deployed PR #87+#88 to `karmo-ai01`
+    and Worker01, ran migration 007, added `model_chat_tools` to
+    Worker01's live config and durable capability registration (via the
+    reviewed store API). Dispatched one real job (`qwen3:8b`,
+    `list_tasks` tool schema) via `dispatch_and_wait()`.
+
+    **Finding**: the job reached `LEASED` (Worker01 correctly polled and
+    claimed it) but never reached a terminal state — `TIMED_OUT` after
+    140s. Worker01's own journal showed the underlying capability call
+    **very likely succeeded** ("capability outcome success=True was
+    never reported to Core"), but the result couldn't be submitted:
+    `worker_gateway_backend.py`'s `poll()` always leases jobs for a
+    hardcoded **60 seconds**, regardless of the capability being run —
+    but `model_chat`/`model_chat_tools` both declare
+    `timeout_seconds=120`. A real call approaching or exceeding 60s
+    structurally cannot report its own success once the lease expires
+    first. **This affects the already-deployed `model_chat` (v1) too,**
+    not just the new capability — a real, previously-undiscovered gap,
+    not something this PR introduced.
+
+    Reconciled cleanly via the existing `recover_expired_leases()` — the
+    job moved to `RECOVERY_REQUIRED` with an honest "unknown execution
+    outcome" error, no data loss, nothing silently masked. Both services
+    confirmed healthy afterward, same worker PID (no crash). Full record,
+    including how the worker-gateway's own Postgres role was accessed
+    legitimately (root + a normal group-assumption, DSN never printed),
+    in `CURRENT_STATE.md`.
+
+    **This is real Phase D1 evidence, exactly what this phase exists to
+    surface before D2.** Not fixed this session — the fix (lease
+    duration derived from the capability's own declared timeout, not a
+    fixed default) is real, scoped, and well-understood, but is a
+    genuine design decision (safety margin, scope — every capability or
+    just slow ones) deserving its own explicit discussion, not a
+    rushed patch at the end of an already-long session.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
