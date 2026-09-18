@@ -555,8 +555,15 @@ class PostgresWorkerCoordinatorStore:
         return digest
 
     def submit_authenticated_result(
-        self, *, lease: WorkerLease, ticket_digest: str, result_digest, result_envelope,
+        self, *, lease: WorkerLease, ticket_digest: str, result_digest, result_envelope, result=None,
     ):
+        """result (Model Router Phase D1) is the actual, plaintext, already-
+        authenticated content -- optional and additive so existing callers
+        that only ever needed digest/envelope proof (e.g. benchmark-style
+        capabilities) are unaffected. When provided, it is durably stored
+        in karmo_worker_job_results (see migration 007) so a later caller
+        can retrieve WHAT the result was, not just verify a claimed digest
+        -- the gap this phase's Core-side dispatch/wait glue needs closed."""
         now = self._clock()
         with self._connection_factory() as conn, conn.cursor() as cur:
             self._require_active_worker(cur, lease.worker_id, now)
@@ -584,6 +591,15 @@ class PostgresWorkerCoordinatorStore:
                 raise WorkerCoordinationError(
                     "result rejected: lease stale/mismatched or execution ticket was not consumed"
                 )
+            if result is not None:
+                cur.execute(
+                    """
+                    INSERT INTO public.karmo_worker_job_results (job_id, result, result_digest)
+                    VALUES (%s::uuid, %s::jsonb, %s)
+                    ON CONFLICT (job_id) DO NOTHING
+                    """,
+                    (lease.job_id, _json(result), result_digest),
+                )
             self._append_event(
                 cur,
                 event_key=f"job:{lease.job_id}:result:{result_digest}",
@@ -592,6 +608,22 @@ class PostgresWorkerCoordinatorStore:
                 job_id=lease.job_id,
                 payload={"result_digest": result_digest, "ticket_digest": ticket_digest},
             )
+
+    def get_worker_job_result(self, job_id):
+        """Read-only counterpart to submit_authenticated_result's optional
+        result persistence. Returns None if the job has no stored result
+        (either it hasn't reached RESULT_SUBMITTED yet, or its result was
+        never durably attached -- callers must not assume the latter never
+        happens for older/other capabilities)."""
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT result, result_digest FROM public.karmo_worker_job_results WHERE job_id=%s::uuid",
+                (job_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return {"result": row[0], "result_digest": row[1]}
 
     def finalize_job(self, *, job_id, success: bool, error=None):
         target = "SUCCEEDED" if success else "FAILED"
@@ -835,6 +867,7 @@ class WorkerCoordinator:
             ticket_digest=ticket_digest,
             result_digest=digest,
             result_envelope=envelope,
+            result=result,
         )
         return digest
 

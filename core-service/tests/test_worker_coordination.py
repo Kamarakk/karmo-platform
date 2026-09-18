@@ -33,6 +33,8 @@ from core_service.control import (  # noqa: E402
     CapabilityClass,
 )
 from core_service.persistence import PostgresApprovalStore  # noqa: E402
+from core_service.worker_gateway_backend import PostgresWorkerGatewayBackend  # noqa: E402
+from core_service.worker_dispatch import dispatch_and_wait  # noqa: E402
 
 import os  # noqa: E402
 
@@ -70,17 +72,24 @@ def _schema():
     migrations_dir = REPO_ROOT / "core-service" / "core_service" / "migrations"
     migration_1 = migrations_dir / "001_core_v2_substrate.sql"
     migration_2 = migrations_dir / "002_worker_coordination.sql"
-    # 005 adds karmo_workers.ollama_snapshot/ollama_snapshot_at (Model
-    # Router Phase A) -- this file's own tests now depend on those columns
-    # existing. 003/004 are deliberately not applied here; they're owned by
-    # the test files that actually need them (test_worker_job_payload_migration.py,
-    # orchestration-task tests), matching this file's existing per-file
-    # migration-ownership pattern rather than switching to a directory glob.
+    # 003 adds karmo_worker_job_payloads -- this file's dispatch_and_wait
+    # round-trip test now calls attach_job_arguments(), which needs it;
+    # 004 (orchestration tasks) remains genuinely unneeded here and stays
+    # owned by its own test file. 005 adds
+    # karmo_workers.ollama_snapshot/ollama_snapshot_at (Model Router Phase
+    # A) -- this file's own tests depend on those columns existing. 007
+    # adds karmo_worker_job_results (Model Router Phase D1) -- the
+    # dispatch_and_wait round-trip test depends on it to read back the
+    # real result content, not just a digest.
+    migration_3 = migrations_dir / "003_worker_job_payloads.sql"
     migration_5 = migrations_dir / "005_worker_ollama_health.sql"
+    migration_7 = migrations_dir / "007_worker_job_results.sql"
     with psycopg.connect(_conninfo(), autocommit=True) as conn, conn.cursor() as cur:
         cur.execute(migration_1.read_text())
         cur.execute(migration_2.read_text())
+        cur.execute(migration_3.read_text())
         cur.execute(migration_5.read_text())
+        cur.execute(migration_7.read_text())
 
 
 @pytest.fixture(autouse=True)
@@ -657,3 +666,68 @@ def test_outbound_transport_policy_forbids_inbound_or_reachability_authority():
         OutboundTransportPolicy(reachability_grants_authority=True).validate()
     with pytest.raises(WorkerCoordinationError):
         OutboundTransportPolicy(require_encrypted_transport=False).validate()
+
+
+def test_dispatch_and_wait_full_round_trip_against_the_real_worker_job_pipeline():
+    """Model Router Phase D1's Core-side glue, proven against the REAL
+    worker job/ticket/result pipeline (not fakes) -- enqueue via
+    dispatch_and_wait, then drive the worker side through the real
+    PostgresWorkerGatewayBackend exactly as an actual worker's poll/
+    authorize/submit_result calls would, and confirm dispatch_and_wait
+    surfaces the genuine result content, not just a digest."""
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    worker_auth, tickets, results = _crypto()
+    coordinator = WorkerCoordinator(
+        store, worker_authenticator=worker_auth, ticket_authority=tickets, result_authenticator=results,
+    )
+    gateway_backend = PostgresWorkerGatewayBackend(
+        store=store, coordinator=coordinator, connection_factory=_connection_factory,
+    )
+    approval_engine = ApprovalEngine(store=PostgresApprovalStore(_connection_factory))
+
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1", capabilities=["model_chat_tools"])
+    credential = worker_auth.issue(worker_id="worker-1", key_id="worker-key-v1", ttl_seconds=300)
+    coordinator.authenticate_heartbeat(credential_token=credential, worker_id="worker-1", lease_seconds=120)
+
+    real_answer = {"content": "the answer is 4", "tool_calls": None}
+    worker_acted = {"done": False}
+
+    def simulate_worker_completing_the_job_then_sleep(_seconds):
+        if not worker_acted["done"]:
+            worker_acted["done"] = True
+            polled = gateway_backend.poll(
+                worker_id="worker-1", credential_token=credential, capabilities=["model_chat_tools"],
+            )
+            assert polled is not None
+            gateway_backend.authorize_execution(
+                worker_id="worker-1", credential_token=credential,
+                lease=polled["lease"], execution_ticket=polled["execution_ticket"],
+            )
+            envelope = results.sign(
+                worker_id="worker-1", key_id="worker-key-v1", task_id=polled["lease"]["task_id"],
+                result=real_answer, execution_ticket_digest=token_digest(polled["execution_ticket"]),
+            )
+            gateway_backend.submit_result(
+                worker_id="worker-1", credential_token=credential,
+                lease=polled["lease"], execution_ticket=polled["execution_ticket"],
+                result=real_answer, envelope=envelope, success=True, error=None,
+            )
+        import time as _time
+        _time.sleep(0.02)
+
+    outcome = dispatch_and_wait(
+        store=store,
+        gateway_backend=gateway_backend,
+        approval_engine=approval_engine,
+        worker_id="worker-1",
+        tool_id="model_chat_tools",
+        tool_version="1.0.0",
+        arguments={"model": "qwen3:8b", "messages": [{"role": "user", "content": "what is 2+2?"}]},
+        total_deadline_seconds=10.0,
+        poll_interval_seconds=0.02,
+        sleep=simulate_worker_completing_the_job_then_sleep,
+    )
+
+    assert outcome.outcome == "SUCCEEDED"
+    assert outcome.result == real_answer
+    assert store.get_worker_job_result(outcome.job_id)["result"] == real_answer
