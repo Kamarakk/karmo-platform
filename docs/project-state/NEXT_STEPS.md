@@ -161,6 +161,25 @@ workers proven, soak-tested, closed). Since then, in order:
    change, now live**: chat returns an honest "unavailable" message
    instead of any answer at all when `qwen3:8b`/`ministral-3:8b` are
    both down — the intended fail-closed tradeoff, not a regression.
+10. **Model Router Phase C — shadow routing built, tested, and merged**
+    (PR #85) — **not yet deployed to `karmo-ai01`.**
+    `core_service/shadow_router.py` (new): for every real chat request,
+    computes and logs (stderr only, never returned to any caller) what
+    the eventual Phase D worker-routing policy would choose, using
+    karmo-ai01's live `/api/ps` (cheap poll, never a timed inference
+    probe — that would itself add contention load) and Worker01/02's
+    already-live `ollama_snapshot` data from PR #83. Prefers a worker
+    over contended karmo-ai01 when both are eligible — stated explicitly
+    as a heuristic, not a tuned score, since no real latency telemetry
+    has been collected over time yet. Reuses core-service's existing
+    memory DSN file for the worker-health read — no new credential path.
+    **Hard safety property, directly tested**: a test forces the
+    decision function itself to raise and confirms the real chat
+    response is completely unaffected — shadow routing is observability
+    only, never authority. 16 new/updated tests, full suite 283 passed.
+    Once deployed, shadow decisions land in `journalctl -u
+    karmo-core.service` only — there's no durable/queryable record yet;
+    that's Phase E's job, not a gap in this phase.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
