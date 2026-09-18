@@ -13,6 +13,9 @@ class FakeModelClient:
     def chat(self, *, model, messages, temperature=0.2):
         return "unused in these tests"
 
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+        return {"content": self.chat(model=model, messages=messages, temperature=temperature), "tool_calls": None}
+
 
 class FakeTaskStore:
     """In-memory stand-in matching TaskStore's exact public contract."""

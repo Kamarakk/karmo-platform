@@ -12,6 +12,10 @@ class FakeModelClient:
         self.calls.append({"model": model, "messages": messages, "temperature": temperature})
         return "memory-aware answer"
 
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+        content = self.chat(model=model, messages=messages, temperature=temperature)
+        return {"content": content, "tool_calls": None}
+
 
 class FakeMemoryBackend:
     status = "ACTIVE"
