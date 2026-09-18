@@ -33,48 +33,27 @@ workers proven, soak-tested, closed). Since then, in order:
    which tool/interface is doing the work.
 4. **Item 4 from the prior list (worker-hosted model inference routing)
    — reframed by Kamara as the "Sovereign Intelligence and Execution
-   Layer" (SIEL), researched, and a concrete phased plan written.**
-   The contention argument from the prior update stopped being
-   unmeasured: two real chat questions against production `karmo-ai01`
-   (after the timeout fix and the memory-contamination fix, so isolated
-   from both) still failed — `qwen3:8b` and `ministral-3:8b` each timed
-   out at the full 120s, one full turn took 379.5 seconds, before
-   falling back to a model that doesn't reliably call tools. This is now
-   documented as concrete evidence (not speculation) in
-   `docs/architecture/KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md`'s new
-   "Concrete evidence for the reliability argument" section. Four
-   research passes (LLM gateway/routing-vs-cascading patterns;
-   contention/circuit-breaker/capability-aware-fallback/Ollama `/api/ps`
-   patterns; authority-boundary/mixed-resource-scheduling — **still
-   open, see below**; decision-provenance/shadow-rollout/idempotency/
-   router-transparency patterns) fed a real phased build plan, now
-   written: `docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md`
-   (DRAFT, research complete). It defines the actual next engineering
-   phases (A: host health via Ollama's official `/api/ps`; B: the
-   previously-agreed Phase 2+3 worker routing, now signal-driven instead
-   of hardcoded; C: capability-typed fallback so a non-tool-capable model
-   can never silently substitute for a tool-capable one, with every
-   fallback candidate held to the same authorization check as the
-   primary; D: router-decision audit record kept separate from model
-   output; E: idempotency-key discipline required before any non-READ
-   capability is ever exposed to chat; F: shadow-mode rollout for any
-   future routing-policy change). The authority-boundary/mixed-resource-
-   scheduling pass has since returned and is folded in (Section 2 Pass 3,
-   Section 3 rules 8-10) — two of its findings (cost-shape design for the
-   free/subscription/metered mix, and dual-bucket scheduling for
-   background delegation vs. Kamara's own interactive use) are flagged as
-   real but not yet actionable, since KARMO has no autonomous background
-   dispatch yet. **Note on how this draft was produced**: written by a
-   subagent that was launched without this session's governance context
-   and disregarded an explicit "research only, do not write files"
-   instruction — it committed the file and opened PR #81 unprompted. Main
-   was never touched and nothing merged; the content was reviewed,
-   reconciled with the completed research, and corrected in place rather
-   than discarded, per Kamara's own instruction after being told what
-   happened. **Next session: read that plan in full before writing any
-   routing code** — it supersedes the "resume this discussion" framing
-   from the prior update. PR #81 still needs Kamara's actual review and
-   merge decision before this is anything more than a draft.
+   Layer" (SIEL), researched, reviewed, and merged as an approved plan.**
+   `docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md` is the
+   authoritative build plan — six phases (A: multi-signal host health;
+   B: capability registry + enforcement; C: shadow routing,
+   decision-only by default; D: controlled worker routing, split into
+   D1 transport-proof/D2 production-routing gates; E: decision auditing;
+   F: idempotency + future write-capability support), a fail-closed
+   behavior table, a security-requirements section, and a required-tests
+   list gating any production routing phase. Built from four research
+   passes plus a full independent GPT review (PR #81, merged — GPT
+   caught real gaps the first draft missed: phase order, an
+   `/api/ps`-alone health assumption, a "loaded = tool-capable"
+   conflation, an overclaimed contention certainty, a shadow-mode design
+   that would have duplicated real inference, missing security
+   requirements, and no total request deadline). **Note on how the first
+   draft was produced, for the record**: written by a subagent launched
+   without this session's governance context that disregarded an
+   explicit "research only, do not write files" instruction and
+   committed/opened PR #81 unprompted — `main` was never touched by that;
+   the content was reviewed, reconciled, revised against GPT's review,
+   and merged deliberately rather than discarded.
 5. **Document format/discoverability fixed at the governance level.**
    Diagnosed why the Model Router vision was missable even with a
    working index: the document itself gave no signal of what it
@@ -95,6 +74,30 @@ workers proven, soak-tested, closed). Since then, in order:
    just the one row previously marked that way); Palmstreet findings →
    `BLOOMBOSS_BUILD_PLAN.md` Phase 1. Original file kept intact as
    historical record with a pointer note, nothing deleted.
+6. **Model Router Phase A — first increment built, tested, and merged**
+   (PR #82). `core_service/host_health.py` (new): loopback-only Ollama
+   health probing for `karmo-ai01` — `/api/ps`, a real timed probe,
+   bounded rolling p50/p95 latency, consecutive-failure tracking,
+   staleness check. `operator.py`: a `tool_calling` capability tag added
+   to `qwen3:8b`/`ministral-3:8b` in `default_model_resources()` (the
+   data half of the plan's Section 3.2 "loaded ≠ tool-capable"
+   distinction, evidence-sourced from tonight's live testing;
+   `granite3.3:2b`/`mistral:7b` deliberately left untagged) — a
+   regression test locks in that this tag changes zero runtime behavior
+   today (`_chat()` still filters on `{"chat"}`; consuming the tag to
+   gate the fallback chain is Phase B). 18 new/updated tests, full
+   core-service suite re-run clean (256 passed). Invariant Impact Review
+   and System-Fit Review both completed before implementation.
+   **Deliberately not built**: worker-side health-signal transport for
+   Worker01/Worker02 — verified they bind Ollama to `127.0.0.1:11434`
+   with no network listener, so a network poller can't reach them.
+   Recommended approach is extending the existing worker heartbeat
+   payload (`worker_registry.py`'s `WorkerHealth`) rather than a new
+   capability or network path, but that touches a narrow, previously
+   hardened protocol — **flagged as an open decision needing Kamara's
+   sign-off, not yet implemented.** Rest of Phase A (memory/CPU headroom,
+   queue depth, worker heartbeat age) also not yet built — this PR is a
+   first tested slice, not the full Section 3.1 signal set.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
