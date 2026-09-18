@@ -91,13 +91,31 @@ workers proven, soak-tested, closed). Since then, in order:
    **Deliberately not built**: worker-side health-signal transport for
    Worker01/Worker02 — verified they bind Ollama to `127.0.0.1:11434`
    with no network listener, so a network poller can't reach them.
-   Recommended approach is extending the existing worker heartbeat
-   payload (`worker_registry.py`'s `WorkerHealth`) rather than a new
-   capability or network path, but that touches a narrow, previously
-   hardened protocol — **flagged as an open decision needing Kamara's
-   sign-off, not yet implemented.** Rest of Phase A (memory/CPU headroom,
-   queue depth, worker heartbeat age) also not yet built — this PR is a
-   first tested slice, not the full Section 3.1 signal set.
+   Flagged as an open decision needing Kamara's sign-off — see item 7,
+   which resolves it.
+7. **Worker heartbeat extended to carry an Ollama health snapshot**
+   (PR #83, merged). Kamara approved extending the heartbeat; before
+   writing code, traced the real production heartbeat path end to end
+   and found the recommendation in item 6 was wrong — `worker_registry.py`'s
+   `WorkerHealth` isn't actually on it (never imported by
+   `remote_worker_runtime.py`, the real deployed entry point). The real
+   chain is `ssh_stdio_transport.py` → `worker_stdio_gateway.py` →
+   `worker_gateway_backend.py` → `worker_coordination.py`'s
+   `PostgresWorkerCoordinatorStore` — that's what got extended instead.
+   Workers now collect their own `/api/ps` state
+   (`worker-runtime/app/ollama_health.py`, new) and attach it to the
+   heartbeat they already send; an old worker binary or a failed local
+   probe sends the identical payload as before, so nothing breaks
+   mid-rollout across Worker01/Worker02. Migration `005_worker_ollama_health.sql`
+   adds two nullable columns (`ollama_snapshot`, `ollama_snapshot_at`,
+   the latter tracked separately from `last_seen_at` so staleness is
+   independently checkable). Nothing reads this data yet — that's
+   Phase B+. Two real bugs found via CI, not guessed: a test fixture
+   that never applied the new migration, and a genuine infinite loop in
+   an existing test's fake client (confirmed by direct reproduction) —
+   both fixed, all 5 CI checks passed clean before merge. Rest of
+   Phase A (memory/CPU headroom, queue depth) still not built — this PR
+   is a second tested slice, not the full Section 3.1 signal set.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
