@@ -210,6 +210,51 @@ SAFE_CAPABILITIES = {
         idempotent=False,
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
+    # Model Router Phase D1 (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
+    # Section 6) -- a SEPARATE capability from model_chat above, not a version
+    # bump of it. model_chat 1.0.0 is already declared active in production
+    # worker configs (/etc/karmo/worker0{1,2}.json); bumping its version in
+    # place would require the deployed config and the manifest to change in
+    # lockstep or the next config validation fails closed for the WHOLE
+    # worker, not just this capability. Adding a new capability instead is
+    # strictly additive -- model_chat 1.0.0 is completely untouched.
+    #
+    # Calls Ollama's /api/chat (messages + optional tools), not /api/generate
+    # -- this is the actual missing piece that's blocked worker-hosted
+    # tool-calling since it was first scoped. Same READ/NONE classification
+    # and resource profile as model_chat: no persistent side effect, the
+    # handler calls the worker's own loopback Ollama only, and proposing a
+    # tool call here is not the same as it being allowed to run -- Core's
+    # existing dispatcher/approval path (unchanged by this capability) is
+    # still the only thing that can ever execute one.
+    "model_chat_tools": dict(
+        capability_id="model_chat_tools",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["qwen3:8b", "ministral-3:8b", "mistral:7b", "granite3.3:2b"]},
+                "messages": {"type": "array"},
+                "tools": {"type": "array"},
+            },
+            "required": ["model", "messages"],
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "content": {"type": "string"},
+                "tool_calls": {"type": ["array", "null"]},
+            },
+        },
+        timeout_seconds=120,
+        resource_requirements={"cpu": "high", "memory_mb": 8192},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
 }
 SAFE_CAPABILITIES.update(COMMANDER_READONLY_CAPABILITIES)
 

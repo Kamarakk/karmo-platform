@@ -99,6 +99,10 @@ class _FakeOllamaServer:
     def url(self) -> str:
         return f"http://127.0.0.1:{self._server.server_address[1]}/api/generate"
 
+    @property
+    def chat_url(self) -> str:
+        return f"http://127.0.0.1:{self._server.server_address[1]}/api/chat"
+
 
 class FakeClock:
     def __init__(self, start=None):
@@ -1252,6 +1256,150 @@ def test_capability_model_chat_wraps_ollama_call_failure(monkeypatch):
 def test_capability_model_chat_manifest_matches_registered_allowed_models():
     manifest = SAFE_CAPABILITIES["model_chat"]
     assert manifest["authority_class"] == CapabilityClass.READ
+    allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
+    assert allowed == capabilities.__dict__["_ALLOWED_MODEL_CHAT_MODELS"]
+
+
+# --- model_chat_tools (Model Router Phase D1) -------------------------------
+
+def test_capability_model_chat_tools_calls_ollama_chat_and_returns_tool_call(monkeypatch):
+    body = b'{"message": {"content": "", "tool_calls": [{"function": {"name": "list_tasks", "arguments": {}}}]}}'
+    with _FakeOllamaServer(response_body=body) as server:
+        monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", server.chat_url)
+
+        output, summary, duration, evidence = run_capability(
+            "model_chat_tools",
+            {
+                "model": "qwen3:8b",
+                "messages": [{"role": "user", "content": "what tasks are open?"}],
+                "tools": [{"type": "function", "function": {"name": "list_tasks", "parameters": {}}}],
+            },
+            timeout_seconds=120,
+        )
+
+        assert output["content"] == ""
+        assert output["tool_calls"] == [{"function": {"name": "list_tasks", "arguments": {}}}]
+        assert "qwen3:8b" in summary
+        assert server.received_bodies == [
+            {
+                "model": "qwen3:8b",
+                "messages": [{"role": "user", "content": "what tasks are open?"}],
+                "stream": False,
+                "think": False,
+                "tools": [{"type": "function", "function": {"name": "list_tasks", "parameters": {}}}],
+            }
+        ]
+
+
+def test_capability_model_chat_tools_works_without_tools_offered(monkeypatch):
+    body = b'{"message": {"content": "hello there", "tool_calls": null}}'
+    with _FakeOllamaServer(response_body=body) as server:
+        monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", server.chat_url)
+
+        output, summary, duration, evidence = run_capability(
+            "model_chat_tools",
+            {"model": "qwen3:8b", "messages": [{"role": "user", "content": "hi"}]},
+            timeout_seconds=120,
+        )
+
+        assert output == {"content": "hello there", "tool_calls": None}
+        assert "tools" not in server.received_bodies[0]
+
+
+def test_capability_model_chat_tools_refuses_model_outside_allowed_set(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/chat")
+
+    with pytest.raises(SandboxError, match="model not in allowed set"):
+        run_capability(
+            "model_chat_tools",
+            {"model": "gpt-4", "messages": [{"role": "user", "content": "hi"}]},
+            timeout_seconds=120,
+        )
+
+
+def test_capability_model_chat_tools_refuses_empty_messages(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/chat")
+
+    with pytest.raises(SandboxError, match="messages must be a non-empty list"):
+        run_capability("model_chat_tools", {"model": "qwen3:8b", "messages": []}, timeout_seconds=120)
+
+
+def test_capability_model_chat_tools_refuses_too_many_messages(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/chat")
+    messages = [{"role": "user", "content": "hi"}] * (capabilities.__dict__["_MAX_MODEL_CHAT_TOOLS_MESSAGES"] + 1)
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability("model_chat_tools", {"model": "qwen3:8b", "messages": messages}, timeout_seconds=120)
+
+
+def test_capability_model_chat_tools_refuses_invalid_message_role(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/chat")
+
+    with pytest.raises(SandboxError, match="invalid message role"):
+        run_capability(
+            "model_chat_tools",
+            {"model": "qwen3:8b", "messages": [{"role": "admin", "content": "hi"}]},
+            timeout_seconds=120,
+        )
+
+
+def test_capability_model_chat_tools_refuses_oversized_message_content(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/chat")
+    huge = "x" * (capabilities.__dict__["_MAX_MODEL_CHAT_TOOLS_MESSAGE_CHARS"] + 1)
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability(
+            "model_chat_tools",
+            {"model": "qwen3:8b", "messages": [{"role": "user", "content": huge}]},
+            timeout_seconds=120,
+        )
+
+
+def test_capability_model_chat_tools_refuses_non_list_tools(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/chat")
+
+    with pytest.raises(SandboxError, match="tools must be a list"):
+        run_capability(
+            "model_chat_tools",
+            {"model": "qwen3:8b", "messages": [{"role": "user", "content": "hi"}], "tools": "not-a-list"},
+            timeout_seconds=120,
+        )
+
+
+def test_capability_model_chat_tools_refuses_too_many_tools(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/chat")
+    tools = [{"type": "function", "function": {"name": "t"}}] * (
+        capabilities.__dict__["_MAX_MODEL_CHAT_TOOLS_COUNT"] + 1
+    )
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability(
+            "model_chat_tools",
+            {"model": "qwen3:8b", "messages": [{"role": "user", "content": "hi"}], "tools": tools},
+            timeout_seconds=120,
+        )
+
+
+def test_capability_model_chat_tools_wraps_ollama_call_failure(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_CHAT_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/chat")
+
+    with pytest.raises(SandboxError, match="model_chat_tools call to local Ollama failed"):
+        run_capability(
+            "model_chat_tools",
+            {"model": "qwen3:8b", "messages": [{"role": "user", "content": "hi"}]},
+            timeout_seconds=120,
+        )
+
+
+def test_capability_model_chat_tools_manifest_is_additive_not_a_version_bump():
+    """Model Router Phase D1: model_chat_tools must never disturb the
+    already-deployed, already-configured model_chat 1.0.0 -- production
+    worker configs declare that exact version today."""
+    assert SAFE_CAPABILITIES["model_chat"]["version"] == "1.0.0"
+    assert SAFE_CAPABILITIES["model_chat"]["input_schema"]["required"] == ["model", "prompt"]
+    manifest = SAFE_CAPABILITIES["model_chat_tools"]
+    assert manifest["authority_class"] == CapabilityClass.READ
+    assert manifest["idempotent"] is False
     allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
     assert allowed == capabilities.__dict__["_ALLOWED_MODEL_CHAT_MODELS"]
 
