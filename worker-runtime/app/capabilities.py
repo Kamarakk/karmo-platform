@@ -276,6 +276,91 @@ def _model_chat(payload, *, sandbox_root, allowed_root, timeout_seconds):
 register_handler("model_chat", _model_chat)
 
 
+# --- MODEL CHAT WITH TOOLS (Model Router Phase D1) ---------------------------
+# See capability_manifest.py's model_chat_tools entry for why this is a
+# separate capability from model_chat above, not a version bump of it.
+_DEFAULT_OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat"
+_MAX_MODEL_CHAT_TOOLS_MESSAGES = 20
+_MAX_MODEL_CHAT_TOOLS_MESSAGE_CHARS = 8000
+_MAX_MODEL_CHAT_TOOLS_COUNT = 10
+_MAX_MODEL_CHAT_TOOLS_SCHEMA_BYTES = 8000
+_VALID_MESSAGE_ROLES = frozenset({"system", "user", "assistant", "tool"})
+
+
+def _ollama_chat_url():
+    """Same call-time-resolved, env-var-overridable pattern as
+    _ollama_generate_url() above -- required for the same reason: a spawned
+    child re-imports this module fresh and cannot see a parent-process
+    monkeypatch."""
+    return os.environ.get("KARMO_OLLAMA_CHAT_URL", _DEFAULT_OLLAMA_CHAT_URL)
+
+
+def _call_ollama_chat(model, messages, tools, timeout_seconds):
+    body = {"model": model, "messages": messages, "stream": False, "think": False}
+    if tools:
+        body["tools"] = tools
+    req = urllib.request.Request(
+        _ollama_chat_url(),
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _validate_model_chat_tools_messages(messages):
+    if not isinstance(messages, list) or not messages:
+        raise SandboxError("messages must be a non-empty list")
+    if len(messages) > _MAX_MODEL_CHAT_TOOLS_MESSAGES:
+        raise SandboxError(f"messages exceeds {_MAX_MODEL_CHAT_TOOLS_MESSAGES} entries")
+    for message in messages:
+        if not isinstance(message, dict) or "role" not in message or "content" not in message:
+            raise SandboxError("each message must be an object with role and content")
+        if message["role"] not in _VALID_MESSAGE_ROLES:
+            raise SandboxError(f"invalid message role: {message.get('role')!r}")
+        if not isinstance(message["content"], str):
+            raise SandboxError("message content must be a string")
+        if len(message["content"]) > _MAX_MODEL_CHAT_TOOLS_MESSAGE_CHARS:
+            raise SandboxError(f"message content exceeds {_MAX_MODEL_CHAT_TOOLS_MESSAGE_CHARS} characters")
+
+
+def _validate_model_chat_tools_tools(tools):
+    if tools is None:
+        return
+    if not isinstance(tools, list):
+        raise SandboxError("tools must be a list when provided")
+    if len(tools) > _MAX_MODEL_CHAT_TOOLS_COUNT:
+        raise SandboxError(f"tools exceeds {_MAX_MODEL_CHAT_TOOLS_COUNT} entries")
+    if len(json.dumps(tools).encode("utf-8")) > _MAX_MODEL_CHAT_TOOLS_SCHEMA_BYTES:
+        raise SandboxError(f"tools payload exceeds {_MAX_MODEL_CHAT_TOOLS_SCHEMA_BYTES} bytes")
+
+
+def _model_chat_tools(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    model = payload.get("model")
+    messages = payload.get("messages")
+    tools = payload.get("tools")
+    if model not in _ALLOWED_MODEL_CHAT_MODELS:
+        raise SandboxError(f"model not in allowed set for model_chat_tools: {model!r}")
+    _validate_model_chat_tools_messages(messages)
+    _validate_model_chat_tools_tools(tools)
+
+    try:
+        result = _call_ollama_chat(model, messages, tools, timeout_seconds)
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        raise SandboxError(f"model_chat_tools call to local Ollama failed: {type(exc).__name__}: {exc}") from exc
+
+    message = result.get("message") or {}
+    content = message.get("content", "") if isinstance(message, dict) else ""
+    tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+    output = {"content": content, "tool_calls": tool_calls}
+    summary = f"model_chat_tools: {model} ({len(content)} chars, {len(tool_calls or [])} tool_calls)"
+    return output, summary, []
+
+
+register_handler("model_chat_tools", _model_chat_tools)
+
+
 def _document_processing_test(payload, *, sandbox_root, allowed_root, timeout_seconds):
     """Synthetic chunking simulation for the bounded document job path."""
     root = _require_allowed_root(allowed_root)
