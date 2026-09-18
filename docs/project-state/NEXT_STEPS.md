@@ -31,28 +31,38 @@ workers proven, soak-tested, closed). Since then, in order:
    `docs/governance/KARMO_ENGINEERING_INVARIANTS.md` — read the whole
    index before any action, read-only included, no exceptions, no matter
    which tool/interface is doing the work.
-4. **Item 4 from the prior list (worker-hosted model inference
-   routing) is still open, now with the right context.** Kamara wants
-   Phase 2 (prove a worker can answer a chat prompt end-to-end) *and*
-   Phase 3 (teach chat to actually route to workers) — paused mid-scoping
-   when it surfaced the governance gap above. Real complexity found before
-   building anything: the deployed `model_chat` worker capability uses
-   Ollama's `/api/generate` (single prompt), not `/api/chat` (message
-   array + tools) — supporting tool-calling on workers means changing
-   worker-runtime itself and redeploying to both workers again. Worker
-   routing is also fundamentally asynchronous (enqueue a job, worker
-   polls up to 5s later, executes, submits result) — chat's current
-   synchronous call-and-get-answer model doesn't fit without new
-   poll-and-wait logic. The 13%-faster-per-token benchmark may be the
-   wrong number to weigh this on — the real value might be relieving
-   `karmo-ai01`'s resource contention (the same contention that plausibly
-   caused the 343-second outlier during tonight's post-deployment
-   testing), which is a reliability argument, not just a speed one, but
-   is currently unmeasured. **Next session: resume this discussion before
-   writing any code** — per the new Full-Context Review Rule, re-read
-   `docs/architecture/KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md` in full
-   first (moved there from the original 2026-09-11 project-save file —
-   see item 5).
+4. **Item 4 from the prior list (worker-hosted model inference routing)
+   — reframed by Kamara as the "Sovereign Intelligence and Execution
+   Layer" (SIEL), researched, and a concrete phased plan written.**
+   The contention argument from the prior update stopped being
+   unmeasured: two real chat questions against production `karmo-ai01`
+   (after the timeout fix and the memory-contamination fix, so isolated
+   from both) still failed — `qwen3:8b` and `ministral-3:8b` each timed
+   out at the full 120s, one full turn took 379.5 seconds, before
+   falling back to a model that doesn't reliably call tools. This is now
+   documented as concrete evidence (not speculation) in
+   `docs/architecture/KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md`'s new
+   "Concrete evidence for the reliability argument" section. Four
+   research passes (LLM gateway/routing-vs-cascading patterns;
+   contention/circuit-breaker/capability-aware-fallback/Ollama `/api/ps`
+   patterns; authority-boundary/mixed-resource-scheduling — **still
+   open, see below**; decision-provenance/shadow-rollout/idempotency/
+   router-transparency patterns) fed a real phased build plan, now
+   written: `docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md`
+   (DRAFT). It defines the actual next engineering phases (A: host
+   health via Ollama's official `/api/ps`; B: the previously-agreed
+   Phase 2+3 worker routing, now signal-driven instead of hardcoded;
+   C: capability-typed fallback so a non-tool-capable model can never
+   silently substitute for a tool-capable one; D: router-decision audit
+   record kept separate from model output; E: idempotency-key discipline
+   required before any non-READ capability is ever exposed to chat;
+   F: shadow-mode rollout for any future routing-policy change).
+   **Still open**: the authority-boundary/mixed-resource-scheduling
+   research pass had not returned when the plan was first written —
+   Section 3/Section 4 of that plan get re-checked against it, in place,
+   when it lands. **Next session: read that plan in full before writing
+   any routing code** — it supersedes the "resume this discussion"
+   framing from the prior update.
 5. **Document format/discoverability fixed at the governance level.**
    Diagnosed why the Model Router vision was missable even with a
    working index: the document itself gave no signal of what it
