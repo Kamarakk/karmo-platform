@@ -142,12 +142,23 @@ class SshStdioTransport:
             raise SshStdioTransportError(f"gateway refused request: {code}")
         raise SshStdioTransportError("invalid gateway response")
 
-    def heartbeat(self, *, worker_id: str, credential_token: str, lease_seconds: int = 90):
-        return self.request("heartbeat", {
+    def heartbeat(self, *, worker_id: str, credential_token: str, lease_seconds: int = 90,
+                  ollama_snapshot: dict | None = None):
+        # ollama_snapshot is included only when present (Model Router Phase A,
+        # see docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md Section 3.1)
+        # so a caller that never collects one (or an older worker binary that
+        # doesn't know about it) sends the exact same three-key payload as
+        # before -- required for the gateway's schema validation to accept
+        # both old and new workers during a non-atomic rollout across
+        # Worker01/Worker02.
+        payload = {
             "worker_id": worker_id,
             "credential_token": credential_token,
             "lease_seconds": int(lease_seconds),
-        })
+        }
+        if ollama_snapshot is not None:
+            payload["ollama_snapshot"] = ollama_snapshot
+        return self.request("heartbeat", payload)
 
     def poll(self, *, worker_id: str, credential_token: str, capabilities):
         return self.request("poll", {

@@ -70,9 +70,10 @@ class Coordinator:
         self.authorized = []
         self.accepted = []
 
-    def authenticate_heartbeat(self, *, credential_token, worker_id, lease_seconds):
+    def authenticate_heartbeat(self, *, credential_token, worker_id, lease_seconds, ollama_snapshot=None):
         assert credential_token == "credential"
         assert worker_id == "karmo-worker01"
+        self.last_ollama_snapshot = ollama_snapshot
         return NOW + timedelta(seconds=lease_seconds)
 
     def issue_execution_ticket(self, *, credential_token, lease):
@@ -143,6 +144,22 @@ def _backend(*, caps=None, jobs=None):
         connection_factory=lambda: Connection(cursor),
     )
     return backend, store, coordinator, cursor
+
+
+def test_heartbeat_forwards_ollama_snapshot_to_coordinator():
+    backend, _store, coordinator, _cursor = _backend()
+    result = backend.heartbeat(
+        worker_id="karmo-worker01", credential_token="credential", lease_seconds=90,
+        ollama_snapshot={"loaded_models": ["qwen3:8b"]},
+    )
+    assert "lease_expires_at" in result
+    assert coordinator.last_ollama_snapshot == {"loaded_models": ["qwen3:8b"]}
+
+
+def test_heartbeat_defaults_ollama_snapshot_to_none():
+    backend, _store, coordinator, _cursor = _backend()
+    backend.heartbeat(worker_id="karmo-worker01", credential_token="credential", lease_seconds=90)
+    assert coordinator.last_ollama_snapshot is None
 
 
 def test_lease_wire_roundtrip_requires_exact_worker_binding():

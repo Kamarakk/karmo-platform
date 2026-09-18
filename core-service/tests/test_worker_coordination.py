@@ -288,6 +288,51 @@ def test_expired_lease_moves_to_recovery_required_and_never_requeues_automatical
         store.lease_job(job_id=job_id, worker_id="worker-1")
 
 
+def test_heartbeat_persists_ollama_snapshot_and_its_own_timestamp():
+    """Model Router Phase A (see docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
+    Section 3.1). ollama_snapshot_at is tracked separately from
+    last_seen_at so a consumer can tell exactly how stale the snapshot
+    itself is, independent of whether the worker is alive."""
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+
+    before = store.get_worker_ollama_health("worker-1")
+    assert before == {"ollama_snapshot": None, "ollama_snapshot_at": None, "last_seen_at": None}
+
+    store.heartbeat(
+        worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=120,
+        ollama_snapshot={"loaded_models": ["qwen3:8b", "granite3.3:2b"]},
+    )
+    after = store.get_worker_ollama_health("worker-1")
+    assert after["ollama_snapshot"] == {"loaded_models": ["qwen3:8b", "granite3.3:2b"]}
+    assert after["ollama_snapshot_at"] is not None
+    assert after["last_seen_at"] is not None
+
+
+def test_heartbeat_without_snapshot_leaves_prior_snapshot_in_place():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    store.register_worker(worker_id="worker-1", key_id="worker-key-v1")
+    store.heartbeat(
+        worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=120,
+        ollama_snapshot={"loaded_models": ["qwen3:8b"]},
+    )
+    first = store.get_worker_ollama_health("worker-1")
+
+    # A later heartbeat with no snapshot (older worker binary, or a failed
+    # local probe) must not wipe the last-known value.
+    store.heartbeat(worker_id="worker-1", credential_key_id="worker-key-v1", lease_seconds=120)
+    second = store.get_worker_ollama_health("worker-1")
+
+    assert second["ollama_snapshot"] == {"loaded_models": ["qwen3:8b"]}
+    assert second["ollama_snapshot_at"] == first["ollama_snapshot_at"]
+    assert second["last_seen_at"] >= first["last_seen_at"]
+
+
+def test_get_worker_ollama_health_returns_none_for_unknown_worker():
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    assert store.get_worker_ollama_health("no-such-worker") is None
+
+
 def test_lease_job_refuses_missing_or_unapproved_authority():
     """BLOCKER regression: a worker job must never be leasable without a
     real, currently-APPROVED KARMO authority record matching it exactly."""
