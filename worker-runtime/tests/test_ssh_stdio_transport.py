@@ -59,6 +59,30 @@ def test_ssh_transport_uses_strict_no_shell_no_forwarding_controls():
     assert not any("ProxyCommand" in item for item in argv)
 
 
+def test_heartbeat_omits_ollama_snapshot_key_when_not_given():
+    """Model Router Phase A: a caller that never collects a snapshot (or an
+    older worker binary that doesn't know about the parameter) must send
+    the exact same three-key payload as before the field existed -- the
+    gateway's schema validation requires this for old/new workers to
+    heartbeat successfully during a non-atomic rollout."""
+    seen = {}
+    transport = SshStdioTransport(_config(), runner=_success_runner(seen, {"lease_expires_at": "soon"}))
+    transport.heartbeat(worker_id="karmo-worker01", credential_token="credential", lease_seconds=90)
+    sent = json.loads(seen["input"].decode())
+    assert set(sent["payload"]) == {"worker_id", "credential_token", "lease_seconds"}
+
+
+def test_heartbeat_includes_ollama_snapshot_when_given():
+    seen = {}
+    transport = SshStdioTransport(_config(), runner=_success_runner(seen, {"lease_expires_at": "soon"}))
+    transport.heartbeat(
+        worker_id="karmo-worker01", credential_token="credential", lease_seconds=90,
+        ollama_snapshot={"loaded_models": ["qwen3:8b"]},
+    )
+    sent = json.loads(seen["input"].decode())
+    assert sent["payload"]["ollama_snapshot"] == {"loaded_models": ["qwen3:8b"]}
+
+
 def test_transport_sends_no_remote_command_string():
     transport = SshStdioTransport(_config(), runner=lambda *a, **k: None)
     argv = transport._argv()

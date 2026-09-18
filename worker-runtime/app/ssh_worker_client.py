@@ -87,11 +87,12 @@ class SshRemoteWorkerClient:
             raise RemoteWorkerClientError("credential provider returned no credential")
         return token
 
-    def heartbeat(self, *, lease_seconds: int = 90):
+    def heartbeat(self, *, lease_seconds: int = 90, ollama_snapshot: dict | None = None):
         return self.transport.heartbeat(
             worker_id=self.config.worker_id,
             credential_token=self._credential(),
             lease_seconds=lease_seconds,
+            ollama_snapshot=ollama_snapshot,
         )
 
     def _validate_work(self, work: dict):

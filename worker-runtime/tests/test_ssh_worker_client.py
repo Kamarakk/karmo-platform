@@ -96,6 +96,32 @@ def _client(transport, signer, executor):
     )
 
 
+def test_heartbeat_forwards_ollama_snapshot_to_transport():
+    captured = {}
+
+    class CapturingTransport(Transport):
+        def heartbeat(self, **kwargs):
+            captured.update(kwargs)
+            return {"lease_expires_at": "soon"}
+
+    client = _client(CapturingTransport(), Signer(), executor=lambda *a, **kw: None)
+    client.heartbeat(lease_seconds=90, ollama_snapshot={"loaded_models": ["qwen3:8b"]})
+    assert captured["ollama_snapshot"] == {"loaded_models": ["qwen3:8b"]}
+
+
+def test_heartbeat_forwards_none_ollama_snapshot_when_not_collected():
+    captured = {}
+
+    class CapturingTransport(Transport):
+        def heartbeat(self, **kwargs):
+            captured.update(kwargs)
+            return {"lease_expires_at": "soon"}
+
+    client = _client(CapturingTransport(), Signer(), executor=lambda *a, **kw: None)
+    client.heartbeat(lease_seconds=90)
+    assert captured["ollama_snapshot"] is None
+
+
 def test_remote_worker_never_executes_before_core_authorization():
     events = []
     transport = Transport(events=events)

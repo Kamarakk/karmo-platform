@@ -72,20 +72,52 @@ def _require_token(value, *, label: str, max_length: int = 16384):
         raise WorkerStdioGatewayError(f"invalid_{label}")
 
 
+# Model Router Phase A worker health signal (see
+# docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md Section 3.1). Bounded
+# tightly and independently of MAX_FRAME_BYTES -- this field's own shape and
+# size are validated here so a malformed/oversized report can only ever
+# refuse itself, never the whole heartbeat request (lease renewal must not
+# depend on this optional field being well-formed).
+_MAX_OLLAMA_SNAPSHOT_MODELS = 32
+_MAX_OLLAMA_SNAPSHOT_BYTES = 4096
+
+
+def _validate_ollama_snapshot(value):
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"loaded_models"}:
+        raise WorkerStdioGatewayError("invalid_ollama_snapshot")
+    models = value["loaded_models"]
+    if (
+        not isinstance(models, list)
+        or len(models) > _MAX_OLLAMA_SNAPSHOT_MODELS
+        or any(not isinstance(m, str) or not m or len(m) > 128 for m in models)
+    ):
+        raise WorkerStdioGatewayError("invalid_ollama_snapshot")
+    if len(json.dumps(value, separators=(",", ":")).encode("utf-8")) > _MAX_OLLAMA_SNAPSHOT_BYTES:
+        raise WorkerStdioGatewayError("invalid_ollama_snapshot")
+    return value
+
+
 def dispatch_request(request: GatewayRequest, *, backend, expected_worker_id: str):
     payload = request.payload
     _require_bound_worker(payload, expected_worker_id)
 
     if request.operation == "heartbeat":
-        _require_exact(payload, {"worker_id", "credential_token", "lease_seconds"})
+        required = {"worker_id", "credential_token", "lease_seconds"}
+        optional = {"ollama_snapshot"}
+        if not required.issubset(payload) or not set(payload).issubset(required | optional):
+            raise WorkerStdioGatewayError("invalid_payload_schema")
         _require_token(payload["credential_token"], label="credential_token")
         lease_seconds = payload["lease_seconds"]
         if not isinstance(lease_seconds, int) or not (1 <= lease_seconds <= 300):
             raise WorkerStdioGatewayError("invalid_lease_seconds")
+        ollama_snapshot = _validate_ollama_snapshot(payload.get("ollama_snapshot"))
         return backend.heartbeat(
             worker_id=expected_worker_id,
             credential_token=payload["credential_token"],
             lease_seconds=lease_seconds,
+            ollama_snapshot=ollama_snapshot,
         )
 
     if request.operation == "poll":

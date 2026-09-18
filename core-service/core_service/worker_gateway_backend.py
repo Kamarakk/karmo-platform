@@ -96,11 +96,13 @@ class PostgresWorkerGatewayBackend:
         self.store.require_current_key(worker_id=worker_id, key_id=payload["key_id"])
         return payload
 
-    def heartbeat(self, *, worker_id: str, credential_token: str, lease_seconds: int):
+    def heartbeat(self, *, worker_id: str, credential_token: str, lease_seconds: int,
+                  ollama_snapshot: dict | None = None):
         expires = self.coordinator.authenticate_heartbeat(
             credential_token=credential_token,
             worker_id=worker_id,
             lease_seconds=lease_seconds,
+            ollama_snapshot=ollama_snapshot,
         )
         return {"lease_expires_at": expires.isoformat()}
 

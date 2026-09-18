@@ -236,24 +236,67 @@ class PostgresWorkerCoordinatorStore:
                 payload={"key_id": row[0], "credential_version": int(row[1])},
             )
 
-    def heartbeat(self, *, worker_id, credential_key_id, lease_seconds=90):
+    def heartbeat(self, *, worker_id, credential_key_id, lease_seconds=90, ollama_snapshot=None):
+        """ollama_snapshot (Model Router Phase A, see
+        docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md Section 3.1) is
+        only written to ollama_snapshot/ollama_snapshot_at when THIS
+        heartbeat actually includes one -- a heartbeat without one (an
+        older worker binary, or a worker whose local probe failed) leaves
+        the last-known value in place rather than wiping it. Its own
+        timestamp is tracked separately from last_seen_at (which updates on
+        every heartbeat regardless) so a future consumer can tell exactly
+        how stale the SNAPSHOT itself is, independent of whether the worker
+        is alive -- required for Section 3.9's "health data stale ->
+        exclude the host" rule to be checkable at all."""
         if lease_seconds <= 0:
             raise WorkerCoordinationError("lease_seconds must be positive")
         now = self._clock()
         expires = now + timedelta(seconds=lease_seconds)
         with self._connection_factory() as conn, conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE public.karmo_workers
-                SET last_seen_at=%s, lease_expires_at=%s
-                WHERE worker_id=%s AND key_id=%s AND status='ACTIVE'
-                RETURNING worker_id
-                """,
-                (now, expires, worker_id, credential_key_id),
-            )
+            if ollama_snapshot is not None:
+                cur.execute(
+                    """
+                    UPDATE public.karmo_workers
+                    SET last_seen_at=%s, lease_expires_at=%s,
+                        ollama_snapshot=%s::jsonb, ollama_snapshot_at=%s
+                    WHERE worker_id=%s AND key_id=%s AND status='ACTIVE'
+                    RETURNING worker_id
+                    """,
+                    (now, expires, _json(ollama_snapshot), now, worker_id, credential_key_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE public.karmo_workers
+                    SET last_seen_at=%s, lease_expires_at=%s
+                    WHERE worker_id=%s AND key_id=%s AND status='ACTIVE'
+                    RETURNING worker_id
+                    """,
+                    (now, expires, worker_id, credential_key_id),
+                )
             if cur.fetchone() is None:
                 raise WorkerCoordinationError("worker identity/key mismatch or worker inactive")
         return expires
+
+    def get_worker_ollama_health(self, worker_id):
+        """Observability-only read (Model Router Phase A) -- nothing in
+        KARMO consumes this yet; it exists so a future router/operator can
+        query the last-known snapshot and its own freshness independent of
+        last_seen_at. Returns None if the worker is unknown."""
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT ollama_snapshot, ollama_snapshot_at, last_seen_at "
+                "FROM public.karmo_workers WHERE worker_id=%s",
+                (worker_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return {
+                "ollama_snapshot": row[0],
+                "ollama_snapshot_at": row[1],
+                "last_seen_at": row[2],
+            }
 
     def require_current_key(self, *, worker_id, key_id):
         """Require proof to use the worker's currently registered key."""
@@ -727,12 +770,13 @@ class WorkerCoordinator:
         self.result_authenticator = result_authenticator
         self.clock = clock or (lambda: datetime.now(timezone.utc))
 
-    def authenticate_heartbeat(self, *, credential_token, worker_id, lease_seconds=90):
+    def authenticate_heartbeat(self, *, credential_token, worker_id, lease_seconds=90, ollama_snapshot=None):
         payload = self.worker_authenticator.verify(credential_token, expected_worker_id=worker_id)
         return self.store.heartbeat(
             worker_id=worker_id,
             credential_key_id=payload["key_id"],
             lease_seconds=lease_seconds,
+            ollama_snapshot=ollama_snapshot,
         )
 
     def rotate_worker_key(self, *, credential_token, worker_id, new_key_id):

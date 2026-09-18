@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import ollama_health
 from capability_manifest import get_canonical_capability
 from crypto_boundary import KeyResolver, ResultAuthenticator, WorkerAuthenticator
 from ssh_stdio_transport import SshStdioConfig, SshStdioTransport
@@ -194,7 +195,10 @@ def build_client(cfg: WorkerRuntimeConfig, *, production_permissions: bool = Fal
 
 def run_once(cfg: WorkerRuntimeConfig, *, production_permissions: bool = False):
     client = build_client(cfg, production_permissions=production_permissions)
-    client.heartbeat(lease_seconds=cfg.heartbeat_lease_seconds)
+    client.heartbeat(
+        lease_seconds=cfg.heartbeat_lease_seconds,
+        ollama_snapshot=ollama_health.collect_snapshot(),
+    )
     return client.poll_once()
 
 
@@ -202,7 +206,10 @@ def run_loop(cfg: WorkerRuntimeConfig, *, production_permissions: bool = False) 
     client = build_client(cfg, production_permissions=production_permissions)
     while True:
         try:
-            client.heartbeat(lease_seconds=cfg.heartbeat_lease_seconds)
+            client.heartbeat(
+                lease_seconds=cfg.heartbeat_lease_seconds,
+                ollama_snapshot=ollama_health.collect_snapshot(),
+            )
             client.poll_once()
             time.sleep(cfg.poll_interval_seconds)
         except KeyboardInterrupt:

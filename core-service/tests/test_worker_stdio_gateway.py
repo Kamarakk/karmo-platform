@@ -112,7 +112,93 @@ def test_gateway_heartbeat_dispatches_bound_identity():
         "worker_id": "karmo-worker01",
         "credential_token": "credential",
         "lease_seconds": 90,
+        "ollama_snapshot": None,
     })]
+
+
+def test_gateway_heartbeat_accepts_valid_ollama_snapshot():
+    backend = Backend()
+    stdout = io.BytesIO()
+    code = serve_one(
+        backend=backend,
+        expected_worker_id="karmo-worker01",
+        stdin=io.BytesIO(_frame("heartbeat", {
+            "worker_id": "karmo-worker01",
+            "credential_token": "credential",
+            "lease_seconds": 90,
+            "ollama_snapshot": {"loaded_models": ["qwen3:8b", "granite3.3:2b"]},
+        })),
+        stdout=stdout,
+    )
+    response = json.loads(stdout.getvalue())
+    assert code == 0
+    assert response["ok"] is True
+    assert backend.calls == [("heartbeat", {
+        "worker_id": "karmo-worker01",
+        "credential_token": "credential",
+        "lease_seconds": 90,
+        "ollama_snapshot": {"loaded_models": ["qwen3:8b", "granite3.3:2b"]},
+    })]
+
+
+def test_gateway_heartbeat_rejects_malformed_ollama_snapshot():
+    backend = Backend()
+    stdout = io.BytesIO()
+    code = serve_one(
+        backend=backend,
+        expected_worker_id="karmo-worker01",
+        stdin=io.BytesIO(_frame("heartbeat", {
+            "worker_id": "karmo-worker01",
+            "credential_token": "credential",
+            "lease_seconds": 90,
+            "ollama_snapshot": {"loaded_models": "not-a-list"},
+        })),
+        stdout=stdout,
+    )
+    response = json.loads(stdout.getvalue())
+    assert code == 2
+    assert response["error"] == "invalid_ollama_snapshot"
+    assert backend.calls == []
+
+
+def test_gateway_heartbeat_rejects_oversized_ollama_snapshot():
+    backend = Backend()
+    stdout = io.BytesIO()
+    code = serve_one(
+        backend=backend,
+        expected_worker_id="karmo-worker01",
+        stdin=io.BytesIO(_frame("heartbeat", {
+            "worker_id": "karmo-worker01",
+            "credential_token": "credential",
+            "lease_seconds": 90,
+            "ollama_snapshot": {"loaded_models": [f"model-{i}" for i in range(100)]},
+        })),
+        stdout=stdout,
+    )
+    response = json.loads(stdout.getvalue())
+    assert code == 2
+    assert response["error"] == "invalid_ollama_snapshot"
+    assert backend.calls == []
+
+
+def test_gateway_heartbeat_rejects_unknown_ollama_snapshot_shape():
+    backend = Backend()
+    stdout = io.BytesIO()
+    code = serve_one(
+        backend=backend,
+        expected_worker_id="karmo-worker01",
+        stdin=io.BytesIO(_frame("heartbeat", {
+            "worker_id": "karmo-worker01",
+            "credential_token": "credential",
+            "lease_seconds": 90,
+            "ollama_snapshot": {"loaded_models": ["qwen3:8b"], "extra_field": "x"},
+        })),
+        stdout=stdout,
+    )
+    response = json.loads(stdout.getvalue())
+    assert code == 2
+    assert response["error"] == "invalid_ollama_snapshot"
+    assert backend.calls == []
 
 
 def test_gateway_poll_validates_capability_shape():
