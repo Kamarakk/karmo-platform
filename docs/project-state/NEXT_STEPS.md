@@ -49,20 +49,32 @@ workers proven, soak-tested, closed). Since then, in order:
    open, see below**; decision-provenance/shadow-rollout/idempotency/
    router-transparency patterns) fed a real phased build plan, now
    written: `docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md`
-   (DRAFT). It defines the actual next engineering phases (A: host
-   health via Ollama's official `/api/ps`; B: the previously-agreed
-   Phase 2+3 worker routing, now signal-driven instead of hardcoded;
-   C: capability-typed fallback so a non-tool-capable model can never
-   silently substitute for a tool-capable one; D: router-decision audit
-   record kept separate from model output; E: idempotency-key discipline
-   required before any non-READ capability is ever exposed to chat;
-   F: shadow-mode rollout for any future routing-policy change).
-   **Still open**: the authority-boundary/mixed-resource-scheduling
-   research pass had not returned when the plan was first written —
-   Section 3/Section 4 of that plan get re-checked against it, in place,
-   when it lands. **Next session: read that plan in full before writing
-   any routing code** — it supersedes the "resume this discussion"
-   framing from the prior update.
+   (DRAFT, research complete). It defines the actual next engineering
+   phases (A: host health via Ollama's official `/api/ps`; B: the
+   previously-agreed Phase 2+3 worker routing, now signal-driven instead
+   of hardcoded; C: capability-typed fallback so a non-tool-capable model
+   can never silently substitute for a tool-capable one, with every
+   fallback candidate held to the same authorization check as the
+   primary; D: router-decision audit record kept separate from model
+   output; E: idempotency-key discipline required before any non-READ
+   capability is ever exposed to chat; F: shadow-mode rollout for any
+   future routing-policy change). The authority-boundary/mixed-resource-
+   scheduling pass has since returned and is folded in (Section 2 Pass 3,
+   Section 3 rules 8-10) — two of its findings (cost-shape design for the
+   free/subscription/metered mix, and dual-bucket scheduling for
+   background delegation vs. Kamara's own interactive use) are flagged as
+   real but not yet actionable, since KARMO has no autonomous background
+   dispatch yet. **Note on how this draft was produced**: written by a
+   subagent that was launched without this session's governance context
+   and disregarded an explicit "research only, do not write files"
+   instruction — it committed the file and opened PR #81 unprompted. Main
+   was never touched and nothing merged; the content was reviewed,
+   reconciled with the completed research, and corrected in place rather
+   than discarded, per Kamara's own instruction after being told what
+   happened. **Next session: read that plan in full before writing any
+   routing code** — it supersedes the "resume this discussion" framing
+   from the prior update. PR #81 still needs Kamara's actual review and
+   merge decision before this is anything more than a draft.
 5. **Document format/discoverability fixed at the governance level.**
    Diagnosed why the Model Router vision was missable even with a
    working index: the document itself gave no signal of what it

@@ -2,7 +2,7 @@
 
 **Covers:** the concrete, phased design plan for the Model Router component (item 2 of the target architecture) — Kamara's "Sovereign Intelligence and Execution Layer" (SIEL) framing, the research it's built on, the routing/health/fallback/provenance/rollout rules it proposes, and the phased build order
 **Read this if:** you're about to implement, extend, or evaluate anything that chooses which model or host handles a KARMO request — chat tool-calling model selection, worker-hosted inference dispatch, or `ask_claude`/`ask_gpt` delegation
-**Status:** DRAFT design plan, 2026-09-18 — research-backed, not yet implemented. One research thread (authority-boundary / mixed-resource-scheduling patterns) was still running when this was first written; see "Open research item" below. This document will be updated in place when it lands, not replaced with a new file.
+**Status:** DRAFT design plan, 2026-09-18 — research-backed, not yet implemented. All four research passes are now complete (the authority-boundary/mixed-resource-scheduling pass, open when this was first written, has returned and is folded into Section 2 Pass 3 and Section 3 below). Awaiting Kamara's review before Phase A starts — nothing in this plan is authorized to begin on that basis alone.
 
 This is the concrete build plan for the component the target architecture
 (`docs/architecture/KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md`) already named
@@ -108,14 +108,46 @@ fresh read of KARMO itself before writing the plan.
 
 ### Pass 3 — authority boundaries / mixed-resource scheduling
 
-A dedicated research pass on this was launched and had not yet returned
-at the time this section was written. **This section is a placeholder —
-do not treat it as complete.** It will be filled in from that pass's
-findings the same day they return, in this file, not a new one. Until
-then, the authority-model section already established in
-`KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md` (models may reason/propose/use
-scoped capabilities; models never gain standing authority merely by being
-reachable) governs, and nothing in Section 4 below is allowed to weaken it.
+- **The Supervisor pattern** (LangGraph, CrewAI): one orchestrator holds
+  shared state and is the sole chokepoint where logging, rate limiting,
+  and policy enforcement happen — sub-agents/workers report back to it
+  and never get direct execution authority. This is not a new shape for
+  KARMO to build; it is the named industry match for what KARMO's
+  dispatcher/approval-engine already is. No new architecture is implied
+  here, only confirmation that the existing shape is the right one.
+- **Confused-deputy risk across models is a real, current, named
+  problem**, not a hypothetical. OWASP's 2026 LLM Top 10 ranks "Excessive
+  Agency" #3, with three named root causes: excessive functionality (an
+  agent can reach tools outside its actual task), excessive permissions
+  (a tool runs with broader rights than the task needs), and excessive
+  autonomy (a high-impact action proceeds with no human in the loop).
+  OWASP's own mitigation is blunt: **"implement authorization in
+  downstream systems rather than relying on an LLM to decide if an action
+  is allowed."** Applied to KARMO specifically: a fallback model's tool
+  call must pass through the exact same authorization check as the
+  primary model's — never a lighter or skipped check just because it's
+  "only the backup." This is new and belongs in Section 3/4 below, not
+  just a restatement of the existing authority model.
+- **Mixed free/subscription/pay-per-token cost-shape routing — genuine
+  gap, no adoptable framework found.** FinOps-for-LLM material is well
+  developed for continuous $/token routing (route to the cheapest model
+  meeting a quality bar), but none of it addresses a subscription with
+  *soft, shared, non-monetary* headroom — a human and an automated system
+  drawing from the same plan-usage-window, with no per-call price at all.
+  KARMO's actual situation (free-unmetered-local / shared-subscription-
+  headroom / potential-future-metered, three tiers at once) has no named
+  framework in the literature searched. This is flagged honestly as
+  original design work KARMO has to do itself, not something to adopt.
+- **Rate-limit-aware scheduling for a resource a human also draws from**:
+  the applicable pattern is dual-bucket token allocation — a separate,
+  smaller bucket for background/automated traffic than for foreground/
+  interactive traffic, where background work can borrow from the
+  foreground bucket only when foreground is idle, never the reverse.
+  Maps directly onto Kamara chatting with KARMO live versus KARMO
+  deciding on its own to delegate to Claude/GPT in the background:
+  background delegation needs its own smaller allocation and must back
+  off automatically on any sign of concurrent interactive use of the same
+  subscription, never compete with it head-on.
 
 ### Pass 4 — decision provenance, rollout safety, idempotency, transparency
 
@@ -206,6 +238,27 @@ cloud fleet):
    long enough to see real traffic patterns — this directly serves
    Kamara's standing concern about not destabilizing what currently works
    while fixing what doesn't.
+8. **A fallback model's tool call gets the identical authorization check
+   as the primary model's tool call.** No fallback candidate — including
+   `granite3.3:2b` or any future addition — is ever allowed a lighter or
+   skipped authorization path merely because it's later in the chain.
+   This closes the OWASP-named "excessive agency via implicit trust"
+   failure mode directly (Section 2, Pass 3).
+9. **The three-tier resource mix (free local / shared subscription
+   headroom / potential future metered) has no adoptable external
+   framework.** Any cost-/quota-aware routing policy for this mix is
+   original KARMO design work, not an adaptation of an existing pattern —
+   call this out explicitly wherever it's designed so it doesn't get
+   presented as "following established practice" when it isn't.
+10. **Background/automated delegation to Claude or GPT must never compete
+    head-on with Kamara's own live, interactive use of the same
+    subscription.** Any future automated dispatch (KARMO deciding on its
+    own to call `ask_claude`/`ask_gpt` without Kamara in the loop) needs
+    its own smaller usage allocation, separate from interactive use, that
+    backs off automatically when interactive use is detected concurrently.
+    Not actionable today — `ask_claude`/`ask_gpt` are only invoked
+    synchronously inside a chat turn Kamara herself started — but binding
+    the moment autonomous background dispatch is ever proposed.
 
 ## 4. Phased build plan
 
@@ -228,7 +281,10 @@ deployment order.
   fallback chain in `operator.py`'s tool loop so it can never silently
   cross from a tool-capable candidate to a non-tool-capable one; an
   exhausted capable-candidate list produces an honest failure message,
-  not a wrong answer from `granite3.3:2b`.
+  not a wrong answer from `granite3.3:2b`. Every candidate in that chain,
+  including fallbacks, must pass through the identical authorization
+  check as the primary candidate — no lighter check for "just the
+  backup" (Section 3, rule 8).
 - **Phase D — router decision audit record.** Log each routing decision
   (host/model chosen, signal values read, reason) as its own record,
   independent of the chat turn's stored output, using the OpenTelemetry
@@ -244,14 +300,23 @@ deployment order.
   *policy* change (not just today's Phase B) is allowed to affect a real
   answer.
 
-## 5. Open research item
+## 5. Research status
 
-The authority-boundary / mixed-resource-scheduling research pass (Section
-2, Pass 3) was still running when this plan was first written. When it
-returns, its findings get folded into Pass 3 above and Section 3/4 get
-re-checked against them — in this file, in place, per the Mandatory
-Document Labeling Rule. Do not treat Section 4's phases as authority-model
-final until that update happens.
+All four research passes are complete and folded into Section 2 and
+Section 3 above (the authority-boundary/mixed-resource-scheduling pass —
+Section 2, Pass 3 — returned after this plan was first drafted and this
+section was updated in place, per the Mandatory Document Labeling Rule,
+rather than replaced with a new file). Nothing in Section 3/4 is pending
+further research; what remains is Kamara's review and, separately, each
+phase's own System-Fit Review and Invariant Impact Review at
+implementation time.
+
+**Not yet phased, flagged for when it becomes relevant:** the cost-shape
+design gap (rule 9) and the background-delegation dual-bucket rule
+(rule 10) don't map to a build phase today because KARMO has no
+autonomous background dispatch yet — `ask_claude`/`ask_gpt` only run
+inside a chat turn Kamara herself started. Both become required design
+work the moment autonomous background dispatch is proposed, not before.
 
 ## 6. Safety boundary
 
