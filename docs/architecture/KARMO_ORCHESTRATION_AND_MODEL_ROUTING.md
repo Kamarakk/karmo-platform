@@ -57,6 +57,35 @@ Security principle remains:
 
 **Progress against this list as of 2026-09-18**: components 4 (Core Approval), 5 (Worker Execution), and 7 (Durable Memory/Audit) exist and are production-proven, but were built independently for other purposes (the Tool/Capability Registry, Worker Runtime, and durable memory work) rather than as pieces of a deliberate Model Router build-out. Component 2 (Model Router) has two narrow, non-unified instances — KARMO chat's tool-calling loop can call `ask_claude`/`ask_gpt`, and Worker01/02 can serve local models via `model_chat` — but nothing routes between them based on task fit; a human or a hardcoded tool choice decides, not a router. Components 1, 3, and 6 do not exist as named things, though pieces of their intent are scattered across the existing Capability Registry/dispatcher pattern.
 
+## Concrete evidence for the reliability argument (2026-09-18)
+
+The "relieve `karmo-ai01`'s resource contention" case for worker-hosted
+routing (see "Progress against this list" above) moved from hypothesis
+to observed fact tonight. Two real chat questions against production
+`karmo-ai01`, after the tool-calling timeout was already raised from 45s
+to 120s and after a separate durable-memory contamination issue was
+found and fixed:
+
+- Both attempts: `qwen3:8b` timed out at the full 120s, then
+  `ministral-3:8b` also timed out at the full 120s, before falling back
+  to `granite3.3:2b` (which does not reliably use tools). One attempt
+  took 379.5 seconds end-to-end for a single chat turn.
+- This is not the memory-contamination bug (that was independently
+  confirmed fixed — the fallback model's wrong answer changed from a
+  flat "I have no access" to an aware-but-non-invoking "I recommend
+  using the `bloomboss_report` function," showing the poisoned context
+  was gone). This is `karmo-ai01` itself failing to complete a
+  tool-calling generation with two different capable models, twice in a
+  row, within a generous timeout.
+- `karmo-ai01` runs Postgres, Qdrant, Ollama, and the worker gateway
+  concurrently on the same 8GB host. Worker01/Worker02 run only Ollama,
+  dedicated, currently idle for this kind of work.
+
+Raising the timeout further would be treating a symptom. This is now
+concrete, reproduced evidence for the contention-relief argument, not
+speculation — worth weighing more heavily than the original 13%-
+per-token benchmark when this design actually gets built.
+
 ## Performance / reliability decisions
 
 - Do not route every task through every model.
