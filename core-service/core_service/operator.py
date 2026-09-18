@@ -587,7 +587,22 @@ class KarmoOperator:
         # model, so a chat request degrades to slower/less-capable
         # models rather than failing closed when higher-trust models are
         # unavailable.
-        candidates = self.router.ranked(required_capabilities={"chat"}, prefer_local=True)
+        #
+        # Model Router Phase B (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
+        # Section 3.4) -- gated on "tool_calling", not "chat". Every chat
+        # turn always offers tools (see `tools` below), so a candidate that
+        # isn't tagged tool_calling was never a real candidate for this
+        # request. This is the fix for the real 2026-09-18 production
+        # incident: granite3.3:2b (tagged "chat", never "tool_calling")
+        # used to remain in this fallback chain, and when qwen3:8b and
+        # ministral-3:8b both timed out under contention, chat silently
+        # fell through to it -- producing a fluent, confident, WRONG
+        # answer (claiming no access to BloomBoss) instead of an honest
+        # failure. Excluding non-tool-calling models from this candidate
+        # set entirely closes that failure mode structurally: if every
+        # tool-calling candidate fails, the response below is now the
+        # correct outcome, not a bug to work around with a better prompt.
+        candidates = self.router.ranked(required_capabilities={"tool_calling"}, prefer_local=True)
         if not candidates:
             return {
                 "kind": "chat",

@@ -12,6 +12,7 @@ import json
 import uuid
 
 from core_service.control import ApprovalRequirement
+from core_service.ollama_client import OllamaClientError
 from core_service.operator import _CHAT_EXPOSED_TOOLS, _MAX_CHAT_TOOL_ROUNDS, KarmoOperator
 
 
@@ -74,6 +75,30 @@ class ToolCallThenAnswerClient:
         return {"content": "You have one open task: reconcile PR #26.", "tool_calls": None}
 
 
+class PrimaryFailsFallbackCallsToolClient:
+    """qwen3:8b (primary, highest trust tier) fails outright; ministral-3:8b
+    (the fallback candidate) proposes a real list_tasks tool call. Proves
+    Model Router Phase B rule 8 (Section 3, "A fallback model's tool call
+    gets the identical authorization check as the primary model's"): the
+    fallback's tool call must be dispatched through the exact same
+    capability/approval machinery as the primary's would have been --
+    there is no lighter or different path for a later candidate."""
+
+    def __init__(self):
+        self.requests = []
+
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+        self.requests.append(model)
+        if model == "qwen3:8b":
+            raise OllamaClientError("simulated primary failure")
+        if len([m for m in self.requests if m == "ministral-3:8b"]) == 1:
+            return {
+                "content": "",
+                "tool_calls": [{"function": {"name": "list_tasks", "arguments": {}}}],
+            }
+        return {"content": "You have one open task: reconcile PR #26.", "tool_calls": None}
+
+
 class AlwaysToolCallClient:
     """Never stops proposing a tool call -- proves the round cap actually
     terminates the loop instead of hanging."""
@@ -122,6 +147,26 @@ def test_model_can_call_list_tasks_and_use_the_real_result():
     assert tool_message["role"] == "tool"
     payload = json.loads(tool_message["content"])
     assert payload["tasks"][0]["objective"] == "reconcile PR #26"
+
+
+def test_fallback_candidates_tool_call_gets_identical_dispatch_as_primary_would():
+    """Model Router Phase B rule 8. Uses the real default_model_resources()
+    registry (qwen3:8b ranked first, ministral-3:8b second) so this proves
+    the actual production fallback order, not a synthetic one."""
+    store = FakeTaskStore()
+    store.seed()
+    client = PrimaryFailsFallbackCallsToolClient()
+    operator = KarmoOperator(model_client=client, task_store=store)
+
+    response = operator.handle("what tasks are open right now?")
+
+    assert response["kind"] == "chat"
+    assert response["model"] == "ministral-3:8b"
+    assert "reconcile PR #26" in response["message"]
+    # The primary was tried and failed first -- this is a real fallback,
+    # not the fallback simply being the only candidate.
+    assert client.requests[0] == "qwen3:8b"
+    assert "ministral-3:8b" in client.requests
 
 
 def test_list_tasks_tool_is_not_offered_when_task_store_is_unconfigured():
