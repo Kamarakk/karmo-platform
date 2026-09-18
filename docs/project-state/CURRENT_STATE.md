@@ -1368,3 +1368,62 @@ CI-level proof already in hand.
 Rollback path if ever needed: stop `karmo-core.service`, restore
 `/opt/karmo/backups/worker-deploy-20260918T191811Z/core-service-before`,
 restart.
+
+## 2026-09-18 (later same day) — Model Router Phase C deployed (PR #85), real bug found and fixed live (PR #86)
+
+```
+PRODUCTION ACCESS AUTHORIZATION
+Task: Deploy Model Router Phase C (PR #85) to production
+Target system/environment: karmo-ai01 (core-service only)
+Purpose: Kamara's direct instruction ("deploy it")
+Permitted operations: backup current deployed code, install reviewed main-branch code, restart karmo-core.service, verify
+Authority: READ-ONLY + WRITE (write = deploying reviewed code + service restart; no other writes -- no migration needed for PR #85 itself)
+Commands/command class: backup/install/restart pattern per docs/runbooks/WORKER01_EXACT_ACTIVATION.md's update-only variant, core-service only
+Granted: 2026-09-18, by Kamara (direct chat instruction)
+Expires: automatically on task completion
+```
+
+Deploy SHA: `9cb8b37678a04b69fcb103708890508bc91fd421` (tarball sha256
+`ae698dfdc5a50ff79ab6f48c04dceaf322609325cd578b496670041d46f9873c`,
+verified identical after transfer). Backed up to
+`/opt/karmo/backups/worker-deploy-20260918T211506Z`. Installed,
+confirmed `shadow_router.py` present on the live host before
+restarting. `karmo-core.service` restarted: `MainPID=3888390` (new),
+journal logged `{"status": "healthy", ...}`, no crash/restart loop.
+
+**Live verification surfaced a real bug immediately** (exactly the kind
+of thing this session's practice of always live-testing after deploy
+exists to catch): `echo "Say OK and nothing else." | karmo chat`
+returned a correct chat answer, but the new shadow-route log line read
+`reason='no_eligible_host'` with **both workers** showing
+`excluded(no_snapshot_yet)` — despite PR #83's deployment having
+already proven both workers report real `ollama_snapshot` data.
+Investigated directly rather than assumed: `shadow_router.py` reuses
+core-service's existing memory DSN (`/etc/karmo/core/postgres.dsn`,
+role `karmo_core_memory`) to read `public.karmo_workers`, on the
+assumption that a DSN pointed at the same database implied broad access
+to it. Confirmed via a direct `psql` query as that exact role:
+`ERROR: permission denied for table karmo_workers` — `karmo_core_memory`
+is a deliberately least-privileged role scoped to memory tables only,
+and correctly refused the read.
+
+**Fixed live, then made durable**: applied the minimal grant actually
+needed (`GRANT SELECT ON public.karmo_workers TO karmo_core_memory`,
+guarded by a role-exists check) directly to production Postgres via
+`docker exec -i karmo-postgres psql -U karmo -d karmo <
+006_grant_core_memory_worker_health_read.sql`, verified via `\dp`
+showing `karmo_core_memory=r` (read-only, nothing broader). Then
+committed the same file as migration 006 and opened PR #86 so the repo
+matches the live state, rather than leaving an undocumented manual
+production change. Re-ran the exact same live chat test: shadow
+decision now reads `chosen='karmo-ai01' model='qwen3:8b'
+reason='only_karmo_ai01_eligible'` with both workers correctly showing
+`excluded(no_tool_capable_model_loaded)` (their real current state, not
+a masked permission error).
+
+Rollback path if ever needed: stop `karmo-core.service`, restore
+`/opt/karmo/backups/worker-deploy-20260918T211506Z/core-service-before`,
+restart. The grant is additive and read-only; revoking it (`REVOKE
+SELECT ON public.karmo_workers FROM karmo_core_memory`) would only
+return shadow routing to its prior fail-safe "no worker data" state,
+never break anything else.

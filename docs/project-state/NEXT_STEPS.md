@@ -162,17 +162,16 @@ workers proven, soak-tested, closed). Since then, in order:
    instead of any answer at all when `qwen3:8b`/`ministral-3:8b` are
    both down — the intended fail-closed tradeoff, not a regression.
 10. **Model Router Phase C — shadow routing built, tested, and merged**
-    (PR #85) — **not yet deployed to `karmo-ai01`.**
-    `core_service/shadow_router.py` (new): for every real chat request,
-    computes and logs (stderr only, never returned to any caller) what
-    the eventual Phase D worker-routing policy would choose, using
-    karmo-ai01's live `/api/ps` (cheap poll, never a timed inference
-    probe — that would itself add contention load) and Worker01/02's
-    already-live `ollama_snapshot` data from PR #83. Prefers a worker
-    over contended karmo-ai01 when both are eligible — stated explicitly
-    as a heuristic, not a tuned score, since no real latency telemetry
-    has been collected over time yet. Reuses core-service's existing
-    memory DSN file for the worker-health read — no new credential path.
+    (PR #85), **deployed to `karmo-ai01`, and a real bug found and fixed
+    live during that deployment (PR #86).** `core_service/shadow_router.py`
+    (new): for every real chat request, computes and logs (stderr only,
+    never returned to any caller) what the eventual Phase D worker-routing
+    policy would choose, using karmo-ai01's live `/api/ps` (cheap poll,
+    never a timed inference probe — that would itself add contention
+    load) and Worker01/02's already-live `ollama_snapshot` data from PR
+    #83. Prefers a worker over contended karmo-ai01 when both are
+    eligible — stated explicitly as a heuristic, not a tuned score, since
+    no real latency telemetry has been collected over time yet.
     **Hard safety property, directly tested**: a test forces the
     decision function itself to raise and confirms the real chat
     response is completely unaffected — shadow routing is observability
@@ -180,6 +179,20 @@ workers proven, soak-tested, closed). Since then, in order:
     Once deployed, shadow decisions land in `journalctl -u
     karmo-core.service` only — there's no durable/queryable record yet;
     that's Phase E's job, not a gap in this phase.
+
+    **Deployment bug found and fixed**: shadow_router.py's reuse of
+    core-service's existing memory DSN for reading worker health assumed
+    that DSN implied broad database access. Wrong — the `karmo_core_memory`
+    role behind it is deliberately scoped to memory tables only, and a
+    live post-deploy chat test showed both workers misreported as
+    `no_snapshot_yet` (a masked permission error, not a real absence of
+    data — confirmed via a direct `psql` query as that role:
+    `permission denied for table karmo_workers`). Fixed with the minimal
+    grant actually needed (`SELECT` only, on this one table — migration
+    006, PR #86), applied live to unblock the feature immediately, then
+    committed so the repo matches production. Re-verified: shadow
+    decisions now correctly read both workers' real current state. Full
+    record in `CURRENT_STATE.md`.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
