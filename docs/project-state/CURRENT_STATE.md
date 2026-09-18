@@ -1326,3 +1326,45 @@ verified identical after each transfer hop).
 - **Still true after this deployment**: nothing in KARMO reads
   `ollama_snapshot`/`ollama_snapshot_at` yet. This deployment makes the
   data real and live; consuming it is Model Router Phase B+.
+
+## 2026-09-18 (later same day) — Model Router Phase B deployed (PR #84)
+
+```
+PRODUCTION ACCESS AUTHORIZATION
+Task: Deploy Model Router Phase B (PR #84) to production
+Target system/environment: karmo-ai01 (core-service only)
+Purpose: Kamara's direct instruction ("deployed now")
+Permitted operations: backup current deployed code, install reviewed main-branch code, restart karmo-core.service, verify
+Authority: READ-ONLY + WRITE (write = deploying reviewed code + service restart; no other writes -- this PR has no schema change, no migration needed)
+Commands/command class: backup/install/restart pattern per docs/runbooks/WORKER01_EXACT_ACTIVATION.md's update-only variant, core-service only
+Granted: 2026-09-18, by Kamara (direct chat instruction)
+Expires: automatically on task completion
+```
+
+Deploy SHA: `729d0a1ca40be5ce9f164095785551662a2c91c4` (tarball sha256
+`cc2704af8e187a5ca3e76d4d6b546821cfd993879dcfec073e24bc0375fd5124`,
+verified identical after transfer). Backed up to
+`/opt/karmo/backups/worker-deploy-20260918T191811Z` (both
+`core-service-before` and `worker-runtime-before`). Installed, then
+**verified the exact intended line was actually deployed** before
+restarting: `grep` on the live host showed
+`required_capabilities={"tool_calling"}` at `operator.py:605` (not
+assumed from the tarball alone). `karmo-core.service` restarted:
+`MainPID=3597332` (new), journal logged `{"status": "healthy", ...}`
+with no crash/restart loop.
+
+**End-to-end live verification**: `echo "Say OK and nothing else." |
+karmo chat` against the actually-deployed production service returned
+`KARMO> OK` / `memory=ACTIVE` — confirms no regression in normal
+operation post-deployment. The deeper behavioral guarantee this PR
+exists for (`granite3.3:2b` structurally excluded as a fallback) is
+already proven by PR #84's own CI suite using the real production
+model registry (`test_general_chat_never_falls_back_to_granite_which_is_not_tool_calling_capable`);
+deliberately did not force a live double-failure of `qwen3:8b`/
+`ministral-3:8b` in production to re-prove it, since that would be a
+more invasive test than the risk warrants given the code-level and
+CI-level proof already in hand.
+
+Rollback path if ever needed: stop `karmo-core.service`, restore
+`/opt/karmo/backups/worker-deploy-20260918T191811Z/core-service-before`,
+restart.

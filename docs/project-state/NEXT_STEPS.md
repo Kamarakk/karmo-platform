@@ -139,23 +139,28 @@ workers proven, soak-tested, closed). Since then, in order:
    `docs/runbooks/WORKER01_EXACT_ACTIVATION.md`'s rollback section);
    migration 005 is additive-only (nullable columns) and does not need
    reverting for a code rollback to be safe.
-9. **Model Router Phase B built, tested, and merged** (PR #84) —
-   **not yet deployed to `karmo-ai01`.** `operator.py`'s `_chat()`
-   candidate filter changed from `required_capabilities={"chat"}` to
-   `{"tool_calling"}` — the direct structural fix for the real incident
-   above (`granite3.3:2b` fabricating a wrong BloomBoss answer instead
-   of admitting it couldn't help). Traced and confirmed rule 8 (equal
-   authorization for fallback candidates) already holds by construction
+9. **Model Router Phase B built, tested, merged, and deployed to
+   `karmo-ai01`** (PR #84, Kamara's direct instruction). `operator.py`'s
+   `_chat()` candidate filter changed from
+   `required_capabilities={"chat"}` to `{"tool_calling"}` — the direct
+   structural fix for the real incident above (`granite3.3:2b`
+   fabricating a wrong BloomBoss answer instead of admitting it couldn't
+   help). Traced and confirmed rule 8 (equal authorization for fallback
+   candidates) already holds by construction
    (`_execute_exposed_tool()` never branches on which model produced a
    call) — added a test proving it directly rather than leaving it
    asserted. Also added a routing-loop-protection test. Two existing
    tests needed rewriting because their premise (granite as a valid
    third fallback) was the exact bug being fixed. 9 new/updated tests,
-   full suite 267 passed. **User-visible behavior change once deployed**:
-   chat will return an honest "unavailable" message instead of any
-   answer at all when `qwen3:8b`/`ministral-3:8b` are both down — the
-   intended fail-closed tradeoff, not a regression, worth knowing before
-   authorizing deployment.
+   full suite 267 passed. Deployed: backed up
+   (`/opt/karmo/backups/worker-deploy-20260918T191811Z`), the exact
+   deployed line verified via `grep` on the live host before restart,
+   `karmo-core.service` restarted clean (`MainPID=3597332`), and a real
+   live chat round trip (`karmo chat`) confirmed no regression. Full
+   authorization record in `CURRENT_STATE.md`. **User-visible behavior
+   change, now live**: chat returns an honest "unavailable" message
+   instead of any answer at all when `qwen3:8b`/`ministral-3:8b` are
+   both down — the intended fail-closed tradeoff, not a regression.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
