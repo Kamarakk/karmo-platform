@@ -831,3 +831,98 @@ def test_dispatch_and_wait_full_round_trip_against_the_real_worker_job_pipeline(
     assert outcome.outcome == "SUCCEEDED"
     assert outcome.result == real_answer
     assert store.get_worker_job_result(outcome.job_id)["result"] == real_answer
+
+
+_RESTRICTED_ROLE = "karmo_gateway"  # migration 009 grants by this exact role name
+_RESTRICTED_ROLE_PASSWORD = "karmo_gateway_test_role_synthetic_local_only"
+
+
+def _restricted_conninfo():
+    return (
+        f"host={PG_HOST} port={PG_PORT} dbname={PG_DB} "
+        f"user={_RESTRICTED_ROLE} password={_RESTRICTED_ROLE_PASSWORD}"
+    )
+
+
+def _drop_restricted_role():
+    with psycopg.connect(_conninfo(), autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM pg_roles WHERE rolname=%s", (_RESTRICTED_ROLE,))
+        if cur.fetchone() is not None:
+            cur.execute(f"DROP OWNED BY {_RESTRICTED_ROLE}")
+            cur.execute(f"DROP ROLE {_RESTRICTED_ROLE}")
+
+
+def test_migration_009_grants_the_gateway_role_the_missing_result_table_privilege():
+    """Model Router Phase D1 production incident (2026-09-19, see
+    docs/project-state/CURRENT_STATE.md): the real forced-command gateway
+    connects to Postgres as `karmo_gateway`, never the schema-owning role
+    every other test in this file uses -- confirmed live via
+    has_table_privilege(). Migration 007 created
+    public.karmo_worker_job_results with no explicit grant to that role,
+    unlike the pre-existing public.karmo_worker_job_payloads table (which
+    already has it). Every real submit_result call for a capability with
+    actual result content hit InsufficientPrivilege on the INSERT inside
+    submit_authenticated_result()'s transaction, rolling back the
+    RESULT_SUBMITTED state change in the same transaction -- explaining
+    why affected jobs were stuck at LEASED with zero trace of a result.
+
+    This is invisible to every other test in this file because they all
+    connect as the schema-owning role, which always has implicit full
+    access to tables it owns -- the same blind spot this test exists to
+    close by using a genuinely restricted role, not a superuser
+    connection, matching the exact real production gap."""
+    _drop_restricted_role()
+    job_id = str(uuid.uuid4())
+    task_id = str(uuid.uuid4())
+    with psycopg.connect(_conninfo(), autocommit=True) as conn, conn.cursor() as cur:
+        # CREATE ROLE ... PASSWORD does not accept a bind parameter (DDL, not
+        # DML) -- safe to inline here since the password is a fixed
+        # constant this file controls, not external input.
+        cur.execute(
+            psycopg.sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(
+                psycopg.sql.Identifier(_RESTRICTED_ROLE),
+                psycopg.sql.Literal(_RESTRICTED_ROLE_PASSWORD),
+            )
+        )
+        cur.execute(f"GRANT CONNECT ON DATABASE {PG_DB} TO {_RESTRICTED_ROLE}")
+        cur.execute(f"GRANT USAGE ON SCHEMA public TO {_RESTRICTED_ROLE}")
+        # A real job row to satisfy karmo_worker_job_results' foreign key --
+        # inserted by the owning role, matching how the row genuinely exists
+        # by the time a worker ever submits a result for it.
+        cur.execute(
+            "INSERT INTO public.karmo_worker_jobs "
+            "(job_id, idempotency_key, task_id, tool_id, tool_version, arguments_digest, state) "
+            "VALUES (%s::uuid, %s, %s::uuid, %s, %s, %s, 'QUEUED')",
+            (job_id, f"priv-test:{job_id}", task_id, "karmolab.host_health", "1", "digest"),
+        )
+
+    try:
+        # Before migration 009: reproduces the exact real production failure
+        # with a genuinely restricted role.
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            with psycopg.connect(_restricted_conninfo(), autocommit=True) as conn, conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO public.karmo_worker_job_results (job_id, result, result_digest) "
+                    "VALUES (%s::uuid, %s::jsonb, %s)",
+                    (job_id, '{"content": "hi"}', "digest"),
+                )
+
+        migration_9 = REPO_ROOT / "core-service" / "core_service" / "migrations" / "009_grant_gateway_worker_job_results.sql"
+        with psycopg.connect(_conninfo(), autocommit=True) as conn, conn.cursor() as cur:
+            cur.execute(migration_9.read_text())
+
+        # After migration 009: the identical restricted role can now insert
+        # and read back its own result -- proving the grant, not a broader
+        # privilege escalation, is what closes the gap.
+        with psycopg.connect(_restricted_conninfo(), autocommit=True) as conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO public.karmo_worker_job_results (job_id, result, result_digest) "
+                "VALUES (%s::uuid, %s::jsonb, %s)",
+                (job_id, '{"content": "hi"}', "digest"),
+            )
+            cur.execute(
+                "SELECT result FROM public.karmo_worker_job_results WHERE job_id=%s::uuid", (job_id,)
+            )
+            assert cur.fetchone()[0] == {"content": "hi"}
+    finally:
+        _drop_restricted_role()
