@@ -346,6 +346,58 @@ workers proven, soak-tested, closed). Since then, in order:
     invocation manually with stderr visible, rather than through code
     that deliberately discards it. Not resolved this session.
 
+16. **RESOLVED — submit_result root-caused and fixed; Phase D1's live
+    proof finally succeeds end to end** (Kamara's direct instructions
+    across several turns: "keep debugging" / "deploy and run" / "run
+    the read only privilage check first" / "build it" / "merge it").
+    Full detail in `CURRENT_STATE.md`'s 2026-09-19 entry of the same
+    name — short version:
+
+    - Fixed a real transport bug first (PR #90): the SSH client
+      discarded the gateway's own structured, safe error on every
+      non-zero exit, always showing a generic "SSH gateway request
+      failed" instead. This is what finally made the real error
+      (`gateway refused request: coordinator_refused`) visible. Also
+      fixed in the same PR: `dispatch_and_wait()` returning the real
+      worker's submission envelope instead of unwrapping it.
+    - Root cause, confirmed live via a read-only DB privilege check
+      (independently suggested by an external review Kamara obtained,
+      then confirmed with real evidence here): the forced-command
+      gateway connects to Postgres as `karmo_gateway`, not the
+      schema-owning role every migration/test uses. Migration 007
+      never granted `karmo_gateway` access to the new
+      `karmo_worker_job_results` table it created — every real
+      `submit_result` call hit a silent `InsufficientPrivilege` error
+      that rolled back the job's own state change, leaving it stuck at
+      `LEASED` forever with no trace.
+    - Fixed with the minimal grant needed (PR #91: migration 009 +
+      a new regression test using a genuinely restricted Postgres
+      role, not a superuser — a test class this repo didn't have
+      before).
+    - **Live proof-run after deploying both fixes: SUCCEEDED.** Real
+      `qwen3:8b` tool call via Worker01's `model_chat_tools`
+      capability, ~19.3 seconds end to end, correctly unwrapped result
+      content. This is the first fully successful Phase D1 round trip.
+    - A separate, real, still-open structural gap found along the way
+      (not the cause of this incident, but a latent risk for slower
+      capabilities): Worker01's heartbeat is only renewed once per
+      loop iteration, before `poll_once()` runs — a long enough
+      capability call could let the worker's own heartbeat lease
+      expire mid-submission. Not fixed this session.
+    - Kamara separately obtained and read an external review of
+      tonight's whole Model Router effort
+      (`KARMO_REVIEW_FOR_CLAUDE_2026-09-19.md` /
+      `KARMO_REVIEW_FOR_YOU_2026-09-19.md`) recommending pausing
+      further router expansion in favor of one dependable local model,
+      plus several independent findings (ask_claude/ask_gpt isolation
+      claims, no per-turn deadline, status reporting requiring a second
+      model, discarded truncation metadata). **None of that broader
+      scope was acted on in this session** — reviewed and assessed on
+      request only; it remains Kamara's decision.
+    - Phase D1's dispatch/wait glue is still explicitly a
+      proof/measurement harness, not wired into real chat traffic.
+      Phase D2 remains a separate, later, unauthorized decision.
+
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
 Session ended mid-canary after 12+ hours, on Kamara's explicit call to

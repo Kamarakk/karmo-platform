@@ -1630,3 +1630,177 @@ tonight, not present as of the last confirmed-successful job on
 next step: reproduce the exact SSH forced-command invocation manually
 with stderr visible, rather than through code that deliberately
 discards it) -- not resolved in this session.
+
+## 2026-09-19 -- submit_result root-caused and fixed; Phase D1's live proof finally succeeds end to end (PR #90, PR #91)
+
+Continuation of the same session/incident above. Kamara asked for a
+high-level writeup of the night's Model Router work for independent
+review (saved as
+`docs/project-state/PROJECT_SAVE_2026-09-19_MODEL_ROUTER_REVIEW_FOR_CHATGPT.md`
+-- written to the local workspace but not committed until this entry;
+that gap is why an external review of the same incident could not find
+it and had to review pinned commit `8276a21a` from GitHub directly
+instead). Kamara separately obtained an independent external review
+(two files, `KARMO_REVIEW_FOR_CLAUDE_2026-09-19.md` and
+`KARMO_REVIEW_FOR_YOU_2026-09-19.md`) and asked for it to be read and
+assessed before any further action -- no implementation was done on
+that review's broader recommendations (pause routing, simplify to one
+local model, security findings on `ask_claude`/`ask_gpt`, per-turn
+deadline, status/verifier-model coupling, output-truncation handling)
+in this session; those remain open decisions for Kamara.
+
+**Bug #1, found and fixed (PR #90, merged, deployed, live-verified):**
+`SshStdioTransport.request()` raised a generic `"SSH gateway request
+failed"` on every non-zero SSH exit without ever reading stdout.
+`worker_stdio_gateway.py`'s `serve_one()` always writes one bounded,
+already-redacted JSON response before exiting, even when it caught an
+internal exception and is exiting non-zero (2/3) for an
+application-level refusal -- that structured, safe error was being
+discarded every time. Fixed to peek for a response body bound to the
+exact request_id/version and surface its error code when present,
+falling back to the generic message otherwise. This is what finally
+made the real error (`gateway refused request: coordinator_refused`)
+visible instead of the previous opaque message, which is what unblocked
+the rest of this investigation. A second, separate, previously-flagged
+bug fixed in the same PR: `dispatch_and_wait()` returned the real
+worker's submission envelope (`{"output": ..., "stdout_summary": ...,
+"duration_seconds": ..., "evidence_files": ...}`) instead of the
+capability's actual output nested inside it -- confirmed fixed by
+tonight's successful proof-run returning the correctly unwrapped
+`{"content": ..., "tool_calls": ...}` shape.
+
+**Root cause, confirmed live, not guessed:** ran a purely read-only
+diagnostic script on `karmo-ai01` using the exact same connection
+factory the real forced-command gateway process uses
+(`build_backend(cfg)._connection_factory()`):
+
+```
+current_user / session_user: karmo_gateway
+karmo_worker_job_results table_owner: karmo
+karmo_gateway can_insert: False
+karmo_gateway can_select: False
+--- control comparison ---
+karmo_worker_job_payloads can_insert: True
+```
+
+The forced-command gateway connects as `karmo_gateway`, not the
+`karmo`/schema-owning role every migration and every existing test runs
+as -- an assumption from earlier tonight's notes (and from
+`docs/runbooks/WORKER01_EXACT_ACTIVATION.md`'s DSN example) that turned
+out to be wrong for this specific role. Migration 007 created
+`public.karmo_worker_job_results` with no explicit `GRANT`, unlike the
+pre-existing `karmo_worker_job_payloads` table, which `karmo_gateway`
+already had `INSERT` on (granted directly in production at some point,
+outside any migration in this repo). Every `submit_result` call for a
+capability with real result content hit `InsufficientPrivilege` on the
+`INSERT` inside `submit_authenticated_result()`'s transaction, which
+rolled back the `RESULT_SUBMITTED` state change made in the same
+transaction -- exactly why every affected job was left stuck at
+`LEASED` with zero `RESULT_SUBMITTED` event, while
+`heartbeat`/`poll`/`authorize_execution` (none of which touch this
+table) kept working the entire time. This exact hypothesis was
+independently raised in the external review before it was confirmed
+live here; credit due there. It is also exactly the kind of gap this
+session's own earlier local-Postgres reproduction (in-conversation,
+same night) could not have caught, since that reproduction used a
+privileged schema-owning test role and an autocommit connection,
+neither of which matches production's actual transactional/role shape
+-- a real methodology gap, noted for future verification work.
+
+Along the way, several other hypotheses were investigated and ruled out
+with direct evidence before this one was found: lease timing (ruled out
+twice, once via direct DB inspection, once via event-log timestamps),
+migration/table existence, `require_current_key`/key_id registration
+(DB row confirmed matching), HMAC key material (SHA-256 of both hosts'
+key files confirmed byte-identical), signature/digest verification
+(reproduced successfully offline with a realistic wrapped tool-call
+result), wire JSON round-tripping, credential staleness (fresh 120s TTL
+per call), and the heartbeat-lease-during-long-poll_once() theory (real
+structural gap, flagged separately below, but numerically didn't fit
+this specific ~20s failure window against a 90s heartbeat lease).
+
+**Fix (PR #91, merged, deployed, live-verified):** migration 009 grants
+the minimal privilege actually needed -- `INSERT` and `SELECT` on this
+one table, for this one role, nothing broader, guarded by the same
+`pg_roles` existence check as migration 006. New regression test
+creates a genuinely restricted Postgres role (literally named
+`karmo_gateway` to match the migration's grant target) and reproduces
+`InsufficientPrivilege` on the exact real `INSERT` before the migration,
+then proves the identical restricted role can insert and read back its
+own result after it -- a test class this repo didn't have before (every
+prior worker-coordination test connects as the schema-owning role).
+Full suite (350 passed) verified against real Postgres locally via
+colima + `postgres:17-alpine` before merge, not just CI.
+
+**Live verification after deploying both PRs:**
+
+```
+PRODUCTION ACCESS AUTHORIZATION
+Task: Deploy PR #90 and PR #91, investigate and fix the submit_result failure, re-run the Phase D1 proof-run
+Target system/environment: karmo-ai01 (core-service), Worker01 (worker-runtime), production Postgres
+Purpose: Kamara's direct instructions ("keep debugging" / "deploy and rerun" / "run the read only privilage check first" / "build it" / "merge it" / "deploy and run")
+Permitted operations: read-only diagnostics (SSH connectivity, journal/event inspection, key-file hash/mtime comparison, DB privilege introspection), backup+install reviewed code, apply migration 009, restart both services, dispatch real jobs and observe, reconcile via recover_expired_leases() if needed
+Authority: READ-ONLY + WRITE (same shape as prior Phase D1 authorizations)
+Granted: 2026-09-19, by Kamara (direct chat instructions, this session)
+Expires: automatically on task completion
+```
+
+Deploy SHA `d311a3d3ce3dac5f7e768c5d7a79807322c76f06` (PR #90, both
+hosts) then `8931e7a881298ff1686f8c9c5026fc7889b7bf79` (PR #91,
+karmo-ai01 only -- no worker-runtime changes in that PR). Both services
+restarted clean each time. Migration 009 applied and confirmed
+(`has_table_privilege` returned true for both INSERT and SELECT under
+the real `karmo_gateway` role, immediately before the final proof-run).
+
+**Final proof-run result: SUCCEEDED**, real end-to-end round trip,
+`qwen3:8b` via Worker01's `model_chat_tools` capability, `list_tasks`
+tool schema:
+
+```
+OUTCOME: SUCCEEDED
+JOB_ID: 6452a7c7-00d4-4801-ba02-d34aa7727616
+ELAPSED_SECONDS: 19.26787
+POLL_COUNT: 20
+RESULT: {'content': '', 'tool_calls': [{'id': 'call_9katn1kc', 'function': {'name': 'list_tasks', 'index': 0, 'arguments': {'status': 'OPEN'}}}]}
+ERROR: None
+```
+
+This is the first fully successful Phase D1 round trip of the session:
+leased, ticket issued and consumed, capability executed, result signed
+and submitted, durably stored, correctly unwrapped, and returned by
+`dispatch_and_wait()` -- proving the worker job/ticket/result pipeline
+genuinely works end to end for a real tool-calling chat capability, not
+just a benchmark-style fixed-answer one. All temporary scripts removed
+from both hosts after the run. No data was lost or masked at any point
+in this entire investigation; every stuck job along the way was
+reconciled honestly via `recover_expired_leases()`, never silently
+guessed.
+
+**A real, separate structural gap found and flagged during this
+investigation, not yet fixed:** `remote_worker_runtime.py`'s
+`run_loop()` sends a heartbeat once at the top of each loop iteration,
+then `poll_once()` runs to completion (poll, authorize, execute the
+capability, submit the result, with up to 3 retries) with no heartbeat
+sent during that entire window. `_require_active_worker()` (called
+inside `submit_authenticated_result()`) requires the worker's heartbeat
+lease -- separate from the job's own lease -- to still be valid at that
+moment. Tonight's ~20-second capability calls against a 90-second
+heartbeat lease had comfortable margin, so this was not the cause of
+tonight's incident, but a slower capability approaching or exceeding
+that margin would hit this. Not fixed in this session; worth its own
+scoped follow-up (e.g., a heartbeat renewal concurrent with or
+immediately before `submit_result`, or extending the heartbeat lease by
+the capability's own declared timeout the same way migration 008 did
+for job leases).
+
+**Bottom line**: Phase D1's stated goal -- prove a worker can serve a
+real tool-calling chat round trip end to end and measure real
+reliability -- is now met with real, positive evidence, not just a
+reliability bug report. D1's dispatch/wait glue remains explicitly a
+proof/measurement harness, not wired into `operator.py`'s real `_chat()`
+candidate loop; Phase D2 (routing real chat traffic to a worker) is
+still a separate, later, explicit decision this evidence exists to
+inform, not something authorized or started tonight. The external
+review's broader recommendation (pause further router expansion,
+simplify to one dependable local model) has not been acted on and
+remains Kamara's decision.
