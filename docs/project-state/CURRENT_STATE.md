@@ -1910,3 +1910,88 @@ circuit breaker done and merged, not yet wired in; load measurement
 done with a concrete, evidence-based bound and a real design
 implication (busy-worker eligibility) for D2 to account for. D2 itself
 has not been started.
+
+## 2026-09-19 (continued) -- D2 built, independently reviewed, and held inactive (PR #97, merged as dormant code)
+
+Kamara asked to build D2 ("build d2"). Built and wired into `operator.py`'s
+real `_chat()`: a live routing decision (`live_router.py`) preferring an
+idle, tool-capable, circuit-closed worker over local `karmo-ai01`; a single
+75-second total per-turn deadline (`TOTAL_CHAT_DEADLINE_SECONDS`) replacing
+the previous fixed-120s-per-candidate architecture; a pluggable
+`_run_tool_loop()` shared between local and worker paths; and
+`worker_dispatch_client.py`, Core's own narrow, crypto-free dispatch-
+origination credential path (a real access-boundary finding: Core needs
+plain DB access to worker-coordination tables, never any of the SSH
+gateway's cryptographic material). 24 new tests, full suite (412 passed)
+verified against real Postgres.
+
+Before deployment, Kamara asked for the same D2 work to be written up
+(`docs/project-state/PROJECT_SAVE_2026-09-19_MODEL_ROUTER_D2_REVIEW_FOR_CHATGPT.md`,
+committed as PR #98) and independently reviewed. Two review documents came
+back (`KARMO_D2_TECHNICAL_REVIEW_FOR_CLAUDE_2026-09-19.md`,
+`KARMO_D2_REVIEW_FOR_NATALIE_2026-09-19.md`), both recommending the same
+conclusion: **hold D2 activation.**
+
+**Findings assessed and agreed with, in order of severity:**
+1. The proposed dispatch DSN reused `karmo_gateway`'s role -- authority is
+   bounded only by which code calls `.dispatch()`, not by the database
+   role itself. A compromised `karmo-core.service` could fabricate an
+   approved job for any capability, not just `model_chat_tools`. Needs a
+   dedicated, narrower dispatcher identity before ever provisioning.
+2. Worker-coordination tables (`karmo_worker_job_payloads`/
+   `karmo_worker_job_results`) become an undeclared second copy of real
+   chat content (messages, retrieved memory context, answers) with no
+   retention/redaction policy -- a real data-classification gap.
+3. Worker eligibility is check-then-act, not an atomic capacity
+   reservation -- a real race if KARMO's chat surface is ever more than
+   single-threaded.
+4. **The speed benefit was never actually proven.** Real load measurement
+   from earlier tonight (20.1s/32.1s/44.1s) was never compared against an
+   equivalent local-`karmo-ai01` baseline for the same prompts -- the
+   original premise (routing relieves contention) was never verified
+   against evidence that contention is severe enough to justify this.
+   Separately, `MIN_WORKER_DISPATCH_BUDGET_SECONDS` (15.0) was below the
+   fastest cold-start total ever measured (20.1s) -- a real calibration
+   bug, not just an unproven assumption.
+5. Several of Section 5's required tests remain genuinely missing (Core
+   restart mid-flight, late-result-after-deadline, fallback-path
+   authorization denial, concurrent-acquisition).
+
+**Decision (Kamara's, after agreeing with both reviews' reasoning): stop
+pursuing D2 activation for now.** PR #97 merged as dormant, preserved
+code -- `/etc/karmo/core/worker-dispatch.dsn` will not be created,
+`NullWorkerDispatchClient` stays in effect in production, and this merge
+changes zero live chat behavior. The supporting infrastructure (deadline,
+capability filtering, fixed worker inventory, pure decision function,
+circuit breaker, decision audit) is kept because it's sound on its own;
+live worker dispatch itself stays inactive until the reviews' actual
+checklist is satisfied (dedicated dispatcher identity, data retention
+policy, atomic reservation, proven latency benefit) -- not attempted this
+session.
+
+**Three real bugs fixed in the same PR, independent of the activation
+decision** (all still relevant to keep the dormant code correct):
+- Circuit breaker was recording a failure when a worker attempt was cut
+  short by the turn's own total deadline, not the worker's fault --
+  removed.
+- `_shadow_route()` and `_compute_live_decision()` each independently
+  polled the same health signals every single turn -- extracted
+  `_collect_health_signals()` as one shared call site.
+- `MIN_WORKER_DISPATCH_BUDGET_SECONDS` raised from 15.0 to 30.0 (still
+  explicitly not a benchmarked value).
+
+Deploy SHA `5d58713` (merged, not deployed -- no production access used
+in this entire review/decision cycle; this was code review and local
+test verification only).
+
+**Bottom line for the Model Router effort overall**: Phases A/B/C are
+deployed and live, providing real reliability value today. D1 is proven
+(a worker can serve a real round trip) but remains a dormant harness. D2
+exists, is tested, and is held inactive pending real evidence and a
+hardened trust boundary -- consistent with both this session's own
+external review and Kamara's own judgment, not a result forced by either
+alone. Next effort, per both reviews' converging recommendation, should
+go toward local-only chat improvements (one dependable model, status
+without requiring a second verifier model, bounded output/truncation
+handling) rather than further distributed-routing work, until KARMO's
+hardware or measured demand actually changes the calculus.

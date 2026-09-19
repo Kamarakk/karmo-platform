@@ -433,6 +433,39 @@ workers proven, soak-tested, closed). Since then, in order:
     eligibility signal, the circuit breaker actually consulted, and
     Section 5's remaining required tests) has not been started.
 
+18. **RESOLVED — D2 built, independently reviewed, and deliberately held
+    inactive** (Kamara: "build d2", then obtained two independent
+    external reviews and chose "stop pursuing D2 activation for now").
+    Full detail in `CURRENT_STATE.md`'s 2026-09-19 entry of the same
+    name — short version:
+
+    - D2 was fully built and wired into real chat (PR #97): live
+      routing decision, one 75-second total per-turn deadline replacing
+      the old stacked-timeout architecture, and Core's own narrow
+      dispatch credential path (a real finding: Core needs plain DB
+      access, never the SSH gateway's crypto material).
+    - Two independent reviews of the design both recommended holding
+      activation: the dispatch credential was over-privileged (reused
+      the gateway's role rather than a dedicated one), worker tables
+      would become an undeclared copy of real chat content with no
+      retention policy, worker selection has a check-then-act race, and
+      — most importantly — **the speed benefit was never proven**: no
+      local-vs-worker baseline comparison was ever measured, so the
+      original premise (routing relieves contention) was never actually
+      verified.
+    - **Decision: PR #97 merged as dormant, preserved code only.** The
+      DSN file it needs to ever activate will not be created;
+      `NullWorkerDispatchClient` stays in effect in production, so this
+      changes zero live chat behavior. Three real bugs the reviews
+      found (a circuit-breaker misclassification, health signals
+      polled twice per turn, a miscalibrated budget floor) were fixed
+      in the same PR, independent of the activation question.
+    - **Next effort, per both reviews' converging recommendation**:
+      local-only chat improvements (one dependable model, status
+      without requiring a second verifier model, bounded output/
+      truncation handling) rather than further distributed-routing
+      work — not started yet, Kamara's call on priority.
+
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
 Session ended mid-canary after 12+ hours, on Kamara's explicit call to
