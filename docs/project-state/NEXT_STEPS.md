@@ -305,8 +305,46 @@ workers proven, soak-tested, closed). Since then, in order:
     in sync by hand. 9 new/updated tests; ran against a real local
     Postgres (colima), not just CI: full suite, 348 passed, 0 skipped,
     0 failed — every existing lease-dependent test confirmed unaffected.
-    Next real step: deploy this and re-run item 13's exact proof-run to
-    confirm the fix actually resolves it live, not just in tests.
+15. **Lease-duration fix deployed and re-tested live: confirmed working
+    correctly — but a second, separate, still-unresolved issue blocks
+    Phase D1's full proof** (Kamara's direct instruction). Deployed PR
+    #89 to `karmo-ai01`, ran migration 008, re-ran item 13's exact same
+    proof-run.
+
+    **The fix itself is verified correct**: read the job's row directly
+    from Postgres — `requested_lease_seconds=140`,
+    `lease_expires_at` exactly 140 seconds after the lease was granted,
+    not the old fixed 60. Confirmed, not assumed.
+
+    **But the proof-run still timed out** — and this time the failure
+    was shown NOT to be timing-related at all: the worker gave up only
+    ~21 seconds after leasing, nowhere near either the 140s lease or the
+    120s capability timeout. Called Ollama directly on Worker01 with the
+    identical request — it returned a clean, valid tool call in ~7
+    seconds, so the capability execution itself isn't the problem
+    either. The failure is specifically in the `submit_result` step:
+    the worker gets as far as consuming its execution ticket, then
+    nothing — no `RESULT_SUBMITTED` event at all, both times tonight.
+    Checked `karmo_worker_events`: **the last fully successful job on
+    Worker01 was 2026-09-17, before any of tonight's worker-runtime
+    deployments** (PR #83's heartbeat extension, PR #87's
+    `model_chat_tools`). Heartbeats are confirmed still working right
+    now, so this isn't a total transport failure — something specific
+    to `submit_result`. The exact underlying SSH error is hidden by
+    design (`ssh_stdio_transport.py` deliberately never surfaces
+    stderr, to avoid leaking local paths/account names), so the real
+    root cause isn't visible yet from inside the existing error
+    handling. **Leading hypothesis, not confirmed**: a regression from
+    one of tonight's worker-runtime deployments, most likely PR #83
+    (the only change touching the gateway dispatch path itself).
+
+    Both stuck jobs cleanly reconciled via `recover_expired_leases()`,
+    no data loss. Both services confirmed healthy throughout, same
+    worker `MainPID` the entire time — no crash. Full detail in
+    `CURRENT_STATE.md`. **This needs its own dedicated investigation**
+    — most direct next step: reproduce the exact SSH forced-command
+    invocation manually with stderr visible, rather than through code
+    that deliberately discards it. Not resolved this session.
 
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 

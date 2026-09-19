@@ -1540,3 +1540,93 @@ restart; restore either host's code from its `*-before` backup and
 restart. Migration 007 and the capability grant are both additive/safe
 to leave in place regardless of whether the lease-duration issue is
 fixed later.
+
+## 2026-09-19 (same session, past midnight) — lease-duration fix deployed and re-tested: the fix works, but a second, separate blocking issue was found
+
+```
+PRODUCTION ACCESS AUTHORIZATION
+Task: Deploy the lease-duration fix (PR #89) and re-run the exact same Phase D1 live proof-run
+Target system/environment: karmo-ai01 (core-service), production Postgres
+Purpose: Kamara's direct instruction ("deploy pr 89 and re-run the same proof-run")
+Permitted operations: backup+install reviewed code, run migration 008, restart karmo-core.service, dispatch one real job and observe, reconcile via recover_expired_leases() if needed
+Authority: READ-ONLY + WRITE (same shape as the prior Phase D1 authorization)
+Granted: 2026-09-19, by Kamara (direct chat instruction)
+Expires: automatically on task completion
+```
+
+Deploy SHA `eef91e9313f453b9010c2db3d91a39b0a56a7cbe`. Backed up to
+`/opt/karmo/backups/worker-deploy-20260919T020539Z`. Migration 008
+applied (`requested_lease_seconds` column + bound-check constraint
+confirmed present). `karmo-core.service` restarted clean
+(`MainPID=420956`). Confirmed the exact intended code landed
+(`lease_job(self, *, job_id, worker_id, lease_seconds=None)`, not the
+old `=60` default) before restarting.
+
+**Re-ran the identical proof-run** (`qwen3:8b`, `list_tasks` tool,
+same prompt). Result: **`TIMED_OUT` again, same as before.** But this
+time the investigation went further, and confirmed the lease fix
+itself works exactly as designed — read the job's row directly from
+Postgres: `requested_lease_seconds=140`, and `lease_expires_at` was
+recorded as exactly 140 seconds after the lease was granted (not the
+old 60). **The lease-duration fix is verified correct.** It was not,
+however, sufficient to make this proof-run succeed — a second, separate
+problem exists.
+
+**Second finding, root cause not yet fully established**: Worker01's
+journal showed the identical error as before
+(`submit_result failed after 3 attempts ... SSH gateway request
+failed`), but this time the timing was checked precisely: the job was
+leased at `02:06:44` and the worker gave up at `02:07:05` — only ~21
+seconds later, nowhere near either the 140-second lease or the
+120-second capability timeout. This rules out a timeout as the cause of
+*this* failure. Called Ollama's `/api/chat` directly on Worker01 with
+the exact same model/prompt/tool schema to check the real response
+shape: it returned a clean, valid, well-formed tool call in ~7 seconds
+(`{"tool_calls":[{"id":"call_5xubxop9","function":{"index":0,"name":"list_tasks","arguments":{"status":"open"}}}]}`)
+— the underlying capability execution is not the problem. Checked
+`karmo_worker_events` for Worker01's history: the **last fully
+successful job (leased → ticket issued → ticket consumed → result
+submitted → succeeded) was 2026-09-17 17:08:34**, before any of
+tonight's worker-runtime deployments (PR #83's heartbeat extension, PR
+#87's `model_chat_tools`). Both of tonight's real dispatch attempts
+stop at the identical point: ticket consumed, then nothing —
+`submit_result` never reaches `RESULT_SUBMITTED` at all.
+`ssh_stdio_transport.py`'s own code confirms `"SSH gateway request
+failed"` means the SSH subprocess itself exited non-zero (not a
+Python-level timeout, which raises a different message) -- and its
+stderr is deliberately never surfaced to callers ("OpenSSH diagnostics
+can reveal local paths, account names, or deployment details"), so the
+real underlying reason is not yet visible from inside the existing
+code's own error handling.
+
+**Leading hypothesis, not yet confirmed**: something in tonight's
+accumulated worker-runtime deployments to Worker01 (most likely PR
+#83's heartbeat wire-protocol change, since that's the only change
+touching `ssh_stdio_transport.py`/the gateway dispatch path itself,
+though PR #87 is also a candidate) may have introduced a regression
+specific to the `submit_result` operation -- heartbeats are confirmed
+still working correctly (Worker01's `ollama_snapshot` data has kept
+flowing all night), so this is not a total transport failure, only
+something specific to this one operation. Not confirmed with certainty
+-- flagged honestly as the leading hypothesis, not a proven cause.
+
+Both jobs from tonight's two attempts were cleanly reconciled via the
+existing `recover_expired_leases()` (job IDs
+`89f0f9b8-b5b7-407e-9bb1-68ef09b1d78a` and
+`96611f08-9044-4cc4-bbbc-7eb1800ed919`), both now `RECOVERY_REQUIRED`
+with an honest "unknown execution outcome" error, no data loss. Both
+services confirmed healthy afterward: `karmo-core.service` active,
+`karmo-worker01.service` active with the same `MainPID` throughout this
+entire investigation (no crash at any point). All temp files/scripts
+removed from both hosts.
+
+**Bottom line**: the lease-duration bug (item 13/14) is real, fixed,
+and confirmed working correctly under direct inspection. Phase D1's
+full live proof (a worker actually completing and reporting a
+tool-calling round trip end to end) is still blocked -- by a different,
+not-yet-root-caused issue in the submit_result path, first observed
+tonight, not present as of the last confirmed-successful job on
+2026-09-17. This needs its own dedicated investigation (most direct
+next step: reproduce the exact SSH forced-command invocation manually
+with stderr visible, rather than through code that deliberately
+discards it) -- not resolved in this session.
