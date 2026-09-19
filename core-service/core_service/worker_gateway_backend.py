@@ -78,6 +78,65 @@ def lease_from_wire(value: dict, *, expected_worker_id: str) -> WorkerLease:
     )
 
 
+def attach_job_arguments(connection_factory, *, job_id: str, tool_id: str, tool_version: str,
+                         arguments: dict, expected_arguments_digest: str):
+    """Attach the exact immutable arguments needed by a remote worker.
+
+    Deliberately a standalone function, not a method requiring the full
+    PostgresWorkerGatewayBackend (and the crypto-dependent WorkerCoordinator
+    its constructor requires): this operation is pure database access, no
+    cryptographic material of any kind, needed identically by the SSH
+    forced-command gateway (whose backend calls this from its own method
+    below) and by Core's own dispatch-origination code (Model Router Phase
+    D2's worker_dispatch_client.py, which enqueues/attaches jobs directly
+    as a database client and never touches worker/ticket/result signing
+    keys at all -- those only matter to the gateway process actually
+    receiving a worker's SSH connection).
+
+    This is deliberately separate from PR #41's job row. If attachment
+    fails, the queued job is simply not remotely dispatchable; it is never
+    executed with missing, guessed, or mismatched arguments."""
+    if not isinstance(arguments, dict):
+        raise WorkerGatewayBackendError("remote job arguments must be an object")
+    serialized = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
+    if len(serialized.encode("utf-8")) > _MAX_ARGUMENT_BYTES:
+        raise WorkerGatewayBackendError("remote job arguments exceed transport bound")
+    computed = arguments_digest(tool_id, tool_version, arguments)
+    if computed != expected_arguments_digest:
+        raise WorkerGatewayBackendError("remote job arguments digest mismatch")
+    with connection_factory() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT tool_id, tool_version, arguments_digest, state "
+            "FROM public.karmo_worker_jobs WHERE job_id=%s::uuid FOR UPDATE",
+            (job_id,),
+        )
+        row = cur.fetchone()
+        if row is None or row[3] != "QUEUED":
+            raise WorkerGatewayBackendError("remote job is missing or no longer queued")
+        if row[0] != tool_id or row[1] != tool_version or row[2] != computed:
+            raise WorkerGatewayBackendError("remote job binding mismatch")
+        cur.execute(
+            """
+            INSERT INTO public.karmo_worker_job_payloads
+                (job_id, arguments, arguments_digest)
+            VALUES (%s::uuid, %s::jsonb, %s)
+            ON CONFLICT (job_id) DO NOTHING
+            RETURNING job_id
+            """,
+            (job_id, serialized, computed),
+        )
+        if cur.fetchone() is None:
+            cur.execute(
+                "SELECT arguments, arguments_digest FROM public.karmo_worker_job_payloads "
+                "WHERE job_id=%s::uuid",
+                (job_id,),
+            )
+            existing = cur.fetchone()
+            if existing is None or existing[0] != arguments or existing[1] != computed:
+                raise WorkerGatewayBackendError("remote job arguments already differ")
+    return computed
+
+
 class PostgresWorkerGatewayBackend:
     """Authenticated outbound-worker gateway over the durable Core substrate."""
 
@@ -112,47 +171,11 @@ class PostgresWorkerGatewayBackend:
 
         This is deliberately separate from PR #41's job row. If attachment
         fails, the queued job is simply not remotely dispatchable; it is never
-        executed with missing, guessed, or mismatched arguments.
-        """
-        if not isinstance(arguments, dict):
-            raise WorkerGatewayBackendError("remote job arguments must be an object")
-        serialized = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
-        if len(serialized.encode("utf-8")) > _MAX_ARGUMENT_BYTES:
-            raise WorkerGatewayBackendError("remote job arguments exceed transport bound")
-        computed = arguments_digest(tool_id, tool_version, arguments)
-        if computed != expected_arguments_digest:
-            raise WorkerGatewayBackendError("remote job arguments digest mismatch")
-        with self._connection_factory() as conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT tool_id, tool_version, arguments_digest, state "
-                "FROM public.karmo_worker_jobs WHERE job_id=%s::uuid FOR UPDATE",
-                (job_id,),
-            )
-            row = cur.fetchone()
-            if row is None or row[3] != "QUEUED":
-                raise WorkerGatewayBackendError("remote job is missing or no longer queued")
-            if row[0] != tool_id or row[1] != tool_version or row[2] != computed:
-                raise WorkerGatewayBackendError("remote job binding mismatch")
-            cur.execute(
-                """
-                INSERT INTO public.karmo_worker_job_payloads
-                    (job_id, arguments, arguments_digest)
-                VALUES (%s::uuid, %s::jsonb, %s)
-                ON CONFLICT (job_id) DO NOTHING
-                RETURNING job_id
-                """,
-                (job_id, serialized, computed),
-            )
-            if cur.fetchone() is None:
-                cur.execute(
-                    "SELECT arguments, arguments_digest FROM public.karmo_worker_job_payloads "
-                    "WHERE job_id=%s::uuid",
-                    (job_id,),
-                )
-                existing = cur.fetchone()
-                if existing is None or existing[0] != arguments or existing[1] != computed:
-                    raise WorkerGatewayBackendError("remote job arguments already differ")
-        return computed
+        executed with missing, guessed, or mismatched arguments."""
+        return attach_job_arguments(
+            self._connection_factory, job_id=job_id, tool_id=tool_id, tool_version=tool_version,
+            arguments=arguments, expected_arguments_digest=expected_arguments_digest,
+        )
 
     def _candidate_jobs(self, *, worker_id: str, requested_capabilities):
         """Find bounded candidates; lease_job remains the authoritative CAS gate.

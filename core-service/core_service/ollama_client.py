@@ -50,7 +50,7 @@ class OllamaChatClient:
         self._opener = build_opener(_RefuseRedirect)
 
     def _request_message(self, *, model: str, messages: list[dict], temperature: float,
-                         tools: list[dict] | None) -> dict:
+                         tools: list[dict] | None, timeout: float | None = None) -> dict:
         if not model or any(ch in model for ch in "\r\n\x00"):
             raise OllamaClientError("invalid model identifier")
         body = {
@@ -69,8 +69,17 @@ class OllamaChatClient:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+        # Model Router Section 3.5 -- a single total per-turn deadline,
+        # not stacked fixed per-candidate timeouts (the direct cause of a
+        # real 379.5-second turn: two sequential fixed 120s timeouts,
+        # uncapped in total). An explicit per-call override lets a caller
+        # (operator.py's _chat()) pass its own remaining turn budget
+        # instead of always using this client's fixed construction-time
+        # default; every existing caller that never passes one keeps
+        # today's exact behavior unchanged.
+        effective_timeout = timeout if timeout is not None else self.timeout
         try:
-            with self._opener.open(request, timeout=self.timeout) as response:
+            with self._opener.open(request, timeout=effective_timeout) as response:
                 raw = response.read(1024 * 1024 + 1)
         except Exception as exc:
             raise OllamaClientError(f"local model request failed: {type(exc).__name__}") from exc
@@ -85,19 +94,24 @@ class OllamaChatClient:
             raise OllamaClientError("invalid Ollama message content")
         return message
 
-    def chat(self, *, model: str, messages: list[dict], temperature: float = 0.2) -> str:
-        message = self._request_message(model=model, messages=messages, temperature=temperature, tools=None)
+    def chat(self, *, model: str, messages: list[dict], temperature: float = 0.2,
+             timeout: float | None = None) -> str:
+        message = self._request_message(model=model, messages=messages, temperature=temperature, tools=None, timeout=timeout)
         return message["content"].strip()
 
     def chat_with_tools(self, *, model: str, messages: list[dict], tools: list[dict],
-                        temperature: float = 0.2) -> dict:
+                        temperature: float = 0.2, timeout: float | None = None) -> dict:
         """Like chat(), but returns the full response message (content plus any
         tool_calls the model requested) instead of only the answer text -- the
         caller needs to see a tool-call request to act on it, which a bare
         string return can't represent. tools follows Ollama's native
         function-calling schema; pass an empty list to get a plain completion
-        shaped like chat()'s but as the full message dict."""
-        message = self._request_message(model=model, messages=messages, temperature=temperature, tools=tools)
+        shaped like chat()'s but as the full message dict.
+
+        timeout, when given, overrides this client's fixed construction-time
+        default for this one call only (Section 3.5's single total per-turn
+        deadline -- see _request_message)."""
+        message = self._request_message(model=model, messages=messages, temperature=temperature, tools=tools, timeout=timeout)
         tool_calls = message.get("tool_calls")
         if tool_calls is not None and not isinstance(tool_calls, list):
             raise OllamaClientError("invalid Ollama tool_calls field")

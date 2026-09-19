@@ -27,7 +27,7 @@ class FakeModelClient:
             return "KarmoLab is online and the supplied read evidence was collected."
         return "KARMO conversational response"
 
-    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2, timeout=None):
         content = self.chat(model=model, messages=messages, temperature=temperature)
         return {"content": content, "tool_calls": None}
 

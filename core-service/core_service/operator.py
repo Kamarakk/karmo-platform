@@ -51,6 +51,7 @@ from .orchestration import (
 )
 from .registry import CapabilityRegistry
 from .shadow_router import (
+    KNOWN_WORKER_IDS,
     NullWorkerHealthReader,
     build_default_worker_health_reader,
     collect_shadow_signals,
@@ -63,10 +64,55 @@ from .router_decision_audit import (
     log_decision_recording_failure,
     new_correlation_id,
 )
+from .live_router import compute_live_routing_decision
+from .circuit_breaker import CircuitBreaker
+from .worker_dispatch_client import NullWorkerDispatchClient, build_default_worker_dispatch_client
+
+import time
 
 KARMOLAB_STATUS_TOOL = "karmolab.read_status"
 KARMOLAB_STATUS_VERSION = "1.0.0"
 MAX_MEMORY_CONTEXT_CHARS = 12_000
+
+# Model Router Phase D2 (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
+# Section 3.5) -- one total deadline for the whole chat turn (health check
+# + routing decision + every candidate attempt combined), replacing the
+# previous fixed-120-seconds-per-candidate architecture entirely rather
+# than sitting alongside it. This is the direct fix for a real 379.5-second
+# turn: two sequential fixed 120s timeouts, uncapped in total. 75s is the
+# plan's own initial value (its stated range is 60-90s) -- explicitly
+# provisional, to be tuned from real telemetry, not asserted as final.
+TOTAL_CHAT_DEADLINE_SECONDS = 75.0
+
+# Below this much remaining budget, a worker dispatch attempt is skipped
+# entirely rather than started and immediately doomed -- real load
+# measurement (docs/project-state/CURRENT_STATE.md, 2026-09-19) showed
+# even a fast, warm-model worker round trip takes ~10-15s.
+MIN_WORKER_DISPATCH_BUDGET_SECONDS = 15.0
+
+_MODEL_CHAT_TOOLS_TOOL_ID = "model_chat_tools"
+_MODEL_CHAT_TOOLS_TOOL_VERSION = "1.0.0"
+
+
+class _TurnDeadlineExceeded(Exception):
+    """Internal signal that TOTAL_CHAT_DEADLINE_SECONDS ran out mid-turn --
+    never a user-visible error type, always converted to the same
+    fail-closed 'unavailable' response Section 3.9 requires. Distinct from
+    a candidate-specific failure (OllamaClientError, a failed worker
+    dispatch) so the caller knows the WHOLE turn's budget is gone, not
+    just one candidate's own attempt -- trying another candidate at that
+    point would violate Section 3.5's "no accumulating timeouts" rule."""
+
+
+class WorkerChatDispatchError(RuntimeError):
+    """A worker dispatch for this chat turn did not succeed (any
+    DispatchOutcome other than SUCCEEDED). Caught at the call site to
+    trigger circuit-breaker failure recording and fallback to the local
+    candidate chain -- the one sanctioned fallback path (Section 3.9: a
+    routing/authorization failure is never resolved by silently retrying
+    a different model to get a different answer; falling back to
+    karmo-ai01 when no worker is fit is the plan's own explicit design,
+    not that forbidden retry)."""
 
 # The one place the model-exposed tool allow-list is built (I-06). Per
 # docs/architecture/KARMO_CHAT_TOOL_CALLING_AND_EXTERNAL_DELEGATION.md
@@ -302,6 +348,8 @@ class KarmoOperator:
         task_store=None,
         worker_health_reader=None,
         router_decision_recorder=None,
+        worker_dispatch_client=None,
+        circuit_breaker=None,
     ):
         self.model_client = model_client or OllamaChatClient()
         self.router = ModelRouter(resources or default_model_resources())
@@ -336,6 +384,20 @@ class KarmoOperator:
                 self.router_decision_recorder = build_default_router_decision_recorder()
             except Exception:
                 self.router_decision_recorder = NullRouterDecisionRecorder()
+        # Model Router Phase D2 -- circuit breaker is pure in-memory
+        # construction, never fails; worker_dispatch_client follows the
+        # same never-raise-on-construction discipline as every other
+        # optional subsystem above, degrading to NullWorkerDispatchClient
+        # (worker path never attempted) until its own DSN is deployed as
+        # its own separate, explicit provisioning step.
+        if worker_dispatch_client is not None:
+            self.worker_dispatch_client = worker_dispatch_client
+        else:
+            try:
+                self.worker_dispatch_client = build_default_worker_dispatch_client()
+            except Exception:
+                self.worker_dispatch_client = NullWorkerDispatchClient()
+        self.circuit_breaker = circuit_breaker if circuit_breaker is not None else CircuitBreaker()
         self.registry = CapabilityRegistry()
         self.registry.register(_status_manifest())
         self.registry.register(bloomboss_manifest())
@@ -596,15 +658,55 @@ class KarmoOperator:
             return json.dumps({"error": "tool call requires approval and was not executed"})
         return json.dumps(decision.result, default=str)
 
-    def _run_tool_loop(self, model_id: str, messages: list[dict], tools: list[dict]) -> str:
-        """Drives the tool-call round trip: ask the model, run any tool calls
-        it proposes through the dispatcher, feed results back, repeat up to
-        _MAX_CHAT_TOOL_ROUNDS times. Bounded so a confused model can't loop
-        forever -- on cap exceeded, returns a plain, honest message rather
-        than hanging or fabricating an answer."""
+    def _ask_local(self, model_id: str):
+        """ask_fn for _run_tool_loop's local (karmo-ai01) path -- same
+        OllamaChatClient call as before D2, now taking the loop's own
+        remaining-budget as this one call's timeout instead of the
+        client's fixed construction-time default (Section 3.5)."""
+        def ask(messages, tools, timeout):
+            return self.model_client.chat_with_tools(
+                model=model_id, messages=messages, tools=tools, timeout=timeout,
+            )
+        return ask
+
+    def _ask_worker(self, worker_id: str, model_id: str):
+        """ask_fn for _run_tool_loop's Phase D2 worker path -- every round
+        is its own real dispatch_and_wait() call through model_chat_tools,
+        bounded by the loop's own remaining budget. A non-SUCCEEDED
+        outcome raises WorkerChatDispatchError, letting the caller decide
+        whether to fall back to local (a fresh attempt, not a mid-loop
+        patch) -- this function itself never falls back on its own."""
+        def ask(messages, tools, timeout):
+            outcome = self.worker_dispatch_client.dispatch(
+                worker_id=worker_id, tool_id=_MODEL_CHAT_TOOLS_TOOL_ID,
+                tool_version=_MODEL_CHAT_TOOLS_TOOL_VERSION,
+                arguments={"model": model_id, "messages": messages, "tools": tools},
+                total_deadline_seconds=timeout,
+            )
+            if outcome.outcome != "SUCCEEDED" or not isinstance(outcome.result, dict):
+                raise WorkerChatDispatchError(f"{outcome.outcome}: {outcome.error}")
+            return outcome.result
+        return ask
+
+    def _run_tool_loop(self, ask_fn, messages: list[dict], tools: list[dict], *, deadline: float) -> str:
+        """Drives the tool-call round trip: ask (local or, Phase D2, a
+        worker -- ask_fn abstracts which), run any tool calls it proposes
+        through the dispatcher, feed results back, repeat up to
+        _MAX_CHAT_TOOL_ROUNDS times. Bounded so a confused model can't
+        loop forever -- on cap exceeded, returns a plain, honest message
+        rather than hanging or fabricating an answer.
+
+        deadline is a time.monotonic() timestamp for the WHOLE chat turn
+        (Section 3.5's single total deadline, not a fresh budget per
+        round or per candidate) -- each round computes its own remaining
+        share of it and raises _TurnDeadlineExceeded rather than starting
+        a round it cannot possibly finish within the turn's own budget."""
         messages = list(messages)
         for _round in range(_MAX_CHAT_TOOL_ROUNDS):
-            response = self.model_client.chat_with_tools(model=model_id, messages=messages, tools=tools)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise _TurnDeadlineExceeded()
+            response = ask_fn(messages, tools, remaining)
             tool_calls = response.get("tool_calls")
             if not tool_calls:
                 return response["content"]
@@ -646,19 +748,94 @@ class KarmoOperator:
         except Exception as exc:
             log_decision_recording_failure(exc)
 
+    def _compute_live_decision(self, *, correlation_id: str):
+        """Model Router Phase D2: compute and durably record the LIVE
+        routing decision (decision_kind="live") this turn will actually
+        act on -- unlike _shadow_route's observation-only decision.
+        Fail-safe: any error degrades to (None, None), meaning "no live
+        decision" -- _chat() then proceeds exactly as it did before D2
+        (local candidates only). Never raises past this method."""
+        try:
+            capability_registry = {r.model_id: r.capabilities for r in self.router.inventory()}
+            karmo_ai01_reachable, karmo_ai01_loaded_models, worker_snapshots = collect_shadow_signals(
+                worker_health_reader=self.worker_health_reader,
+            )
+            worker_busy = {}
+            for worker_id in KNOWN_WORKER_IDS:
+                try:
+                    worker_busy[worker_id] = self.worker_health_reader.is_worker_busy(worker_id)
+                except Exception:
+                    worker_busy[worker_id] = True  # fail-closed: unknown -> busy
+            hosts = ("karmo-ai01",) + KNOWN_WORKER_IDS
+            breaker_states = {
+                (host, model_id): self.circuit_breaker.snapshot(host, model_id).state
+                for host in hosts for model_id in capability_registry
+            }
+            decision = compute_live_routing_decision(
+                capability_registry=capability_registry,
+                karmo_ai01_reachable=karmo_ai01_reachable,
+                karmo_ai01_loaded_models=karmo_ai01_loaded_models,
+                worker_snapshots=worker_snapshots,
+                worker_busy=worker_busy,
+                breaker_states=breaker_states,
+            )
+        except Exception:
+            return None, None
+
+        decision_id = None
+        try:
+            recorded = self.router_decision_recorder.record_decision(
+                correlation_id=correlation_id, decision_kind="live", decision=decision,
+            )
+            decision_id = recorded.decision_id if recorded is not None else None
+        except Exception as exc:
+            log_decision_recording_failure(exc)
+        return decision, decision_id
+
+    def _record_live_outcome(self, decision_id, outcome: str, start_monotonic: float) -> None:
+        if decision_id is None:
+            return
+        try:
+            latency_ms = max(int((time.monotonic() - start_monotonic) * 1000), 0)
+            self.router_decision_recorder.record_outcome(
+                decision_id=decision_id, outcome=outcome, latency_ms=latency_ms,
+            )
+        except Exception as exc:
+            log_decision_recording_failure(exc)
+
     def _chat(self, text: str) -> dict:
         # Model Router Phase E (Section 4) -- one correlation ID for this
         # whole chat turn, carried into the shadow/decision audit record.
         # Never derived from or containing request content.
         correlation_id = new_correlation_id()
 
+        # Model Router Phase D2 (Section 3.5) -- one total deadline for
+        # health check + routing decision + every candidate attempt
+        # combined, computed once here and never reset by any individual
+        # attempt below. Replaces the previous fixed-120s-per-candidate
+        # architecture entirely, per the design plan's explicit
+        # instruction, not merely alongside it.
+        deadline = time.monotonic() + TOTAL_CHAT_DEADLINE_SECONDS
+
         # Model Router Phase C shadow routing -- decision-only, logged,
-        # never allowed to affect the real response below. This guard is
-        # the hard boundary: any failure here is swallowed completely.
+        # never allowed to affect the real response below. Kept running
+        # alongside Phase D2's live decision below as an ongoing,
+        # independent comparison signal now that a live decision exists
+        # too -- cheap (health polls only, no inference), no behavior
+        # risk. This guard is the hard boundary: any failure here is
+        # swallowed completely.
         try:
             self._shadow_route(correlation_id=correlation_id)
         except Exception:
             pass
+
+        # Model Router Phase D2: the decision this turn will actually act
+        # on. Degrades to (None, None) on any failure -- _chat() then
+        # proceeds exactly as it did before D2 existed.
+        live_decision, live_decision_id = self._compute_live_decision(correlation_id=correlation_id)
+        worker_eligible = bool(
+            live_decision and live_decision.is_worker and self.worker_dispatch_client.available
+        )
 
         # Deliberately no require_local/minimum_trust_tier gate here: the
         # trust floor (OPERATOR_PRIMARY_MIN_TRUST_TIER) governs the
@@ -684,7 +861,7 @@ class KarmoOperator:
         # tool-calling candidate fails, the response below is now the
         # correct outcome, not a bug to work around with a better prompt.
         candidates = self.router.ranked(required_capabilities={"tool_calling"}, prefer_local=True)
-        if not candidates:
+        if not candidates and not worker_eligible:
             return {
                 "kind": "chat",
                 "message": "No enabled local chat model is available. KARMO control plane remains fail-closed.",
@@ -716,10 +893,72 @@ class KarmoOperator:
         messages.append({"role": "user", "content": text})
         tools = self._exposed_tool_schemas()
 
+        # Model Router Phase D2: try the chosen worker first, if one was
+        # picked and there's realistically enough of the total budget
+        # left to complete a round trip (real load measurement:
+        # docs/project-state/CURRENT_STATE.md, 2026-09-19). The circuit
+        # breaker's own mutating gate is consulted here, immediately
+        # before the real attempt -- never inside the pure decision
+        # function above.
+        if worker_eligible:
+            host, model_id = live_decision.chosen_host, live_decision.chosen_model
+            remaining = deadline - time.monotonic()
+            if remaining >= MIN_WORKER_DISPATCH_BUDGET_SECONDS and self.circuit_breaker.allow_request(host, model_id):
+                start = time.monotonic()
+                try:
+                    answer = self._run_tool_loop(self._ask_worker(host, model_id), messages, tools, deadline=deadline)
+                except _TurnDeadlineExceeded:
+                    self.circuit_breaker.record_result(host, model_id, success=False)
+                    self._record_live_outcome(live_decision_id, "timeout", start)
+                    return self._with_memory_status(
+                        {
+                            "kind": "chat",
+                            "message": "KARMO's response budget for this turn ran out. Please try again.",
+                            "error": "ChatTurnDeadlineExceeded",
+                        },
+                        self._combine_memory_status(read_failure, None),
+                    )
+                except Exception as exc:
+                    # Never let this disappear silently, same lesson as the
+                    # local-candidate failure logging below: a worker
+                    # dispatch failing here means chat falls back to local
+                    # with zero visible trace of why unless this is logged.
+                    self.circuit_breaker.record_result(host, model_id, success=False)
+                    self._record_live_outcome(live_decision_id, "failure", start)
+                    print(
+                        f"KARMO chat worker dispatch to {host!r}/{model_id!r} failed: "
+                        f"{type(exc).__name__}: {exc}",
+                        file=sys.stderr, flush=True,
+                    )
+                    # Fall through to the local candidate loop below -- the
+                    # one sanctioned fallback (Section 3.9): never a retry
+                    # of the same request against a different worker/model
+                    # hoping for a different answer.
+                else:
+                    self.circuit_breaker.record_result(host, model_id, success=True)
+                    self._record_live_outcome(live_decision_id, "success", start)
+                    write_failure = None
+                    try:
+                        self.memory_backend.remember_exchange(text, answer)
+                    except Exception as exc:
+                        write_failure = f"DEGRADED_WRITE_FAILED:{type(exc).__name__}"
+                    return self._with_memory_status(
+                        {"kind": "chat", "message": answer, "model": model_id},
+                        self._combine_memory_status(read_failure, write_failure),
+                    )
+
         last_error = None
         for candidate in candidates:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                # Section 3.5: the turn's total budget is gone -- never
+                # simply summed across candidates. Fall through to the
+                # honest fail-closed response below, not another attempt.
+                break
             try:
-                answer = self._run_tool_loop(candidate.model_id, messages, tools)
+                answer = self._run_tool_loop(self._ask_local(candidate.model_id), messages, tools, deadline=deadline)
+            except _TurnDeadlineExceeded:
+                break
             except OllamaClientError as exc:
                 # Never let this disappear silently (same lesson as the
                 # worker runtime's earlier fork/spawn fix): a candidate

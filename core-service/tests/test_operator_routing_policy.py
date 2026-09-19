@@ -12,7 +12,7 @@ class RecordingClient:
         self.calls.append(model)
         return "PASS" if "verify" in model else "ok"
 
-    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2, timeout=None):
         return {"content": self.chat(model=model, messages=messages, temperature=temperature), "tool_calls": None}
 
 
@@ -25,7 +25,7 @@ class SelectivelyFailingClient:
         self.failing_models = set(failing_models)
         self.calls = []
 
-    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2, timeout=None):
         self.calls.append(model)
         if model in self.failing_models:
             raise OllamaClientError(f"simulated failure for {model}")

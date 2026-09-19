@@ -65,7 +65,7 @@ class ToolCallThenAnswerClient:
         self.requests = []
         self._arguments = arguments if arguments is not None else {}
 
-    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2, timeout=None):
         self.requests.append({"model": model, "messages": messages, "tools": tools})
         if len(self.requests) == 1:
             return {
@@ -87,7 +87,7 @@ class PrimaryFailsFallbackCallsToolClient:
     def __init__(self):
         self.requests = []
 
-    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2, timeout=None):
         self.requests.append(model)
         if model == "qwen3:8b":
             raise OllamaClientError("simulated primary failure")
@@ -106,7 +106,7 @@ class AlwaysToolCallClient:
     def __init__(self):
         self.call_count = 0
 
-    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2, timeout=None):
         self.call_count += 1
         return {
             "content": "",
@@ -121,7 +121,7 @@ class UnknownToolClient:
     def __init__(self):
         self.requests = []
 
-    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2, timeout=None):
         self.requests.append(messages)
         if len(self.requests) == 1:
             return {
