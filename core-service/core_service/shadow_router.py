@@ -65,6 +65,13 @@ class NullWorkerHealthReader:
     def get_worker_ollama_health(self, _worker_id: str):
         return None
 
+    def is_worker_busy(self, _worker_id: str) -> bool:
+        # Fail-closed (Section 3.9): unknown busy status must never be
+        # treated as "available" -- degrade to "assume busy" so a
+        # degraded reader can only ever exclude a worker from routing,
+        # never wrongly include one.
+        return True
+
 
 def build_default_worker_health_reader(dsn_file: str = DEFAULT_WORKER_HEALTH_DSN_FILE):
     path = Path(dsn_file)

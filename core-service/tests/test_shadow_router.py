@@ -167,6 +167,12 @@ def test_null_worker_health_reader_always_returns_none():
     assert reader.status == "DEGRADED_CONFIG_MISSING"
 
 
+def test_null_worker_health_reader_reports_busy_fail_closed():
+    """Section 3.9 fail-closed: unknown busy status must exclude a
+    worker from routing, never wrongly include one."""
+    assert NullWorkerHealthReader().is_worker_busy("KARMO-WORKER01") is True
+
+
 def test_build_default_worker_health_reader_returns_null_reader_when_file_missing(tmp_path):
     reader = build_default_worker_health_reader(dsn_file=str(tmp_path / "does-not-exist.dsn"))
     assert isinstance(reader, NullWorkerHealthReader)

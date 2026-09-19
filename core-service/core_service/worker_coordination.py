@@ -298,6 +298,25 @@ class PostgresWorkerCoordinatorStore:
                 "last_seen_at": row[2],
             }
 
+    def is_worker_busy(self, worker_id):
+        """Model Router D2 eligibility signal, found necessary by real
+        load measurement (see docs/project-state/CURRENT_STATE.md's
+        2026-09-19 entry): a worker with a job currently in LEASED state
+        is mid-processing that job's entire round trip (poll_once() runs
+        fully synchronously, one job per cycle) and must not be treated
+        as an eligible routing candidate for a new request -- queueing
+        behind it costs the new request the prior job's remaining
+        processing time plus another ~5s poll cycle, measured at 25-40+
+        seconds under a real burst. Independent of Ollama-loaded-model
+        health (Phase A): a worker can be idle with a model loaded, or
+        busy regardless of what's loaded."""
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM public.karmo_worker_jobs WHERE worker_id=%s AND state='LEASED' LIMIT 1",
+                (worker_id,),
+            )
+            return cur.fetchone() is not None
+
     def require_current_key(self, *, worker_id, key_id):
         """Require proof to use the worker's currently registered key."""
         if not key_id:
