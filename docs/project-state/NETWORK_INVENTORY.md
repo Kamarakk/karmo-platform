@@ -55,25 +55,50 @@ Do not interpret a connection timeout as a credential failure until routing/tran
 
 ## KVE local management targets
 
-**All facts in this section are from 2026-09-11 and have not been
-re-verified since — treat as NEEDS LIVE VERIFICATION in full, not just
-the row already marked that way.** Also unconfirmed since that date:
-whether KVE01/02/03 form a live 3-node Proxmox cluster, their current
-capacities, and current VM/LXC placement (per
-`docs/architecture/KARMO_ORCHESTRATION_AND_MODEL_ROUTING.md`'s "safe
-next engineering work" list, this inventory was always meant to precede
-any distributed-role assignment, not substitute for it). One confirmed
-data point since: Worker01 is VM101, hosted on KVE01 (per
-`docs/runbooks/WORKER01_EXACT_ACTIVATION.md`) — the only concrete
-VM-to-hypervisor mapping established so far.
+**Physical hardware and VM-to-hypervisor mapping fully verified live on
+2026-09-19** (Kamara ran the commands herself and pasted real output for
+all three hosts — this closes the gap this section flagged since
+2026-09-11). All three KVE hosts are **identical physical machines**:
+Intel Core i7-10700 (8 cores / 16 threads, 2.9 GHz base / 4.8 GHz boost),
+15 GiB RAM, Intel UHD Graphics 630 (integrated -- no CUDA/ROCm, no
+meaningful LLM acceleration value), ~476.9 GB NVMe disk (Proxmox LVM-thin
+layout: ~96 GB root, ~8 GB swap, ~349 GB thin pool).
 
-Current user-supplied Proxmox management map:
+**Confirmed VM-to-host-to-role mapping (this closes the "which HP runs
+what" question completely, including the previously-undocumented VM 100):**
+
+| Physical host | VM ID | Role | RAM used / 15 GiB total (2026-09-19 snapshot) |
+|---|---|---|---|
+| KVE01 (`192.168.1.20`) | VM 101 | `KARMO-WORKER01` | 11 GiB used, 265 MiB genuinely free |
+| KVE02 (`192.168.1.21`) | **VM 100** | **`KARMO-AI01`** (core services + local models) | 10 GiB used, 1.3 GiB genuinely free |
+| KVE03 (`192.168.1.22`) | VM 102 | `KARMO-WORKER02` | 11 GiB used, 362 MiB genuinely free |
+
+`karmo-ai01` was previously treated in this repo's own documentation as
+if it might be a separate physical machine; it is not -- it is VM 100 on
+KVE02, sharing the exact same 15 GiB physical ceiling every other host
+here has. Confirmed via `qm config 100` on KVE02: `name: KARMO-AI01`,
+matching `net0` MAC `BC:24:11:20:CC:EB`.
+
+**Practical implication, verified not assumed**: all three physical
+hosts are already running near their full RAM capacity (each VM already
+uses ~10-11 GiB of the host's 15 GiB, leaving only a few hundred MB
+genuinely free per host -- swap is present but barely touched on all
+three, so none are under active memory pressure, they are simply already
+close to fully committed). There is no idle/unused physical capacity
+sitting across this 3-node cluster to hand any existing VM more RAM
+without adding physical memory to the affected machine. Since all three
+hosts are computationally identical (same CPU, same weak integrated
+GPU), no host in this cluster can run a model faster than another --
+relocating a workload only changes contention, never raw compute speed.
+
+Prior user-supplied Proxmox management map (superseded by the fully
+live-verified table above, kept for the historical access-path record):
 
 | Host | LAN SSH target | Status |
 |---|---|---|
-| KVE01 | `root@192.168.1.20` | **VERIFIED from user screenshot**, SSH accepted from KARMO-DEV01; `vmbr0` shown at `192.168.1.20/24` |
-| KVE02 | `root@192.168.1.21` | **USER-SUPPLIED / NEEDS LIVE VERIFICATION** |
-| KVE03 | `root@192.168.1.22` | **VERIFIED from user screenshot**, SSH accepted from KARMO-DEV01 |
+| KVE01 | `root@192.168.1.20` | **VERIFIED**, SSH accepted from KARMO-DEV01 |
+| KVE02 | `root@192.168.1.21` | **VERIFIED** (2026-09-19, live commands run) |
+| KVE03 | `root@192.168.1.22` | **VERIFIED**, SSH accepted from KARMO-DEV01 |
 
 User reported that `karmolab1` had been disconnected from the network. Treat any apparent Proxmox/cluster outage as a routing/topology question until host reachability is checked individually. Do not equate an unavailable management path with all hypervisors being down.
 
@@ -102,6 +127,6 @@ Target management direction is KARMO-owned access through an approved management
 ## Gaps
 
 - Direct OpenSSH-over-Tailscale smoke from KARMO-DEV01 is still **NEEDS VERIFICATION**.
-- KVE02 LAN target `192.168.1.21` requires live verification before consequential use.
-- Live three-node Proxmox cluster membership/state and host capacities require read-only verification before assigning distributed KARMO roles.
+- ~~KVE02 LAN target requires live verification~~ -- **RESOLVED 2026-09-19**, see above.
+- ~~Live three-node Proxmox cluster membership/state and host capacities require read-only verification~~ -- **RESOLVED 2026-09-19**: all three hosts individually verified live (not cluster-membership state specifically, just each host's own hardware/VM placement, which is what every actual KARMO decision so far has needed).
 - No dedicated full network/firewall diagram is yet committed outside the structured access registry.
