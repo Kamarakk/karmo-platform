@@ -57,6 +57,12 @@ from .shadow_router import (
     compute_shadow_decision,
     log_shadow_decision,
 )
+from .router_decision_audit import (
+    NullRouterDecisionRecorder,
+    build_default_router_decision_recorder,
+    log_decision_recording_failure,
+    new_correlation_id,
+)
 
 KARMOLAB_STATUS_TOOL = "karmolab.read_status"
 KARMOLAB_STATUS_VERSION = "1.0.0"
@@ -295,6 +301,7 @@ class KarmoOperator:
         memory_backend=None,
         task_store=None,
         worker_health_reader=None,
+        router_decision_recorder=None,
     ):
         self.model_client = model_client or OllamaChatClient()
         self.router = ModelRouter(resources or default_model_resources())
@@ -319,6 +326,16 @@ class KarmoOperator:
                 self.worker_health_reader = build_default_worker_health_reader()
             except Exception:
                 self.worker_health_reader = NullWorkerHealthReader()
+        # Model Router Phase E (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
+        # Section 3.6) -- durable decision audit, same never-raise-on-
+        # construction discipline as worker_health_reader/memory_backend above.
+        if router_decision_recorder is not None:
+            self.router_decision_recorder = router_decision_recorder
+        else:
+            try:
+                self.router_decision_recorder = build_default_router_decision_recorder()
+            except Exception:
+                self.router_decision_recorder = NullRouterDecisionRecorder()
         self.registry = CapabilityRegistry()
         self.registry.register(_status_manifest())
         self.registry.register(bloomboss_manifest())
@@ -596,7 +613,7 @@ class KarmoOperator:
                 messages.append({"role": "tool", "content": self._execute_exposed_tool(call)})
         return "I wasn't able to finish using KARMO's tools to answer that within the allowed steps."
 
-    def _shadow_route(self) -> None:
+    def _shadow_route(self, *, correlation_id: str) -> None:
         """Model Router Phase C (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
         Section 3.8): compute and log what the eventual Phase D routing
         policy would choose, without ever affecting the real chat response.
@@ -604,7 +621,13 @@ class KarmoOperator:
         site -- this method itself is also internally fail-safe (every
         sub-call already degrades to "no data" rather than raising), but
         the call site's own guard is the actual hard boundary that
-        prevents shadow observability from ever breaking real chat."""
+        prevents shadow observability from ever breaking real chat.
+
+        Phase E (Section 3.6): also durably records the decision, keyed
+        by the one correlation_id generated for this whole chat turn
+        (Section 4). A recording failure never raises past this method --
+        it is logged content-free and the shadow decision's stderr line
+        (still emitted regardless) remains the fallback signal."""
         capability_registry = {r.model_id: r.capabilities for r in self.router.inventory()}
         karmo_ai01_reachable, karmo_ai01_loaded_models, worker_snapshots = collect_shadow_signals(
             worker_health_reader=self.worker_health_reader,
@@ -616,13 +639,24 @@ class KarmoOperator:
             worker_snapshots=worker_snapshots,
         )
         log_shadow_decision(decision)
+        try:
+            self.router_decision_recorder.record_decision(
+                correlation_id=correlation_id, decision_kind="shadow", decision=decision,
+            )
+        except Exception as exc:
+            log_decision_recording_failure(exc)
 
     def _chat(self, text: str) -> dict:
+        # Model Router Phase E (Section 4) -- one correlation ID for this
+        # whole chat turn, carried into the shadow/decision audit record.
+        # Never derived from or containing request content.
+        correlation_id = new_correlation_id()
+
         # Model Router Phase C shadow routing -- decision-only, logged,
         # never allowed to affect the real response below. This guard is
         # the hard boundary: any failure here is swallowed completely.
         try:
-            self._shadow_route()
+            self._shadow_route(correlation_id=correlation_id)
         except Exception:
             pass
 
