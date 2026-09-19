@@ -85,10 +85,17 @@ MAX_MEMORY_CONTEXT_CHARS = 12_000
 TOTAL_CHAT_DEADLINE_SECONDS = 75.0
 
 # Below this much remaining budget, a worker dispatch attempt is skipped
-# entirely rather than started and immediately doomed -- real load
-# measurement (docs/project-state/CURRENT_STATE.md, 2026-09-19) showed
-# even a fast, warm-model worker round trip takes ~10-15s.
-MIN_WORKER_DISPATCH_BUDGET_SECONDS = 15.0
+# entirely rather than started and immediately doomed. Corrected per GPT's
+# D2 review (D2-B04): the original 15.0 was below the fastest cold-start
+# total this session ever actually measured (20.1s -- see
+# docs/project-state/CURRENT_STATE.md, 2026-09-19), meaning it could have
+# greenlit a dispatch attempt that couldn't realistically finish. 30.0 is
+# a safer interim floor given the real numbers on hand (observed totals
+# ranged 20.1-44.1s), still explicitly NOT a benchmarked value -- a real
+# local-vs-worker p50/p95 comparison (never actually performed this
+# session) is required before this constant should be trusted for live
+# activation, not just before it's "reasonable enough" to leave dormant.
+MIN_WORKER_DISPATCH_BUDGET_SECONDS = 30.0
 
 _MODEL_CHAT_TOOLS_TOOL_ID = "model_chat_tools"
 _MODEL_CHAT_TOOLS_TOOL_VERSION = "1.0.0"
@@ -715,7 +722,22 @@ class KarmoOperator:
                 messages.append({"role": "tool", "content": self._execute_exposed_tool(call)})
         return "I wasn't able to finish using KARMO's tools to answer that within the allowed steps."
 
-    def _shadow_route(self, *, correlation_id: str) -> None:
+    def _collect_health_signals(self):
+        """Model Router Phase A/C signal collection, computed once per
+        chat turn and shared between the shadow (Phase C) and live
+        (Phase D2) decisions below -- previously each independently
+        repeated this exact same poll on every single turn (GPT D2
+        review, D2-B07: duplicated health queries on the critical path).
+        collect_shadow_signals() is itself already fail-safe per host; this
+        is just the one shared call site."""
+        capability_registry = {r.model_id: r.capabilities for r in self.router.inventory()}
+        karmo_ai01_reachable, karmo_ai01_loaded_models, worker_snapshots = collect_shadow_signals(
+            worker_health_reader=self.worker_health_reader,
+        )
+        return capability_registry, karmo_ai01_reachable, karmo_ai01_loaded_models, worker_snapshots
+
+    def _shadow_route(self, *, correlation_id: str, capability_registry, karmo_ai01_reachable,
+                      karmo_ai01_loaded_models, worker_snapshots) -> None:
         """Model Router Phase C (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
         Section 3.8): compute and log what the eventual Phase D routing
         policy would choose, without ever affecting the real chat response.
@@ -725,15 +747,15 @@ class KarmoOperator:
         the call site's own guard is the actual hard boundary that
         prevents shadow observability from ever breaking real chat.
 
+        Signals are collected once by _chat() (_collect_health_signals())
+        and passed in here, shared with _compute_live_decision() below,
+        rather than each independently re-polling.
+
         Phase E (Section 3.6): also durably records the decision, keyed
         by the one correlation_id generated for this whole chat turn
         (Section 4). A recording failure never raises past this method --
         it is logged content-free and the shadow decision's stderr line
         (still emitted regardless) remains the fallback signal."""
-        capability_registry = {r.model_id: r.capabilities for r in self.router.inventory()}
-        karmo_ai01_reachable, karmo_ai01_loaded_models, worker_snapshots = collect_shadow_signals(
-            worker_health_reader=self.worker_health_reader,
-        )
         decision = compute_shadow_decision(
             capability_registry=capability_registry,
             karmo_ai01_reachable=karmo_ai01_reachable,
@@ -748,18 +770,18 @@ class KarmoOperator:
         except Exception as exc:
             log_decision_recording_failure(exc)
 
-    def _compute_live_decision(self, *, correlation_id: str):
+    def _compute_live_decision(self, *, correlation_id: str, capability_registry, karmo_ai01_reachable,
+                               karmo_ai01_loaded_models, worker_snapshots):
         """Model Router Phase D2: compute and durably record the LIVE
         routing decision (decision_kind="live") this turn will actually
         act on -- unlike _shadow_route's observation-only decision.
         Fail-safe: any error degrades to (None, None), meaning "no live
         decision" -- _chat() then proceeds exactly as it did before D2
-        (local candidates only). Never raises past this method."""
+        (local candidates only). Never raises past this method.
+
+        Signals are shared with _shadow_route() above -- see
+        _collect_health_signals()."""
         try:
-            capability_registry = {r.model_id: r.capabilities for r in self.router.inventory()}
-            karmo_ai01_reachable, karmo_ai01_loaded_models, worker_snapshots = collect_shadow_signals(
-                worker_health_reader=self.worker_health_reader,
-            )
             worker_busy = {}
             for worker_id in KNOWN_WORKER_IDS:
                 try:
@@ -817,6 +839,21 @@ class KarmoOperator:
         # instruction, not merely alongside it.
         deadline = time.monotonic() + TOTAL_CHAT_DEADLINE_SECONDS
 
+        # Model Router Phase A/C/D2 health signals -- collected exactly
+        # once per turn and shared below (GPT D2 review, D2-B07: this
+        # used to be polled twice, once for shadow and once for the live
+        # decision). Degrades to a fully-unreachable/no-data snapshot on
+        # any failure, matching collect_shadow_signals()'s own fail-safe
+        # contract, rather than letting signal collection itself ever
+        # break real chat.
+        try:
+            (
+                capability_registry, karmo_ai01_reachable,
+                karmo_ai01_loaded_models, worker_snapshots,
+            ) = self._collect_health_signals()
+        except Exception:
+            capability_registry, karmo_ai01_reachable, karmo_ai01_loaded_models, worker_snapshots = {}, False, [], {}
+
         # Model Router Phase C shadow routing -- decision-only, logged,
         # never allowed to affect the real response below. Kept running
         # alongside Phase D2's live decision below as an ongoing,
@@ -825,14 +862,24 @@ class KarmoOperator:
         # risk. This guard is the hard boundary: any failure here is
         # swallowed completely.
         try:
-            self._shadow_route(correlation_id=correlation_id)
+            self._shadow_route(
+                correlation_id=correlation_id, capability_registry=capability_registry,
+                karmo_ai01_reachable=karmo_ai01_reachable,
+                karmo_ai01_loaded_models=karmo_ai01_loaded_models,
+                worker_snapshots=worker_snapshots,
+            )
         except Exception:
             pass
 
         # Model Router Phase D2: the decision this turn will actually act
         # on. Degrades to (None, None) on any failure -- _chat() then
         # proceeds exactly as it did before D2 existed.
-        live_decision, live_decision_id = self._compute_live_decision(correlation_id=correlation_id)
+        live_decision, live_decision_id = self._compute_live_decision(
+            correlation_id=correlation_id, capability_registry=capability_registry,
+            karmo_ai01_reachable=karmo_ai01_reachable,
+            karmo_ai01_loaded_models=karmo_ai01_loaded_models,
+            worker_snapshots=worker_snapshots,
+        )
         worker_eligible = bool(
             live_decision and live_decision.is_worker and self.worker_dispatch_client.available
         )
@@ -908,7 +955,13 @@ class KarmoOperator:
                 try:
                     answer = self._run_tool_loop(self._ask_worker(host, model_id), messages, tools, deadline=deadline)
                 except _TurnDeadlineExceeded:
-                    self.circuit_breaker.record_result(host, model_id, success=False)
+                    # Deliberately does NOT record a breaker failure here
+                    # (GPT D2 review, D2-B06): the turn's total budget
+                    # running out is not necessarily the worker's own
+                    # fault -- penalizing it here could trip the breaker
+                    # for a worker that would have succeeded given more
+                    # time, conflating "this turn ran out of patience"
+                    # with "this candidate is unhealthy".
                     self._record_live_outcome(live_decision_id, "timeout", start)
                     return self._with_memory_status(
                         {

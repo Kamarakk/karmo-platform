@@ -245,10 +245,12 @@ def test_turn_deadline_exceeded_during_worker_attempt_fails_closed_without_tryin
     another candidate -- that would be exactly the accumulating-timeouts
     bug this design replaces."""
     local_client = LocalClient()
+    breaker = CircuitBreaker()
     op = _operator(
         worker_health_reader=FakeWorkerHealthReader(),
         worker_dispatch_client=FakeWorkerDispatchClient(outcome=None),
         local_client=local_client,
+        circuit_breaker=breaker,
     )
     op._run_tool_loop = lambda *a, **kw: (_ for _ in ()).throw(_TurnDeadlineExceeded())
 
@@ -257,6 +259,25 @@ def test_turn_deadline_exceeded_during_worker_attempt_fails_closed_without_tryin
     assert response["kind"] == "chat"
     assert response["error"] == "ChatTurnDeadlineExceeded"
     assert local_client.calls == []  # never attempted -- the budget is gone, not just this candidate's
+
+
+def test_turn_deadline_exceeded_does_not_count_as_a_breaker_failure():
+    """GPT D2 review, D2-B06: a turn running out of its own total budget
+    is not necessarily the worker's fault -- it must not trip the
+    breaker for a candidate that might have succeeded given more time."""
+    breaker = CircuitBreaker()
+    op = _operator(
+        worker_health_reader=FakeWorkerHealthReader(),
+        worker_dispatch_client=FakeWorkerDispatchClient(outcome=None),
+        circuit_breaker=breaker,
+    )
+    op._run_tool_loop = lambda *a, **kw: (_ for _ in ()).throw(_TurnDeadlineExceeded())
+
+    op.handle("what tasks are open?")
+
+    snap = breaker.snapshot("KARMO-WORKER01", "primary-tools")
+    assert snap.state == "CLOSED"
+    assert snap.consecutive_failures == 0
 
 
 def test_run_tool_loop_raises_when_deadline_has_already_passed():
@@ -361,3 +382,26 @@ def test_prompt_injection_cannot_influence_which_host_or_model_is_chosen():
     assert dispatch_client.calls[0]["worker_id"] == "KARMO-WORKER01"  # from the fixed allowlist, not the message
     live_decision = next(d["decision"] for d in recorder.decisions if d["decision_kind"] == "live")
     assert live_decision.chosen_host == "KARMO-WORKER01"
+
+
+def test_health_signals_are_collected_once_per_turn_not_twice(monkeypatch):
+    """GPT D2 review, D2-B07: _shadow_route() and _compute_live_decision()
+    used to each independently call collect_shadow_signals(), polling the
+    same health data twice on every single chat turn."""
+    calls = {"count": 0}
+    real_collect = operator_module.collect_shadow_signals
+
+    def counting_collect(**kwargs):
+        calls["count"] += 1
+        return real_collect(**kwargs)
+
+    monkeypatch.setattr(operator_module, "collect_shadow_signals", counting_collect)
+
+    op = _operator(
+        worker_health_reader=FakeWorkerHealthReader(busy=True),
+        worker_dispatch_client=NullWorkerDispatchClient(),
+    )
+
+    op.handle("what tasks are open?")
+
+    assert calls["count"] == 1
