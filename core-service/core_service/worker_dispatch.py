@@ -34,9 +34,31 @@ from .control import CapabilityClass, arguments_digest
 _TERMINAL_STATES = frozenset({"SUCCEEDED", "FAILED", "RECOVERY_REQUIRED"})
 DEFAULT_REQUESTER = "karmo-model-router-phase-d1-harness"
 
+_WORKER_RESULT_ENVELOPE_KEYS = {"output", "stdout_summary", "duration_seconds", "evidence_files"}
+
 
 class WorkerDispatchError(RuntimeError):
     pass
+
+
+def _unwrap_worker_result(result):
+    """Every real worker (ssh_worker_client.py's SshRemoteWorkerClient,
+    the only production worker implementation as of Phase D1) wraps
+    whatever a capability handler returns in a fixed envelope --
+    {"output": ..., "stdout_summary": ..., "duration_seconds": ...,
+    "evidence_files": ...} -- before signing and submitting it, for every
+    capability uniformly, not just model_chat_tools. dispatch_and_wait()
+    is capability-agnostic and previously returned that whole envelope
+    as-is, silently handing callers the wrapper instead of the actual
+    capability output (found during a live production investigation, not
+    yet confirmed as the cause of a separate submit_result failure, but a
+    real bug regardless). A result that doesn't match this exact envelope
+    shape is returned unchanged -- e.g. a capability whose result was
+    submitted directly via accept_result() rather than through the real
+    worker client."""
+    if isinstance(result, dict) and set(result) == _WORKER_RESULT_ENVELOPE_KEYS:
+        return result["output"]
+    return result
 
 
 @dataclass(frozen=True)
@@ -146,7 +168,7 @@ def dispatch_and_wait(
                     job_id=job_id,
                     elapsed_seconds=elapsed,
                     poll_count=poll_count,
-                    result=result_row["result"] if result_row else None,
+                    result=_unwrap_worker_result(result_row["result"]) if result_row else None,
                 )
             return DispatchOutcome(
                 outcome=state["state"],

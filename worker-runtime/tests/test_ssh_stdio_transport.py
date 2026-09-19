@@ -143,6 +143,66 @@ def test_transport_rejects_nonzero_ssh_without_leaking_stderr():
     assert secret not in str(exc.value)
 
 
+def test_transport_surfaces_bound_gateway_refusal_on_nonzero_exit():
+    """serve_one() (worker_stdio_gateway.py) always writes one bounded,
+    already-redacted JSON response before exiting -- even when it caught an
+    internal exception and is exiting non-zero (exit 2/3) to signal an
+    application-level refusal. Discarding that body just because the SSH
+    process exited non-zero collapsed a real, safe, structured refusal
+    into an opaque "SSH gateway request failed" indistinguishable from a
+    genuine transport failure -- found while investigating a real
+    production submit_result failure that gave no usable signal."""
+    def runner(argv, **kwargs):
+        request = json.loads(kwargs["input"].decode())
+        response = {
+            "version": 1,
+            "request_id": request["request_id"],
+            "ok": False,
+            "error": "coordinator_refused",
+        }
+        return Completed(returncode=3, stdout=json.dumps(response).encode())
+
+    with pytest.raises(SshStdioTransportError, match="gateway refused request: coordinator_refused"):
+        SshStdioTransport(_config(), runner=runner).submit_result(
+            worker_id="karmo-worker01",
+            credential_token="credential",
+            lease={},
+            execution_ticket="ticket",
+            result={"content": "hi"},
+            envelope={},
+            success=True,
+        )
+
+
+def test_transport_ignores_unbound_body_on_nonzero_exit():
+    """A non-zero exit whose stdout doesn't parse, or doesn't bind to this
+    exact request_id/version, must still fail generically -- it is not
+    safe to trust a body that isn't provably this request's own response
+    (e.g. stray output from a misconfigured forced command)."""
+    def runner(argv, **kwargs):
+        return Completed(returncode=255, stdout=json.dumps({"version": 1, "request_id": "not-this-one", "ok": False, "error": "x"}).encode())
+
+    with pytest.raises(SshStdioTransportError, match="SSH gateway request failed"):
+        SshStdioTransport(_config(), runner=runner).heartbeat(
+            worker_id="karmo-worker01", credential_token="credential"
+        )
+
+
+def test_transport_nonzero_exit_with_ok_true_body_still_fails_generically():
+    """An ok:true body paired with a non-zero exit is a contradiction
+    (serve_one() only ever exits non-zero on a refusal), not a success --
+    must not be trusted as a real result."""
+    def runner(argv, **kwargs):
+        request = json.loads(kwargs["input"].decode())
+        response = {"version": 1, "request_id": request["request_id"], "ok": True, "result": {}}
+        return Completed(returncode=3, stdout=json.dumps(response).encode())
+
+    with pytest.raises(SshStdioTransportError, match="SSH gateway request failed"):
+        SshStdioTransport(_config(), runner=runner).heartbeat(
+            worker_id="karmo-worker01", credential_token="credential"
+        )
+
+
 def test_transport_rejects_oversized_request_before_starting_ssh():
     called = False
 

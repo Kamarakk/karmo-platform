@@ -103,6 +103,29 @@ def test_dispatch_and_wait_returns_succeeded_with_real_result_content():
     assert isinstance(outcome, DispatchOutcome)
 
 
+def test_dispatch_and_wait_unwraps_the_real_worker_result_envelope():
+    """ssh_worker_client.py's SshRemoteWorkerClient (the only production
+    worker implementation as of Phase D1) wraps every capability's output
+    in {"output": ..., "stdout_summary": ..., "duration_seconds": ...,
+    "evidence_files": ...} before submitting it -- found while
+    investigating a live production submit_result failure. A caller of
+    dispatch_and_wait() should see the capability's actual output, not
+    the worker's own submission envelope around it."""
+    store = FakeStore(
+        states=["QUEUED", "LEASED", "SUCCEEDED"],
+        result={
+            "output": {"content": "hi there", "tool_calls": None},
+            "stdout_summary": "model_chat_tools: qwen3:8b (8 chars, 0 tool_calls)",
+            "duration_seconds": 6.9,
+            "evidence_files": [],
+        },
+    )
+    outcome = _dispatch(store)
+
+    assert outcome.outcome == "SUCCEEDED"
+    assert outcome.result == {"content": "hi there", "tool_calls": None}
+
+
 def test_dispatch_and_wait_returns_failed_with_error():
     store = FakeStore(states=["QUEUED", "FAILED"])
     outcome = _dispatch(store)

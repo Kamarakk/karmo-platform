@@ -115,12 +115,47 @@ class SshStdioTransport:
         except OSError as exc:
             raise SshStdioTransportError("SSH gateway could not be started") from exc
 
-        if completed.returncode != 0:
-            # Do not surface stderr: OpenSSH diagnostics can reveal local paths,
-            # account names, or deployment details that callers do not need.
-            raise SshStdioTransportError("SSH gateway request failed")
         if len(completed.stdout) > _MAX_FRAME_BYTES:
+            if completed.returncode != 0:
+                # Do not surface stderr: OpenSSH diagnostics can reveal local
+                # paths, account names, or deployment details that callers do
+                # not need.
+                raise SshStdioTransportError("SSH gateway request failed")
             raise SshStdioTransportError("response frame too large")
+
+        if completed.returncode != 0:
+            # A non-zero SSH exit does not by itself mean the gateway never
+            # ran: serve_one() always writes one bounded, already-redacted
+            # JSON response before exiting, even when it caught an internal
+            # exception and is exiting non-zero to signal an application-
+            # level refusal (see worker_stdio_gateway.py's serve_one -- exit
+            # 2/3 still carries a valid {"ok": false, "error": ...} body).
+            # Peek for that body -- bound to this exact request_id/version,
+            # the same way a zero-exit response is validated below -- so a
+            # real application refusal is distinguishable from a genuine SSH
+            # transport failure (bad host key, dropped connection, network
+            # partition) instead of both collapsing into one opaque message.
+            # Do not surface stderr in either case: OpenSSH diagnostics can
+            # reveal local paths, account names, or deployment details that
+            # callers do not need.
+            candidate = None
+            if completed.stdout:
+                try:
+                    candidate = json.loads(completed.stdout.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    candidate = None
+            if (
+                isinstance(candidate, dict)
+                and candidate.get("version") == 1
+                and candidate.get("request_id") == request_id
+                and candidate.get("ok") is False
+            ):
+                code = candidate.get("error")
+                if not isinstance(code, str) or not code:
+                    code = "gateway_refused"
+                raise SshStdioTransportError(f"gateway refused request: {code}")
+            raise SshStdioTransportError("SSH gateway request failed")
+
         try:
             response = json.loads(completed.stdout.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
