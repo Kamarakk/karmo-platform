@@ -388,6 +388,34 @@ def test_lease_job_explicit_argument_still_overrides_the_stored_hint():
     assert lease.lease_expires_at == datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=30)
 
 
+def test_is_worker_busy_reflects_a_real_leased_job():
+    """Model Router D2 eligibility signal (see
+    docs/project-state/CURRENT_STATE.md's 2026-09-19 load-measurement
+    entry): a worker with a job in LEASED state must be reported busy,
+    since poll_once() processes exactly one job per cycle, fully
+    synchronously -- a second request queued behind it was measured to
+    add 25-40+ seconds under real load."""
+    store = PostgresWorkerCoordinatorStore(_connection_factory)
+    worker_auth, tickets, results = _crypto()
+    coordinator = WorkerCoordinator(store, worker_authenticator=worker_auth, ticket_authority=tickets, result_authenticator=results)
+
+    assert store.is_worker_busy("worker-1") is False  # unregistered worker: no leased job exists
+
+    _credential, job_id, _lease = _setup_leased_job(store, worker_auth, coordinator)
+    assert store.is_worker_busy("worker-1") is True
+
+    token = coordinator.issue_execution_ticket(credential_token=_credential, lease=_lease)
+    coordinator.authorize_execution(token=token, lease=_lease)
+    result = {"ok": True}
+    envelope = results.sign(
+        worker_id="worker-1", key_id="worker-key-v1", task_id=_lease.task_id,
+        result=result, execution_ticket_digest=token_digest(token),
+    )
+    coordinator.accept_result(execution_ticket=token, lease=_lease, result=result, envelope=envelope)
+    store.finalize_job(job_id=job_id, success=True)
+    assert store.is_worker_busy("worker-1") is False  # job reached SUCCEEDED, no longer LEASED
+
+
 def test_enqueue_job_rejects_out_of_bounds_lease_seconds_hint():
     store = PostgresWorkerCoordinatorStore(_connection_factory)
     _engine, approval_id, digest = _approve()
