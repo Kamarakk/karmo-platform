@@ -1804,3 +1804,109 @@ inform, not something authorized or started tonight. The external
 review's broader recommendation (pause further router expansion,
 simplify to one dependable local model) has not been acted on and
 remains Kamara's decision.
+
+## 2026-09-19 (continued) -- D2 prerequisite work: decision audit, circuit breaker, and real load measurement
+
+Kamara asked ("build d2") to proceed to Phase D2. The design plan's own
+Section 5/6 exit criteria for D2 were checked first and found not yet
+met: D1's queue delay had never been measured under load (one idle-
+worker sample only), Section 5's full required-test list wasn't
+covered, Phase E (decision auditing) didn't exist, and no circuit
+breaker existed. Kamara chose to do the prerequisites first rather than
+skip them.
+
+**Phase E -- durable decision audit (PR #93, merged).** New
+`karmo_router_decisions` table (migration 010) records which host/model
+a routing decision chose and why, keyed by one correlation ID generated
+per chat turn. Content restriction (Section 4: never prompt content,
+secrets, credentials, or full tool results) is enforced in code: every
+candidate dict is validated against a fixed signal-only field allowlist
+before it can be written, and the payload is size-bounded -- refused,
+never silently truncated. Wired into Phase C's existing shadow routing;
+reuses the existing `karmo_core_memory` DSN rather than a new
+credential path. 10 new tests, verified against real Postgres.
+
+**Circuit breaker (PR #94, merged).** Per-(host, model) breaker
+implementing Section 3.5's exact shape as tunable constructor
+parameters (the plan itself states these are provisional, not final
+tuned constants): trips OPEN on 3 consecutive failures OR a failure
+rate >=50% over a trailing 10-minute window (>=2 attempts); stays open
+5 minutes, then HALF_OPEN allows exactly one trial; trial success
+closes and resets backoff, trial failure reopens and doubles backoff up
+to a 30-minute cap. In-memory per process, not durably persisted --
+documented as a deliberate simplification. 21 new tests with a
+deterministic fake clock. Not yet wired into `operator.py` -- that
+belongs with D2's actual routing logic.
+
+**Real load measurement under a burst (the third prerequisite,
+completed via live production evidence, not a new PR):**
+
+```
+PRODUCTION ACCESS AUTHORIZATION
+Task: Measure D1's real queue delay under load (Section 3.1/D1 exit criteria: "measured, not assumed")
+Target system/environment: karmo-ai01 (core-service), Worker01, production Postgres
+Purpose: Kamara's direct instruction ("move on to the load measurement work")
+Permitted operations: dispatch 3 real model_chat_tools jobs in a burst (same capability already proven safe), read-only event/state queries
+Authority: READ-ONLY + WRITE (write = 3 real job dispatches, same shape as prior proof-runs)
+Granted: 2026-09-19, by Kamara (direct chat instruction)
+Expires: automatically on task completion
+```
+
+Dispatched 3 real `model_chat_tools` jobs to Worker01 in a ~120ms burst
+(all three `enqueue_job` calls back to back), then read their actual
+event timestamps directly from `karmo_worker_events`/`karmo_worker_jobs`
+(all three reached `SUCCEEDED`):
+
+| Job | Queue delay (enqueue -> leased) | Execution time | Total (enqueue -> succeeded) |
+|---|---|---|---|
+| 1st (idle worker) | 3.94s | 15.69s (cold model load) | **20.07s** |
+| 2nd (queued behind #1) | 25.79s | 5.86s (model already warm) | **32.10s** |
+| 3rd (queued behind #1+#2) | 37.82s | 5.83s | **44.09s** |
+
+This matches an earlier isolated idle-worker sample from tonight's
+successful proof-run (queue delay 2.48s, before this burst existed) --
+consistent with queue delay for an idle worker being uniformly
+distributed within the configured 5-second `poll_interval_seconds`
+window, and confirms the real, measured mechanism behind the queueing:
+`ssh_worker_client.py`'s `poll_once()` handles exactly one job per
+cycle, fully synchronously (poll -> authorize -> execute -> submit,
+including retries), so a second job enqueued while the worker is
+already busy must wait for the first job's *entire* remaining
+processing time plus up to one more ~5-second poll cycle before even
+being leased. Each additional queued request adds roughly
+(prior request's total processing time + ~5.7s) to its own wait --
+confirmed arithmetically consistent across both queued jobs above
+(gap between job N finishing and job N+1 being leased was 5.77s and
+5.77s respectively, matching the configured 5s poll interval almost
+exactly). Also notable, not previously known: the model stayed warm in
+Ollama's memory across the burst, dropping execution time from 15.69s
+(cold load) to ~5.8s (warm) for the 2nd and 3rd jobs -- cold-load
+penalty is real but only paid once per idle period, not per request.
+
+**Explicit bound, as the design plan requires ("measured, not
+assumed") -- not a design decision, a factual conclusion from this
+data:** a single worker can serve one interactive chat request at a
+time at an acceptable-ish ~20-second round trip (already on the slow
+side); a second concurrent request queued behind it degrades to ~32
+seconds, a third to ~44 seconds -- both well outside what's acceptable
+for interactive chat. **Design implication for D2, not yet
+implemented:** a worker must only ever be selected as a routing
+candidate when it is genuinely idle (no job currently in flight) --
+being tool-capable and reachable (today's Phase A/B health signal) is
+not sufficient eligibility on its own. This requires a new "currently
+busy" signal Phase A's health model does not yet track (Ollama-loaded-
+model status and "has an in-flight KARMO job" are two different,
+independent facts about a worker). D2 must treat a busy worker as
+ineligible for a new request, never as a candidate to queue behind.
+
+All 3 load-test jobs and their diagnostic script were left as ordinary
+completed job history (no reconciliation needed -- all 3 genuinely
+succeeded) and the script itself removed from `karmo-ai01` after the
+run. No further code changed in this entry -- this was a measurement
+task, not an implementation task.
+
+**Status of all three D2 prerequisites**: Phase E done and merged;
+circuit breaker done and merged, not yet wired in; load measurement
+done with a concrete, evidence-based bound and a real design
+implication (busy-worker eligibility) for D2 to account for. D2 itself
+has not been started.
