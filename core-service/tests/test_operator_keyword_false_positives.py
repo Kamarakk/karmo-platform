@@ -9,7 +9,7 @@ class FakeModelClient:
     def chat(self, *, model, messages, temperature=0.2):
         return "ok"
 
-    def chat_with_tools(self, *, model, messages, tools, temperature=0.2):
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2, timeout=None):
         return {"content": self.chat(model=model, messages=messages, temperature=temperature), "tool_calls": None}
 
 
