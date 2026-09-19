@@ -398,6 +398,41 @@ workers proven, soak-tested, closed). Since then, in order:
       proof/measurement harness, not wired into real chat traffic.
       Phase D2 remains a separate, later, unauthorized decision.
 
+17. **D2 prerequisite work: decision audit, circuit breaker, and real
+    load measurement** (Kamara: "build d2" -> chose to do the plan's own
+    stated prerequisites first rather than skip them, per its Section
+    5/6 exit criteria for D2). Full detail in `CURRENT_STATE.md`'s
+    2026-09-19 entry of the same name — short version:
+
+    - **Phase E, durable decision audit (PR #93, merged).** A
+      `karmo_router_decisions` table records which host/model a routing
+      decision chose and why, per chat turn, with content restriction
+      *enforced in code* (a fixed field allowlist + size bound), not
+      just documented. Wired into Phase C's shadow routing.
+    - **Circuit breaker (PR #94, merged, not yet wired in).** Per-
+      (host, model) breaker with the plan's exact trip/half-open/
+      backoff shape, all as tunable parameters. In-memory, not durable
+      — a stated simplification. Wiring it into real routing logic
+      belongs with D2 itself.
+    - **Real load measurement (evidence gathered live, no new PR).**
+      Dispatched 3 real jobs to Worker01 in a burst: 1st (idle worker)
+      took 20.1s total; 2nd (queued behind it) 32.1s; 3rd 44.1s — each
+      queued request adds roughly the prior request's full processing
+      time plus one ~5-second poll cycle, because `poll_once()`
+      handles exactly one job per cycle, fully synchronously. **Concrete
+      conclusion, not assumed: a single worker can serve one
+      interactive chat request at a time; a second concurrent request
+      already degrades past what's acceptable for chat.** Real, new
+      design requirement for D2: a worker must only be a routing
+      candidate when genuinely idle (no job in flight) — today's
+      health signal tracks tool-capability, not busy/idle status, and
+      D2 needs both.
+
+    **All three of D2's stated prerequisites are now done.** D2 itself
+    (wiring worker routing into real chat traffic, with the busy-worker
+    eligibility signal, the circuit breaker actually consulted, and
+    Section 5's remaining required tests) has not been started.
+
 ## 2026-09-17 update (superseded by the above, kept for the investigation trail)
 
 Session ended mid-canary after 12+ hours, on Kamara's explicit call to
