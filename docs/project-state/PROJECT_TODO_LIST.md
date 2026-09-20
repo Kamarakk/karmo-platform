@@ -45,7 +45,7 @@ and what would need to happen next.
 - **KVE01/KVE02/KVE03 topology** — fully verified live 2026-09-19/20 (PR #100): identical spec hosts (i7-10700, 8c/16t, 15GiB RAM, Intel UHD 630 iGPU, ~477GB NVMe), all near-full RAM, no GPU acceleration anywhere. `karmo-ai01` itself is VM100 on KVE02 (previously undocumented as virtualized) — confirmed to run with only 7.8GB allocated to it, not the full host's 15GB.
 - **VM resource allocation ("use all 3 VMs to their max")** — raised, not yet decided or built. No plan exists for reallocating VM memory/CPU shares across KVE01/02/03.
 - **Mini-helper-models-on-dedicated-workers architecture** — discussed extensively, NOT decided. See recommendations doc item 4 for tonight's new RAM evidence bearing directly on this.
-- **Voice/video accessibility** — zero capability exists. Not scoped, not started, no timeline.
+- **Voice/video accessibility** — zero capability exists, not started. **Now scoped** (2026-09-20): see `docs/plans/KARMO_VOICE_VISION_EARS_ROADMAP.md` for the full architecture recommendation (image understanding via the existing `ask_claude`/`ask_gpt` delegation pattern — no new local model needed; local lightweight STT/TTS for ears/voice, not cloud calls) and phased build plan. Planning only — no System-Fit Review or implementation has happened yet.
 
 ## E. Housekeeping / long-standing cleanup (not urgent, still open)
 
@@ -60,7 +60,7 @@ and what would need to happen next.
 1. **"There are more LLMs outside Ollama"** — flagged tonight, unresolved. Need to know what's being referred to beyond `ask_claude`/`ask_gpt` before it can be verified.
 2. **Next KARMO capability choice** — durable memory, BloomBoss Phase 1, and the orchestration task board are all live; no new capability track has been chosen (BloomBoss Phase 2, further Worker Commander capabilities like `bounded_text_read`/`directory_list`, or something else).
 3. **VM resource reallocation** — decide whether/how to shift RAM/CPU shares across KVE01/02/03 to give any single VM more headroom.
-4. **Voice/video/chat scope and timeline** — needs a real conversation about what's achievable and by when, separate from today's hardware/performance work.
+4. **Voice/video/chat scope and timeline** — roadmap now exists (`docs/plans/KARMO_VOICE_VISION_EARS_ROADMAP.md`); still needs Kamara's decision on the client surface (where she'll actually talk to KARMO from) before picking specific STT/TTS engines, per that doc's "What a fresh session should do first" section.
 
 ---
 
