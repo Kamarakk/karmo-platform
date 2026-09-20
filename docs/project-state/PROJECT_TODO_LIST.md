@@ -42,10 +42,59 @@ and what would need to happen next.
 
 ## D. Hardware / infrastructure
 
-- **KVE01/KVE02/KVE03 topology** — fully verified live 2026-09-19/20 (PR #100): identical spec hosts (i7-10700, 8c/16t, 15GiB RAM, Intel UHD 630 iGPU, ~477GB NVMe), all near-full RAM, no GPU acceleration anywhere. `karmo-ai01` itself is VM100 on KVE02 (previously undocumented as virtualized) — confirmed to run with only 7.8GB allocated to it, not the full host's 15GB.
-- **VM resource allocation ("use all 3 VMs to their max")** — raised, not yet decided or built. No plan exists for reallocating VM memory/CPU shares across KVE01/02/03.
-- **Mini-helper-models-on-dedicated-workers architecture** — discussed extensively, NOT decided. See recommendations doc item 4 for tonight's new RAM evidence bearing directly on this.
-- **Voice/video accessibility** — zero local capability exists yet. Scoped in `docs/plans/KARMO_VOICE_VISION_EARS_ROADMAP.md`. **Standing constraint (Kamara, 2026-09-20)**: Claude/GPT may be an explicit, optional supplementary tool for any capability (e.g. `ask_claude`'s image input, built and kept) but must never be the only/main source of one. Eyes/ears/voice each need a real local-first path as the primary mechanism; local vision specifically is blocked on a model evaluation or hardware decision, neither started.
+- **KVE01/KVE02/KVE03 topology** — fully verified live 2026-09-19/20 (PR #100): identical spec hosts (i7-10700, 8c/16t, 15GiB RAM, Intel UHD 630 iGPU, ~477GB NVMe), no GPU acceleration anywhere. `karmo-ai01` itself is VM100 on KVE02, 7.8GB RAM allocated. **Worker01/Worker02 have 9.7GB each**, confirmed live 2026-09-20 — more headroom than the brain machine itself, and near-idle (~9.1GB free) since D2 routing is dormant. This is why local eyes/ears/voice/coding-helper all live on the workers, not `karmo-ai01` (see below).
+- **Worker01/Worker02 model cleanup** — DONE (2026-09-20): `ministral-3:8b`/`granite3.3:2b` deleted from both (mirrors the `karmo-ai01` cleanup, PR #108), ~7GB freed each, `worker-runtime`'s allowed-model lists updated to match (PR #116). Both now run `qwen3:8b` + `mistral:7b`, same as `karmo-ai01`, plus the new local-capability models below.
+- **Local eyes/coding-helper/ears/voice — all four built, tested, live-verified 2026-09-20** (PR #117, not yet merged — awaiting Kamara's go-ahead): see section G below for full detail. This directly answers the former "mini-helper-models-on-dedicated-workers architecture" question — it's built, not just discussed anymore.
+- **VM resource allocation ("use all 3 VMs to their max")** — raised, not yet decided or built. No plan exists for reallocating VM memory/CPU shares across KVE01/02/03 beyond what's already used by the models above.
+
+## G. Local eyes / coding-helper / ears / voice (2026-09-20)
+
+Standing policy (Kamara, explicit, corrected once same session — see
+`docs/plans/KARMO_VOICE_VISION_EARS_ROADMAP.md`'s standing-constraint
+section for the full history): Claude/GPT may be an explicit, optional
+supplementary tool for anything, but must never be the only/main source
+of a KARMO capability. All four below are built entirely on KARMO's own
+local infrastructure (Worker01/Worker02), zero Claude/GPT dependency.
+
+| Item | Model/engine | Live-verified result | Status |
+|---|---|---|---|
+| Eyes | Moondream2 (Ollama) | 8.13s, ~1.3GB RAM, correct real-image description | Built + tested, PR #117 |
+| Coding helper | qwen2.5-coder:7b (Ollama, via existing `model_chat`) | 45.05s, correct Fibonacci function | Built + tested, PR #117 |
+| Ears | faster-whisper "small" (dedicated pip venv) | 3.05s, exact transcript match | Built + tested, PR #117 |
+| Voice | Piper + en_US-amy-medium voice | real-time factor 0.042 | Built + tested, PR #117 |
+
+Each has a worker-runtime capability + a Core-side dispatch glue module
+(`vision_capability.py`, `code_assist_capability.py`,
+`audio_transcribe_capability.py`, `speech_synthesize_capability.py`).
+
+**Two things true of all four, not yet resolved:**
+1. **Not wired into `_CHAT_EXPOSED_TOOLS`.** Vision/ears/voice genuinely
+   can't be yet — no client surface (browser mic/speaker, phone) exists
+   to capture/play audio or supply an image (Kamara's answer 2026-09-20:
+   she wants all three surfaces — browser, phone, and mic/speaker — this
+   is real client-side work, not started). The coding helper *could* be
+   wired in today (plain text, no client-surface gap) but is held to the
+   same gate for consistency.
+2. **Not activated.** All four require `worker_dispatch_client.available`,
+   which requires creating `/etc/karmo/core/worker-dispatch.dsn` —
+   deliberately never done. **Real finding from tonight, not previously
+   known**: that DSN file is a SHARED switch — creating it to activate
+   any of these four would *also* silently re-enable Model Router Phase
+   D2's own held-back chat-routing-to-worker path (two independent
+   reviews found real gaps there: an over-privileged credential, no
+   retention policy, a check-then-act race). Do not create that DSN file
+   without either resolving D2's own concerns or decoupling the two
+   switches first — documented in `vision_capability.py`'s module
+   docstring.
+
+**Item 5 of the original lineup (ethical-hacking / pentest lab) is
+deliberately deferred to 2026-09-22, per Kamara's own instruction.**
+Blocked on one question before any build starts: does an isolated lab
+(Metasploitable/Juice Shop VM, separate network, no route to production
+KARMO or the real home LAN) already exist, or does it need to be stood
+up first? KARMO running Nmap/Metasploit for Kamara (her explicit
+choice, confirmed 2026-09-20) needs that isolation to exist before a
+target allowlist has anything real to allowlist.
 
 ## E. Housekeeping / long-standing cleanup (not urgent, still open)
 
@@ -57,10 +106,12 @@ and what would need to happen next.
 
 ## F. Open questions needing Kamara's input specifically
 
-1. **"There are more LLMs outside Ollama"** — flagged tonight, unresolved. Need to know what's being referred to beyond `ask_claude`/`ask_gpt` before it can be verified.
-2. **Next KARMO capability choice** — durable memory, BloomBoss Phase 1, and the orchestration task board are all live; no new capability track has been chosen (BloomBoss Phase 2, further Worker Commander capabilities like `bounded_text_read`/`directory_list`, or something else).
-3. **VM resource reallocation** — decide whether/how to shift RAM/CPU shares across KVE01/02/03 to give any single VM more headroom.
-4. **Voice/video/chat scope and timeline** — roadmap now exists (`docs/plans/KARMO_VOICE_VISION_EARS_ROADMAP.md`); still needs Kamara's decision on the client surface (where she'll actually talk to KARMO from) before picking specific STT/TTS engines, per that doc's "What a fresh session should do first" section.
+1. **Merge PR #117?** All four local capabilities (eyes/coding/ears/voice) are built and tested but not yet merged into `main` — nothing changes in production either way (all four are inert until the DSN activation decision below), so this is low-risk to merge whenever.
+2. **Client surface build** — Kamara's answer 2026-09-20: browser, phone, AND mic/speaker, all three. This is real, not-yet-scoped frontend/client work (extending `core_service.webui` for mic capture + audio playback, plus a phone access path) — needed before any of the 4 local capabilities are reachable from a live conversation.
+3. **Worker-dispatch DSN activation decision** — creating `/etc/karmo/core/worker-dispatch.dsn` would activate all 4 local capabilities AND silently re-enable Phase D2's held-back chat routing (shared switch, see section G). Needs either resolving D2's own flagged concerns or decoupling the two switches — not a quick decision.
+4. **Ethical-hacking lab isolation** — parked for 2026-09-22 per Kamara's instruction. Does an isolated lab (Metasploitable/Juice Shop, separate network) already exist, or does it need to be stood up first?
+5. **Next KARMO capability choice beyond the above** — durable memory, BloomBoss Phase 1, and the orchestration task board are all live; no further new capability track has been chosen (BloomBoss Phase 2, further Worker Commander capabilities like `bounded_text_read`/`directory_list`, or something else).
+6. **VM resource reallocation** — decide whether/how to shift RAM/CPU shares across KVE01/02/03 to give any single VM more headroom, beyond what's already used by the models built tonight.
 
 ---
 

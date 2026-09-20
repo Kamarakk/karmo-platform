@@ -7,11 +7,15 @@ session (any model, any tool) can execute against it directly without
 re-deriving the architecture decisions.
 Read this if: picking up the voice/vision work, or scoping the first PR
 in this area.
-Status: PLANNING ONLY. Nothing in this document is built. No System-Fit
-Review, Invariant Impact Review, or Production Access Authorization has
-been performed for any of it — those remain required before
-implementation starts, per `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`
-and `docs/governance/KARMO_SYSTEM_FIT_REVIEW.md`.
+Status: UPDATED 2026-09-20 (same day as original) — local eyes, coding
+helper, ears, and voice are all now built and live-verified (see the
+"2026-09-20: items 1-4 built" section immediately below). What remains
+NOT built: wiring any of them into `_CHAT_EXPOSED_TOOLS`, a real client
+surface (browser mic/speaker, phone), and activating worker dispatch at
+all (a real, newly-found coupling issue — see that section). No formal
+System-Fit Review or Invariant Impact Review document was written for
+tonight's builds; they were scoped and reviewed inline against this
+roadmap's own already-established constraints instead.
 
 ---
 
@@ -39,6 +43,40 @@ instruction, caught and fixed immediately — the feature was restored.
 This is the corrected, standing rule.)
 
 ---
+
+## 2026-09-20: items 1-4 built (PR #117, not yet merged)
+
+All built and live-verified on Worker01, using the real RAM headroom
+found there that same day (9.7GB total, ~9.1GB idle — more than
+`karmo-ai01` itself has after `qwen3:8b` loads):
+
+| Item | Model/engine | Live-verified result |
+|---|---|---|
+| Eyes | Moondream2 (Ollama) | 8.13s, ~1.3GB RAM, correct real-image description |
+| Coding helper | qwen2.5-coder:7b (Ollama, via existing `model_chat`) | 45.05s, correct Fibonacci function |
+| Ears | faster-whisper "small" (dedicated pip venv, no compilation) | 3.05s, exact transcript match |
+| Voice | Piper + en_US-amy-medium voice (prebuilt binary) | real-time factor 0.042 -- comfortably faster than real-time |
+
+Worker01/Worker02 were also cleaned first (2026-09-20): `ministral-3:8b`
+and `granite3.3:2b` deleted from both (mirroring the `karmo-ai01`
+cleanup), ~7GB freed on each.
+
+**What's genuinely NOT done yet, honestly**:
+1. None of the four are wired into `_CHAT_EXPOSED_TOOLS` -- eyes/ears/
+   voice need a real client surface (Kamara's answer 2026-09-20: browser,
+   phone, AND mic/speaker, all three -- not yet built) to actually
+   capture/play audio or supply an image. The coding helper could be
+   wired in today (plain text, no client-surface gap) but is held to the
+   same gate for consistency.
+2. **New finding, not previously known**: none of the four can actually
+   run yet regardless, because `worker_dispatch_client.available`
+   requires `/etc/karmo/core/worker-dispatch.dsn`, which is deliberately
+   never created. That file is a SHARED switch -- creating it to
+   activate any of these four local capabilities would also silently
+   re-enable Model Router Phase D2's own held-back chat-routing-to-
+   worker path (see `core_service/vision_capability.py`'s module
+   docstring for the full reasoning). Resolve D2's own flagged concerns,
+   or decouple the two switches, before creating that file.
 
 ## Why this doesn't exist yet
 
