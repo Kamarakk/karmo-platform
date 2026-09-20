@@ -81,18 +81,32 @@ MAX_MEMORY_CONTEXT_CHARS = 12_000
 # than sitting alongside it. This is the direct fix for a real 379.5-second
 # turn: two sequential fixed 120s timeouts, uncapped in total.
 #
-# Corrected from the plan's own initial 75s value after a real regression
-# observed live in production (2026-09-19): karmo-ai01 is memory-tight
-# (~1.3 GiB genuinely free out of 15 GiB on its VM -- see
-# docs/project-state/NETWORK_INVENTORY.md), and a cold model load (qwen3:8b
-# not yet resident in Ollama) timed out against the 75s shared budget --
-# something the old, unbounded-per-candidate 120s-each design would not
-# have hit on a single-candidate attempt. 150.0 restores at least the old
-# single-candidate headroom while still being one shared ceiling, not
-# stacked per candidate. Still explicitly not a benchmarked p95 value --
-# a real local cold/warm latency measurement (never performed) remains the
-# right way to set this precisely.
-TOTAL_CHAT_DEADLINE_SECONDS = 150.0
+# Corrected twice from the plan's own initial 75s value after real
+# regressions observed live in production (2026-09-19):
+#
+# 1. karmo-ai01 is memory-tight (~1.3 GiB genuinely free out of 15 GiB on
+#    its VM -- see docs/project-state/NETWORK_INVENTORY.md), and a cold
+#    model load timed out against 75s. Raised to 150.0.
+#
+# 2. Still not enough -- a direct, timing-instrumented trace of the real
+#    request against the real deployed Ollama isolated the actual cause:
+#    offering ANY tool schemas (all 4 of _CHAT_EXPOSED_TOOLS are sent on
+#    every call) inflates qwen3:8b's effective prompt from 19 tokens
+#    (plain question, no tools) to 632 tokens -- over 30x -- and this
+#    CPU-only host processes prompt tokens at only ~22 tokens/second
+#    (632 tokens measured at 28.76s of prompt_eval_duration alone, before
+#    any generation). Every round of a tool-calling conversation re-sends
+#    the full tool schema, so this ~29s floor compounds each round --
+#    this is a real hardware/model limitation, not a bug, and no code fix
+#    eliminates it (though capping tool RESULT size, done separately,
+#    still helps the read-back side). 300.0 gives room for a realistic
+#    2-3 round tool conversation to actually finish rather than fail
+#    right before completion. This is a real, accepted trade-off (slower
+#    tool-using answers) until either a faster/smaller model is chosen or
+#    the tool loop is redesigned to stop re-sending the full tool schema
+#    on every round (a real, separate future improvement, not attempted
+#    here). Still not a benchmarked p95 value.
+TOTAL_CHAT_DEADLINE_SECONDS = 300.0
 
 # Real, live-diagnosed bound (2026-09-19): bloomboss_report's full result
 # serialized to 63,035 bytes for a single small CSV import -- feeding that
