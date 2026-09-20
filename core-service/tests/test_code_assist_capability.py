@@ -1,12 +1,17 @@
 import pytest
 
 from core_service.code_assist_capability import (
+    ASK_LOCAL_CODER_TOOL,
+    ASK_LOCAL_CODER_TOOL_VERSION,
     CODE_ASSIST_MODEL,
     MAX_QUESTION_CHARS,
     CodeAssistCapabilityError,
     dispatch_code_assist,
+    handler,
     manifest,
 )
+from core_service.control import ApprovalRequirement
+from core_service.operator import KarmoOperator
 from core_service.worker_dispatch import DispatchOutcome
 
 
@@ -95,3 +100,23 @@ def test_malformed_result_raises_clean_error():
 
     with pytest.raises(CodeAssistCapabilityError, match="invalid model_chat result"):
         dispatch_code_assist(client, worker_id="KARMO-WORKER01", question="write a function")
+
+
+def test_handler_closure_dispatches_to_the_bound_worker_and_returns_an_answer():
+    client = FakeWorkerDispatchClient(outcome=_succeeded("def foo(): pass"))
+    bound_handler = handler(client, worker_id="KARMO-WORKER02")
+
+    result = bound_handler({"question": "write a no-op function"})
+
+    assert result == {"answer": "def foo(): pass"}
+    assert client.calls[0]["worker_id"] == "KARMO-WORKER02"
+
+
+def test_capability_is_wired_into_the_exposed_tool_list_as_read_only():
+    """Real, live-verified 2026-09-20: unlike vision/ears/voice,
+    ask_local_coder is registered and bound in KarmoOperator.__init__
+    since a coding question is plain text with no client-surface gap."""
+    operator = KarmoOperator(model_client=object(), task_store=None)
+    record = operator.registry.get(ASK_LOCAL_CODER_TOOL, ASK_LOCAL_CODER_TOOL_VERSION)
+    assert record is not None
+    assert record.computed_approval_requirement == ApprovalRequirement.NONE

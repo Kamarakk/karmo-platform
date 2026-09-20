@@ -56,6 +56,16 @@ def manifest() -> dict:
             "model (moondream), running on a worker -- not Claude or GPT. Requires a real "
             "client surface to supply the image; not currently reachable from chat."
         ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "maxLength": MAX_QUESTION_CHARS},
+                "image_base64": {"type": "string"},
+            },
+            "required": ["question", "image_base64"],
+            "additionalProperties": False,
+        },
+        "output_schema": {"type": "object", "properties": {"answer": {"type": "string"}}},
         "capability_class": "READ",
         "read_scope": "none -- dispatches to a worker's own loopback Ollama only",
         "write_scope": "none",
@@ -64,7 +74,17 @@ def manifest() -> dict:
         "destructive_action": False,
         "network_requirements": "none from Core's perspective -- LAN dispatch to an already-authenticated worker",
         "secret_requirements": "none beyond the existing worker-dispatch DSN, when provisioned",
+        "invocation_identity": "karmo-chat-model",
+        "timeout_seconds": 60,
+        "retry_policy": "none",
+        "idempotent": False,
+        "idempotency_mechanism": "not idempotent; each call is a live model invocation on a worker",
+        "rollback_or_compensation": "not applicable",
+        "health_check": "invoke with a trivial image and question, confirm a non-empty answer",
+        "deprecation_policy": "explicit version replacement",
         "dependencies": "worker_dispatch_client.available (requires /etc/karmo/core/worker-dispatch.dsn -- see module docstring for why this is not yet created)",
+        "observability": "structured operator response",
+        "failure_isolation": "a dispatch failure or timeout refuses cleanly, never hangs the chat turn",
     }
 
 

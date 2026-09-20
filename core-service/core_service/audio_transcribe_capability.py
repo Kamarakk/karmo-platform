@@ -41,6 +41,16 @@ def manifest() -> dict:
             "model (faster-whisper), running on a worker -- not Claude or GPT. Requires a "
             "real audio capture path; not currently reachable from chat."
         ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["small"]},
+                "audio_base64": {"type": "string"},
+            },
+            "required": ["audio_base64"],
+            "additionalProperties": False,
+        },
+        "output_schema": {"type": "object", "properties": {"text": {"type": "string"}}},
         "capability_class": "READ",
         "read_scope": "none -- dispatches to a worker's own local faster-whisper process only",
         "write_scope": "none",
@@ -49,7 +59,17 @@ def manifest() -> dict:
         "destructive_action": False,
         "network_requirements": "none from Core's perspective -- LAN dispatch to an already-authenticated worker",
         "secret_requirements": "none beyond the existing worker-dispatch DSN, when provisioned",
+        "invocation_identity": "karmo-chat-model",
+        "timeout_seconds": 30,
+        "retry_policy": "none",
+        "idempotent": False,
+        "idempotency_mechanism": "not idempotent; each call is a live model invocation on a worker",
+        "rollback_or_compensation": "not applicable",
+        "health_check": "invoke with a trivial audio clip, confirm a non-empty transcript",
+        "deprecation_policy": "explicit version replacement",
         "dependencies": "worker_dispatch_client.available (requires /etc/karmo/core/worker-dispatch.dsn -- see vision_capability.py for why this is not yet created)",
+        "observability": "structured operator response",
+        "failure_isolation": "a dispatch failure or timeout refuses cleanly, never hangs the chat turn",
     }
 
 

@@ -27,6 +27,10 @@ from .ask_gpt_capability import ASK_GPT_TOOL
 from .ask_gpt_capability import TOOL_VERSION as ASK_GPT_TOOL_VERSION
 from .ask_gpt_capability import handler as ask_gpt_handler
 from .ask_gpt_capability import manifest as ask_gpt_manifest
+from .code_assist_capability import ASK_LOCAL_CODER_TOOL
+from .code_assist_capability import ASK_LOCAL_CODER_TOOL_VERSION
+from .code_assist_capability import handler as code_assist_handler
+from .code_assist_capability import manifest as code_assist_manifest
 from .bloomboss_capability import BLOOMBOSS_REPORT_TOOL
 from .bloomboss_capability import TOOL_VERSION as BLOOMBOSS_TOOL_VERSION
 from .bloomboss_capability import handler as bloomboss_report_handler
@@ -240,6 +244,32 @@ _CHAT_EXPOSED_TOOLS = {
             },
         },
     },
+    "ask_local_coder": {
+        "tool_id": ASK_LOCAL_CODER_TOOL,
+        "version": ASK_LOCAL_CODER_TOOL_VERSION,
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "ask_local_coder",
+                "description": (
+                    "Ask KARMO's own local coding-specialized model (running on a worker, "
+                    "not Claude or GPT) a coding question -- writing, explaining, or "
+                    "debugging code. Use ask_claude/ask_gpt only when this local model "
+                    "isn't enough."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "The coding question to ask.",
+                        },
+                    },
+                    "required": ["question"],
+                },
+            },
+        },
+    },
     "ask_claude": {
         "tool_id": ASK_CLAUDE_TOOL,
         "version": ASK_CLAUDE_TOOL_VERSION,
@@ -380,6 +410,10 @@ _TOOL_TRIGGER_WORDS = {
     ),
     "ask_claude": re.compile(r"\b(claude|anthropic|second opinion)\b", re.IGNORECASE),
     "ask_gpt": re.compile(r"\b(gpt|chatgpt|openai)\b", re.IGNORECASE),
+    "ask_local_coder": re.compile(
+        r"\b(code|coding|python|function|script|debug|program|programming|algorithm)\b",
+        re.IGNORECASE,
+    ),
 }
 
 
@@ -541,6 +575,7 @@ class KarmoOperator:
         self.registry.register(bloomboss_manifest())
         self.registry.register(ask_claude_manifest())
         self.registry.register(ask_gpt_manifest())
+        self.registry.register(code_assist_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
@@ -549,6 +584,10 @@ class KarmoOperator:
         self.dispatcher.bind(BLOOMBOSS_REPORT_TOOL, BLOOMBOSS_TOOL_VERSION, bloomboss_report_handler)
         self.dispatcher.bind(ASK_CLAUDE_TOOL, ASK_CLAUDE_TOOL_VERSION, ask_claude_handler)
         self.dispatcher.bind(ASK_GPT_TOOL, ASK_GPT_TOOL_VERSION, ask_gpt_handler)
+        self.dispatcher.bind(
+            ASK_LOCAL_CODER_TOOL, ASK_LOCAL_CODER_TOOL_VERSION,
+            code_assist_handler(self.worker_dispatch_client),
+        )
 
         if task_store is not None:
             self.task_store = task_store

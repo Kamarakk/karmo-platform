@@ -238,6 +238,23 @@ def test_ask_claude_and_ask_gpt_require_being_asked_for_explicitly():
     assert _tool_names(client.requests[0]["tools"]) == {"ask_gpt"}
 
 
+def test_ask_local_coder_is_offered_only_for_coding_questions():
+    """2026-09-20: KARMO's own local coding helper (qwen2.5-coder:7b on a
+    worker) -- unlike ask_claude/ask_gpt, this is KARMO's own capability,
+    not an external one, but still keyword-gated to avoid its schema cost
+    on every ordinary turn."""
+    store = FakeTaskStore()
+    store.seed()
+
+    client = RecordingNoToolClient()
+    KarmoOperator(model_client=client, task_store=store).handle("what tasks are open?")
+    assert "ask_local_coder" not in _tool_names(client.requests[0]["tools"])
+
+    client = RecordingNoToolClient()
+    KarmoOperator(model_client=client, task_store=store).handle("write me a python function to reverse a string")
+    assert _tool_names(client.requests[0]["tools"]) == {"ask_local_coder"}
+
+
 def test_oversized_tool_result_is_truncated_before_reaching_the_model():
     """Real, live-diagnosed bug (2026-09-19): bloomboss_report's full result
     serialized to 63,035 bytes for a single small CSV import, and feeding
