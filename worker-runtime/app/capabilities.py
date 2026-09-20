@@ -227,7 +227,7 @@ register_handler("local_model_probe", _local_model_probe)
 # capability_manifest.py's input_schema is a declared contract, not something
 # sandbox.run_capability enforces automatically (same as every other handler
 # in this file).
-_ALLOWED_MODEL_CHAT_MODELS = frozenset({"qwen3:8b", "mistral:7b"})
+_ALLOWED_MODEL_CHAT_MODELS = frozenset({"qwen3:8b", "mistral:7b", "qwen2.5-coder:7b"})
 MAX_MODEL_CHAT_PROMPT_CHARS = 8000
 _DEFAULT_OLLAMA_GENERATE_URL = "http://127.0.0.1:11434/api/generate"
 
