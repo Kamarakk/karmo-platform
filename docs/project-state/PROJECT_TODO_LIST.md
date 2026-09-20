@@ -29,7 +29,7 @@ and what would need to happen next.
 ## B. Local chat performance (current, real hardware)
 
 - **Selective tool-offering** (PR #106) — DONE, live, verified: only offers a tool's schema when the message matches that tool's trigger keywords, cutting `qwen3:8b`'s effective prompt inflation on tool-free turns.
-- **Trivial-message short-circuit** — NOT built. See recommendations doc item 1. Highest-leverage remaining lever given tonight's RAM measurement (~6.2GB / 38s per model load, even for a plain greeting).
+- **Trivial-message short-circuit** — DONE (built 2026-09-20, see PR opened same day): a pure greeting or acknowledgment (full-message match only, never substring) now returns a canned reply without calling the model at all, skipping the ~6.2GB/~30-40s model-load cost entirely for that class of message. 6 new tests, full suite 356 passed.
 - **`num_predict=96` hardcoded response cap** — NOT addressed. Flagged only.
 - **External-LLM answer caching** (`ask_claude`/`ask_gpt`) — NOT built. Recommendation: exact-match/short-TTL cache before any semantic/embedding approach.
 - **`TOTAL_CHAT_DEADLINE_SECONDS=300.0`** — accepted trade-off, not a target state; revisit only if hardware changes the underlying token-processing speed (~22 tok/s prompt, ~3.5-4 tok/s generation, both CPU-only, no GPU anywhere in the fleet).

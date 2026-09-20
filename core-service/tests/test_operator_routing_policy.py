@@ -101,7 +101,7 @@ def test_chat_still_uses_local_model_below_verification_trust_floor():
         ],
     )
 
-    response = operator.handle("hello")
+    response = operator.handle("what is on my schedule today")
 
     assert response["kind"] == "chat"
     assert response.get("model") == "local-low"
@@ -145,7 +145,7 @@ def test_chat_excludes_models_that_are_not_tagged_tool_calling():
         ],
     )
 
-    response = operator.handle("hello")
+    response = operator.handle("what is on my schedule today")
 
     assert response["error"] == "ModelRoutingError"
     assert client.calls == []
@@ -190,7 +190,7 @@ def test_chat_fallback_never_retries_the_same_candidate_twice_in_one_request():
         ],
     )
 
-    response = operator.handle("hello")
+    response = operator.handle("what is on my schedule today")
 
     assert response["kind"] == "chat"
     assert response["model"] == "secondary-tools"
@@ -217,7 +217,7 @@ def test_shadow_routing_failure_never_affects_the_real_chat_response(monkeypatch
         resources=[_resource("local-only", {"chat", "tool_calling"}, trust_tier=40, local=True)],
     )
 
-    response = operator.handle("hello")
+    response = operator.handle("what is on my schedule today")
 
     assert response["kind"] == "chat"
     assert response["model"] == "local-only"
