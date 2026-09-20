@@ -39,14 +39,28 @@ class OllamaChatClient:
     # final answer from a potentially large tool result) -- 45s was silently
     # timing out on every real question that used a tool, falling all the way
     # through to the weakest fallback model with no visible trace of why.
-    def __init__(self, base_url: str = "http://127.0.0.1:11434", *, timeout: float = 120.0):
+    # 96, not a benchmarked value -- this was the pre-existing hardcoded
+    # response-length cap. Flagged 2026-09-20 as a real remaining latency
+    # lever on karmo-ai01's CPU-only hardware (~3.5-4 tokens/sec generation
+    # measured live), separate from the tool-schema-inflation cost already
+    # fixed by selective tool-offering. Made a constructor default instead
+    # of a hardcoded literal so a future tuning pass doesn't require
+    # touching this file again -- the value itself is intentionally
+    # unchanged here, not silently raised or lowered as a side effect.
+    DEFAULT_NUM_PREDICT = 96
+
+    def __init__(self, base_url: str = "http://127.0.0.1:11434", *, timeout: float = 120.0,
+                 num_predict: int = DEFAULT_NUM_PREDICT):
         parsed = urlparse(base_url)
         if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
             raise OllamaClientError("Ollama endpoint must be loopback HTTP")
         if parsed.path not in {"", "/"} or parsed.query or parsed.fragment or parsed.username or parsed.password:
             raise OllamaClientError("Ollama base URL must contain only loopback host and optional port")
+        if not isinstance(num_predict, int) or isinstance(num_predict, bool) or num_predict <= 0:
+            raise OllamaClientError("num_predict must be a positive integer")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.num_predict = num_predict
         self._opener = build_opener(_RefuseRedirect)
 
     def _request_message(self, *, model: str, messages: list[dict], temperature: float,
@@ -58,7 +72,7 @@ class OllamaChatClient:
             "messages": messages,
             "stream": False,
             "think": False,
-            "options": {"temperature": temperature, "num_predict": 96},
+            "options": {"temperature": temperature, "num_predict": self.num_predict},
         }
         if tools:
             body["tools"] = tools
