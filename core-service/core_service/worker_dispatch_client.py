@@ -14,21 +14,31 @@ This module is therefore deliberately its own narrow credential path,
 separate from worker_gateway_runtime.build_backend()'s full config
 (which also reads the SSH transport identity and HMAC key material Core
 has no reason to hold). It needs exactly one thing: a Postgres DSN with
-sufficient privilege on the worker-coordination tables -- reusing the
-same role already granted that access for the gateway (karmo_gateway),
-via its own dedicated DSN file Core's own service account can read,
-never the gateway's SSH/HMAC credential directory.
+sufficient privilege on the worker-coordination tables.
 
-**Deployment note, not yet provisioned as of this module's introduction**:
-this DSN file does not exist in production yet. build_default_worker_dispatch_client()
-degrades to NullWorkerDispatchClient (matching every other optional
-subsystem's never-raise-on-construction discipline) until it is created
--- Phase D2's worker path simply never has a dispatch client available
-and every chat turn falls back to the existing local candidate chain,
-exactly as it does today. This is a deliberate, safe default: merging
-this code changes no live behavior until that DSN is deployed as its
-own separate, explicit step.
-"""
+**Credential design, corrected 2026-09-20**: the original design reused
+karmo_gateway's role for this DSN -- flagged by two independent reviews
+as over-privileged (karmo_gateway's own responsibilities are much
+broader than what Core's dispatch path actually needs). Replaced with a
+new, dedicated, least-privilege role, karmo_core_dispatch, scoped to
+exactly the four tables dispatch_and_wait() actually touches (traced,
+not guessed -- see migration 011's own comment for the full trace):
+core_approval_records, karmo_worker_jobs, karmo_worker_job_payloads,
+karmo_worker_job_results. No access to karmo_workers,
+karmo_execution_tickets, karmo_worker_events, or any of karmo_gateway's
+other tables. Provisioned directly in production (CREATE ROLE, matching
+karmo_core_memory's precedent), migration 011 only grants it.
+
+**Deployment note**: the DSN file
+(/etc/karmo/core/worker-dispatch.dsn) does not exist in production yet.
+build_default_worker_dispatch_client() degrades to
+NullWorkerDispatchClient (matching every other optional subsystem's
+never-raise-on-construction discipline) until it is created. Creating it
+activates dispatch for vision/ears/voice/the local coding helper -- it
+does NOT by itself reactivate Model Router Phase D2's chat-routing path,
+which now has its own separate, independent gate
+(operator.D2_CHAT_ROUTING_ENABLED_FILE, added 2026-09-20 specifically so
+these two activation decisions don't collapse into one)."""
 
 from __future__ import annotations
 
