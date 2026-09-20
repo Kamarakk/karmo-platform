@@ -428,6 +428,83 @@ def _vision_describe(payload, *, sandbox_root, allowed_root, timeout_seconds):
 register_handler("vision_describe", _vision_describe)
 
 
+# --- TRANSCRIBE AUDIO (local ears) -------------------------------------------
+# KARMO's own local speech-to-text -- calls a dedicated faster-whisper venv
+# on this worker (NOT this worker-runtime's own venv, and not Ollama --
+# Ollama has no audio-model support), via subprocess, matching the existing
+# _pytest_job/_static_analysis pattern of invoking a trusted interpreter.
+# Verified live 2026-09-20 on Worker01: faster-whisper "small" (int8),
+# model load 9.21s (first run, downloads once), a real 4-word test phrase
+# transcribed exactly correctly in 3.05s.
+_DEFAULT_WHISPER_PYTHON = "/home/karmo/karmo-vision-audio/whisper-venv/bin/python3"
+_DEFAULT_WHISPER_SCRIPT = str(Path(__file__).resolve().parent / "whisper_transcribe_script.py")
+_ALLOWED_WHISPER_MODELS = frozenset({"small"})
+MAX_AUDIO_BYTES = 10_000_000  # ~10MB, generous for a short voice clip
+
+
+def _whisper_python():
+    """Same call-time-resolved, env-var-overridable pattern as
+    _ollama_generate_url() above -- lets tests redirect this without a
+    real faster-whisper install, and lets a spawned child (which
+    re-imports this module fresh) still see a test override via the
+    environment, which spawn does inherit."""
+    return os.environ.get("KARMO_WHISPER_PYTHON", _DEFAULT_WHISPER_PYTHON)
+
+
+def _whisper_script():
+    """Same override pattern as _whisper_python() -- lets a test point at
+    a fake script needing no real faster-whisper install."""
+    return os.environ.get("KARMO_WHISPER_SCRIPT", _DEFAULT_WHISPER_SCRIPT)
+
+
+def _transcribe_audio(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    model = payload.get("model", "small")
+    audio_base64 = payload.get("audio_base64")
+    if model not in _ALLOWED_WHISPER_MODELS:
+        raise SandboxError(f"model not in allowed set for transcribe_audio: {model!r}")
+    if not isinstance(audio_base64, str) or not audio_base64.strip():
+        raise SandboxError("audio_base64 must be non-empty text")
+    try:
+        audio_bytes = base64.b64decode(audio_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise SandboxError("audio_base64 is not valid base64") from exc
+    if not audio_bytes:
+        raise SandboxError("audio_base64 decoded to empty content")
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        raise SandboxError(f"audio exceeds {MAX_AUDIO_BYTES} bytes")
+
+    audio_path = Path(sandbox_root) / "input_audio.wav"
+    audio_path.write_bytes(audio_bytes)
+
+    try:
+        result = subprocess.run(
+            [_whisper_python(), _whisper_script(), str(audio_path), model],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=_safe_subprocess_env(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SandboxError(f"transcribe_audio timed out after {timeout_seconds}s") from exc
+
+    if result.returncode != 0:
+        raise SandboxError(f"transcribe_audio subprocess failed: {result.stderr[-500:]}")
+    try:
+        parsed = json.loads(result.stdout.strip().splitlines()[-1])
+        text = parsed["text"]
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+        raise SandboxError("invalid transcribe_audio output") from exc
+    if not isinstance(text, str):
+        raise SandboxError("invalid transcribe_audio output")
+
+    output = {"text": text}
+    summary = f"transcribe_audio: {model} ({len(text)} chars)"
+    return output, summary, []
+
+
+register_handler("transcribe_audio", _transcribe_audio)
+
+
 def _document_processing_test(payload, *, sandbox_root, allowed_root, timeout_seconds):
     """Synthetic chunking simulation for the bounded document job path."""
     root = _require_allowed_root(allowed_root)

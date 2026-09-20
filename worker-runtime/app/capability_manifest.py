@@ -281,6 +281,32 @@ SAFE_CAPABILITIES = {
         idempotent=False,
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
+    # Local ears -- see capabilities.py's transcribe_audio docstring for the
+    # live-verification record (2026-09-20, faster-whisper "small", 3.05s
+    # for a real 4-word phrase, exact transcript match). READ/NONE: calls a
+    # dedicated local faster-whisper venv via subprocess, no network, no
+    # persistent side effect.
+    "transcribe_audio": dict(
+        capability_id="transcribe_audio",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["small"]},
+                "audio_base64": {"type": "string"},
+            },
+            "required": ["audio_base64"],
+        },
+        output_schema={"type": "object", "properties": {"text": {"type": "string"}}},
+        timeout_seconds=60,
+        resource_requirements={"cpu": "medium", "memory_mb": 2048},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
 }
 SAFE_CAPABILITIES.update(COMMANDER_READONLY_CAPABILITIES)
 

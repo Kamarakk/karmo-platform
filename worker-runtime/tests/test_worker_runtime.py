@@ -23,6 +23,7 @@ import json
 import multiprocessing
 import os
 import socket
+import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -1507,6 +1508,88 @@ def test_capability_vision_describe_manifest_matches_registered_allowed_models()
     assert manifest["authority_class"] == CapabilityClass.READ
     allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
     assert allowed == capabilities.__dict__["_ALLOWED_VISION_MODELS"]
+
+
+_FAKE_WHISPER_SCRIPT = str(Path(__file__).resolve().parent / "fixtures" / "fake_whisper_transcribe_script.py")
+
+
+def test_capability_transcribe_audio_calls_whisper_and_returns_text(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+    audio_b64 = base64.b64encode(b"the quick brown fox").decode("ascii")
+
+    output, summary, duration, evidence = run_capability(
+        "transcribe_audio", {"model": "small", "audio_base64": audio_b64}, timeout_seconds=30,
+    )
+
+    assert output == {"text": "the quick brown fox"}
+    assert "small" in summary
+
+
+def test_capability_transcribe_audio_defaults_to_small_model(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+    audio_b64 = base64.b64encode(b"hello").decode("ascii")
+
+    output, summary, duration, evidence = run_capability(
+        "transcribe_audio", {"audio_base64": audio_b64}, timeout_seconds=30,
+    )
+
+    assert output == {"text": "hello"}
+
+
+def test_capability_transcribe_audio_refuses_model_outside_allowed_set(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+    audio_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="model not in allowed set"):
+        run_capability(
+            "transcribe_audio", {"model": "large", "audio_base64": audio_b64}, timeout_seconds=30,
+        )
+
+
+def test_capability_transcribe_audio_refuses_invalid_base64(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+
+    with pytest.raises(SandboxError, match="not valid base64"):
+        run_capability(
+            "transcribe_audio", {"audio_base64": "not-valid-base64!!!"}, timeout_seconds=30,
+        )
+
+
+def test_capability_transcribe_audio_refuses_empty_audio(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+
+    with pytest.raises(SandboxError, match="empty"):
+        run_capability("transcribe_audio", {"audio_base64": ""}, timeout_seconds=30)
+
+
+def test_capability_transcribe_audio_refuses_oversized_audio(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+    huge_b64 = base64.b64encode(b"x" * (capabilities.MAX_AUDIO_BYTES + 1)).decode("ascii")
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability("transcribe_audio", {"audio_base64": huge_b64}, timeout_seconds=30)
+
+
+def test_capability_transcribe_audio_wraps_subprocess_failure(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", f"/nonexistent/{_unused_loopback_port()}.py")
+    audio_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="transcribe_audio subprocess failed"):
+        run_capability("transcribe_audio", {"audio_base64": audio_b64}, timeout_seconds=30)
+
+
+def test_capability_transcribe_audio_manifest_matches_registered_allowed_models():
+    manifest = SAFE_CAPABILITIES["transcribe_audio"]
+    assert manifest["authority_class"] == CapabilityClass.READ
+    allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
+    assert allowed == capabilities.__dict__["_ALLOWED_WHISPER_MODELS"]
 
 
 def test_capability_document_processing_synthetic_chunking():
