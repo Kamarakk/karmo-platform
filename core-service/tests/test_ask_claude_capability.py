@@ -9,6 +9,8 @@ process -- that live proof is done manually, once, outside the suite.
 
 from __future__ import annotations
 
+import base64
+import os
 import subprocess
 
 import pytest
@@ -155,6 +157,117 @@ def test_a_failed_call_is_not_cached_and_retries_hit_the_cli_again(monkeypatch):
         handler({"question": "anything"})
 
     assert calls == ["anything", "anything"], "a failed call must never be cached"
+
+
+def test_image_is_decoded_and_passed_through_to_invoke(monkeypatch):
+    captured = {}
+    raw_bytes = b"fake-png-bytes"
+
+    def _invoke(question, *, image_bytes=None, image_format=None):
+        captured["question"] = question
+        captured["image_bytes"] = image_bytes
+        captured["image_format"] = image_format
+        return "a red square"
+
+    monkeypatch.setattr(ask_claude_capability, "_invoke_claude_cli", _invoke)
+
+    result = handler({
+        "question": "what color is this?",
+        "image_base64": base64.b64encode(raw_bytes).decode("ascii"),
+        "image_format": "PNG",
+    })
+
+    assert result == {"answer": "a red square"}
+    assert captured["image_bytes"] == raw_bytes
+    assert captured["image_format"] == "png"
+
+
+def test_image_request_bypasses_the_cache(monkeypatch):
+    calls = []
+
+    def _invoke(question, *, image_bytes=None, image_format=None):
+        calls.append(question)
+        return "an answer"
+
+    monkeypatch.setattr(ask_claude_capability, "_invoke_claude_cli", _invoke)
+    args = {
+        "question": "what is this?",
+        "image_base64": base64.b64encode(b"bytes").decode("ascii"),
+        "image_format": "png",
+    }
+
+    handler(args)
+    handler(dict(args))
+
+    assert calls == ["what is this?", "what is this?"], "image requests must never be served from cache"
+
+
+def test_image_without_a_format_is_refused(monkeypatch):
+    monkeypatch.setattr(ask_claude_capability, "_invoke_claude_cli", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not be called")))
+
+    with pytest.raises(AskClaudeCapabilityError, match="image_format"):
+        handler({"question": "what is this?", "image_base64": base64.b64encode(b"x").decode("ascii")})
+
+
+def test_unsupported_image_format_is_refused():
+    with pytest.raises(AskClaudeCapabilityError, match="image_format"):
+        handler({
+            "question": "what is this?",
+            "image_base64": base64.b64encode(b"x").decode("ascii"),
+            "image_format": "bmp",
+        })
+
+
+def test_invalid_base64_is_refused():
+    with pytest.raises(AskClaudeCapabilityError, match="not valid base64"):
+        handler({"question": "what is this?", "image_base64": "not-valid-base64!!!", "image_format": "png"})
+
+
+def test_empty_decoded_image_is_refused():
+    with pytest.raises(AskClaudeCapabilityError, match="empty"):
+        handler({"question": "what is this?", "image_base64": "", "image_format": "png"})
+
+
+def test_oversized_image_is_refused():
+    huge = base64.b64encode(b"x" * (ask_claude_capability.MAX_IMAGE_BYTES + 1)).decode("ascii")
+    with pytest.raises(AskClaudeCapabilityError, match="exceeds"):
+        handler({"question": "what is this?", "image_base64": huge, "image_format": "png"})
+
+
+def test_image_is_actually_written_to_the_temp_directory_and_referenced_in_the_prompt(monkeypatch):
+    """Direct proof, not just a mocked _invoke_claude_cli, that the real
+    _invoke_claude_cli implementation writes exactly one file (the
+    caller's image, nothing else) into the fresh temp directory before
+    invoking the CLI, and mentions it in the prompt text."""
+    seen = {}
+    raw_bytes = b"\x89PNG-fake-bytes"
+
+    class _Result:
+        returncode = 0
+        stdout = '{"result": "a photo"}'
+        stderr = ""
+
+    def _fake_run(argv, *, cwd, **kwargs):
+        seen["cwd"] = cwd
+        seen["prompt"] = argv[argv.index("-p") + 1]
+        seen["dir_listing"] = os.listdir(cwd)
+        with open(os.path.join(cwd, "image.jpg"), "rb") as f:
+            seen["written_bytes"] = f.read()
+        return _Result()
+
+    monkeypatch.setattr(ask_claude_capability.subprocess, "run", _fake_run)
+
+    result = handler({
+        "question": "describe this photo",
+        "image_base64": base64.b64encode(raw_bytes).decode("ascii"),
+        "image_format": "jpg",
+    })
+
+    assert result == {"answer": "a photo"}
+    assert seen["dir_listing"] == ["image.jpg"]
+    assert seen["written_bytes"] == raw_bytes
+    assert "./image.jpg" in seen["prompt"]
+    assert not os.path.exists(seen["cwd"]), "temp workdir must still be cleaned up after an image call"
 
 
 def test_runs_in_a_fresh_temp_directory_and_cleans_up(monkeypatch):
