@@ -31,9 +31,11 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 
 from .control import CapabilityClass
+from .delegation_cache import get_default_cache
 
 ASK_GPT_TOOL = "karmo.delegate.ask_gpt"
 TOOL_VERSION = "1.0.0"
@@ -77,12 +79,17 @@ def manifest() -> dict:
         "timeout_seconds": TIMEOUT_SECONDS,
         "retry_policy": "none",
         "idempotent": False,
-        "idempotency_mechanism": "not idempotent; each call is a live model invocation",
+        "idempotency_mechanism": (
+            "not guaranteed idempotent; a fresh call is a live model invocation, though an exact "
+            "repeat of the same normalized question within the process's in-memory cache TTL "
+            "(delegation_cache.py, 1 hour default) returns the prior answer instead of re-calling "
+            "the codex CLI"
+        ),
         "rollback_or_compensation": "not applicable",
         "health_check": "invoke with a trivial question and confirm a non-empty answer",
         "deprecation_policy": "explicit version replacement",
         "dependencies": "the codex CLI, already installed and logged in via subscription",
-        "observability": "structured operator response",
+        "observability": "structured operator response; cache hits logged to stderr",
         "failure_isolation": "a timeout or CLI failure refuses cleanly, never hangs the chat turn",
     }
 
@@ -148,4 +155,11 @@ def handler(arguments: dict) -> dict:
         raise AskGptCapabilityError("question must be non-empty text")
     if len(question) > MAX_QUESTION_CHARS:
         raise AskGptCapabilityError(f"question exceeds {MAX_QUESTION_CHARS} characters")
-    return {"answer": _invoke_codex_cli(question)}
+    cache = get_default_cache()
+    cached_answer = cache.get(ASK_GPT_TOOL, question)
+    if cached_answer is not None:
+        print("KARMO ask_gpt: exact-match cache hit, skipped a real codex CLI call", file=sys.stderr, flush=True)
+        return {"answer": cached_answer}
+    answer = _invoke_codex_cli(question)
+    cache.set(ASK_GPT_TOOL, question, answer)
+    return {"answer": answer}

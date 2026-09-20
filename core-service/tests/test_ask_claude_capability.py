@@ -21,7 +21,18 @@ from core_service.ask_claude_capability import (
     manifest,
 )
 from core_service.control import ApprovalRequirement, CapabilityClass
+from core_service.delegation_cache import get_default_cache
 from core_service.operator import _CHAT_EXPOSED_TOOLS, KarmoOperator
+
+
+@pytest.fixture(autouse=True)
+def _clear_delegation_cache():
+    """The delegation cache is a process-wide singleton (shared with
+    ask_gpt) -- clear it before every test so no test's cached answer
+    can leak into another test's assertions, regardless of run order."""
+    get_default_cache().clear()
+    yield
+    get_default_cache().clear()
 
 
 def test_manifest_is_read_class_with_none_approval():
@@ -100,6 +111,50 @@ def test_malformed_cli_output_is_refused_cleanly(monkeypatch):
 
     with pytest.raises(AskClaudeCapabilityError, match="invalid claude CLI response"):
         handler({"question": "anything"})
+
+
+def test_repeat_question_hits_the_cache_and_never_calls_the_cli_again(monkeypatch):
+    calls = []
+
+    def _invoke(question):
+        calls.append(question)
+        return "the answer is 4"
+
+    monkeypatch.setattr(ask_claude_capability, "_invoke_claude_cli", _invoke)
+
+    first = handler({"question": "what is 2+2?"})
+    second = handler({"question": "  WHAT IS 2+2?  "})
+
+    assert first == {"answer": "the answer is 4"}
+    assert second == {"answer": "the answer is 4"}
+    assert calls == ["what is 2+2?"], "second call must be served from cache, not a fresh CLI call"
+
+
+def test_a_different_question_still_calls_the_cli(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ask_claude_capability, "_invoke_claude_cli", lambda q: calls.append(q) or f"answer to {q}")
+
+    handler({"question": "first question"})
+    handler({"question": "second question"})
+
+    assert calls == ["first question", "second question"]
+
+
+def test_a_failed_call_is_not_cached_and_retries_hit_the_cli_again(monkeypatch):
+    calls = []
+
+    def _always_fail(question):
+        calls.append(question)
+        raise AskClaudeCapabilityError("simulated failure")
+
+    monkeypatch.setattr(ask_claude_capability, "_invoke_claude_cli", _always_fail)
+
+    with pytest.raises(AskClaudeCapabilityError):
+        handler({"question": "anything"})
+    with pytest.raises(AskClaudeCapabilityError):
+        handler({"question": "anything"})
+
+    assert calls == ["anything", "anything"], "a failed call must never be cached"
 
 
 def test_runs_in_a_fresh_temp_directory_and_cleans_up(monkeypatch):

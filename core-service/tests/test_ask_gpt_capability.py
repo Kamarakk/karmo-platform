@@ -27,7 +27,21 @@ from core_service.ask_gpt_capability import (
     manifest,
 )
 from core_service.control import ApprovalRequirement, CapabilityClass
+from core_service.delegation_cache import get_default_cache
 from core_service.operator import _CHAT_EXPOSED_TOOLS, KarmoOperator
+
+
+@pytest.fixture(autouse=True)
+def _clear_delegation_cache():
+    """The delegation cache is a process-wide singleton (shared with
+    ask_claude) -- clear it before every test so no test's cached answer
+    can leak into another test's assertions, regardless of run order.
+    Several tests below reuse the literal question "anything" and expect
+    a fresh CLI call each time; without this, a later test would
+    silently get served from an earlier test's cache."""
+    get_default_cache().clear()
+    yield
+    get_default_cache().clear()
 
 
 def test_manifest_is_read_class_with_none_approval():
@@ -123,6 +137,40 @@ def test_cli_nonzero_exit_is_refused_cleanly(monkeypatch):
 
     with pytest.raises(AskGptCapabilityError, match="codex CLI exited 1"):
         handler({"question": "anything"})
+
+
+def test_repeat_question_hits_the_cache_and_never_calls_the_cli_again(monkeypatch):
+    calls = []
+
+    def _invoke(question):
+        calls.append(question)
+        return "the answer is 4"
+
+    monkeypatch.setattr(ask_gpt_capability, "_invoke_codex_cli", _invoke)
+
+    first = handler({"question": "what is 2+2?"})
+    second = handler({"question": "  WHAT IS 2+2?  "})
+
+    assert first == {"answer": "the answer is 4"}
+    assert second == {"answer": "the answer is 4"}
+    assert calls == ["what is 2+2?"], "second call must be served from cache, not a fresh CLI call"
+
+
+def test_a_failed_call_is_not_cached_and_retries_hit_the_cli_again(monkeypatch):
+    calls = []
+
+    def _always_fail(question):
+        calls.append(question)
+        raise AskGptCapabilityError("simulated failure")
+
+    monkeypatch.setattr(ask_gpt_capability, "_invoke_codex_cli", _always_fail)
+
+    with pytest.raises(AskGptCapabilityError):
+        handler({"question": "distinct failing question"})
+    with pytest.raises(AskGptCapabilityError):
+        handler({"question": "distinct failing question"})
+
+    assert calls == ["distinct failing question", "distinct failing question"]
 
 
 def test_uses_the_read_only_sandbox_flag(monkeypatch):
