@@ -14,6 +14,7 @@ full design and the rule for safely adding a new tool later.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -136,6 +137,28 @@ MIN_WORKER_DISPATCH_BUDGET_SECONDS = 30.0
 
 _MODEL_CHAT_TOOLS_TOOL_ID = "model_chat_tools"
 _MODEL_CHAT_TOOLS_TOOL_VERSION = "1.0.0"
+
+# Model Router Phase D2's OWN activation gate for chat-routing-to-worker,
+# deliberately separate from worker_dispatch_client.available (real
+# finding, 2026-09-20: the /etc/karmo/core/worker-dispatch.dsn file that
+# activates worker_dispatch_client is SHARED by every worker-dispatched
+# capability -- vision_describe, transcribe_audio, synthesize_speech, the
+# local coding helper -- not just D2's chat routing. Creating that DSN
+# file to enable those other capabilities would otherwise also silently
+# re-enable D2's chat routing, which has its own separate, still-open
+# concerns from two independent reviews (an over-privileged credential
+# reusing the gateway's role, no retention policy for worker-stored chat
+# content, a check-then-act worker-selection race -- see
+# docs/project-state/CURRENT_STATE.md's 2026-09-19 D2 entry) that do not
+# apply to those other capabilities at all. This file must be created
+# separately and explicitly to ever let live chat traffic route to a
+# worker again -- worker_dispatch_client.available alone is no longer
+# sufficient.
+D2_CHAT_ROUTING_ENABLED_FILE = "/etc/karmo/core/d2-chat-routing.enabled"
+
+
+def _d2_chat_routing_enabled() -> bool:
+    return os.path.exists(D2_CHAT_ROUTING_ENABLED_FILE)
 
 
 class _TurnDeadlineExceeded(Exception):
@@ -1014,7 +1037,10 @@ class KarmoOperator:
             worker_snapshots=worker_snapshots,
         )
         worker_eligible = bool(
-            live_decision and live_decision.is_worker and self.worker_dispatch_client.available
+            live_decision
+            and live_decision.is_worker
+            and self.worker_dispatch_client.available
+            and _d2_chat_routing_enabled()
         )
 
         # Deliberately no require_local/minimum_trust_tier gate here: the

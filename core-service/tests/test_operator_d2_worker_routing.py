@@ -22,6 +22,23 @@ from core_service.operator import KarmoOperator, _TurnDeadlineExceeded
 from core_service.worker_dispatch import DispatchOutcome
 from core_service.worker_dispatch_client import NullWorkerDispatchClient
 
+# Captured before the autouse fixture below ever monkeypatches the
+# attribute on operator_module, so the direct-unit-test of the real gate
+# function further down still exercises the real implementation.
+_real_d2_chat_routing_enabled = operator_module._d2_chat_routing_enabled
+
+
+@pytest.fixture(autouse=True)
+def _d2_chat_routing_enabled_for_these_tests(monkeypatch):
+    """2026-09-20: D2's chat-routing gate is now deliberately separate
+    from worker_dispatch_client.available (see operator.py's
+    D2_CHAT_ROUTING_ENABLED_FILE docstring) -- these tests exercise D2's
+    own routing behavior specifically, so they run as if that separate
+    gate is enabled, exactly matching every test's original assumption
+    before this file existed."""
+    monkeypatch.setattr(operator_module, "_d2_chat_routing_enabled", lambda: True)
+
+
 def _resource(model_id, capabilities, *, trust_tier=40, local=True):
     return ModelResource(
         model_id=model_id, provider="test-provider", capabilities=capabilities,
@@ -105,6 +122,46 @@ def _operator(*, worker_health_reader, worker_dispatch_client, recorder=None, lo
         router_decision_recorder=recorder or FakeRecorder(),
         circuit_breaker=circuit_breaker or CircuitBreaker(),
     )
+
+
+def test_d2_chat_routing_enabled_reads_the_real_marker_file(tmp_path, monkeypatch):
+    """Unit test of the gate function itself, independent of the autouse
+    fixture above (which bypasses it entirely for readability elsewhere
+    in this file)."""
+    marker = tmp_path / "d2-chat-routing.enabled"
+    monkeypatch.setattr(operator_module, "D2_CHAT_ROUTING_ENABLED_FILE", str(marker))
+
+    assert _real_d2_chat_routing_enabled() is False
+
+    marker.write_text("")
+    assert _real_d2_chat_routing_enabled() is True
+
+
+def test_available_dispatch_client_alone_does_not_enable_worker_routing(monkeypatch):
+    """The real 2026-09-20 decoupling fix, tested directly: a worker
+    dispatch client reporting available=True (e.g. because the DSN was
+    created to activate vision/ears/voice/the coding helper) must NOT by
+    itself route real chat traffic to a worker -- D2's own separate gate
+    (_d2_chat_routing_enabled) must also be True. Overrides this file's
+    autouse fixture back to the real, un-activated default."""
+    monkeypatch.setattr(operator_module, "_d2_chat_routing_enabled", lambda: False)
+    dispatch_client = FakeWorkerDispatchClient(
+        outcome=DispatchOutcome(outcome="SUCCEEDED", job_id="job-1", elapsed_seconds=6.0, poll_count=6,
+                                 result={"content": "worker answer", "tool_calls": None}),
+    )
+    local_client = LocalClient()
+    op = _operator(
+        worker_health_reader=FakeWorkerHealthReader(),
+        worker_dispatch_client=dispatch_client,
+        local_client=local_client,
+    )
+
+    response = op.handle("what tasks are open?")
+
+    assert response["kind"] == "chat"
+    assert response["model"] == "primary-tools"
+    assert local_client.calls, "local must be used -- D2's own gate is off"
+    assert dispatch_client.calls == [], "the worker must never be dispatched to while D2's gate is off"
 
 
 def test_worker_path_succeeds_and_is_used_over_local():
