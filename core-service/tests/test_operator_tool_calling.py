@@ -12,6 +12,7 @@ import json
 import uuid
 
 from core_service.control import ApprovalRequirement
+from core_service.model_router import ModelResource
 from core_service.ollama_client import OllamaClientError
 from core_service.operator import _CHAT_EXPOSED_TOOLS, _MAX_CHAT_TOOL_ROUNDS, KarmoOperator
 
@@ -279,13 +280,36 @@ def test_small_tool_result_is_never_truncated_or_marked():
 
 
 def test_fallback_candidates_tool_call_gets_identical_dispatch_as_primary_would():
-    """Model Router Phase B rule 8. Uses the real default_model_resources()
-    registry (qwen3:8b ranked first, ministral-3:8b second) so this proves
-    the actual production fallback order, not a synthetic one."""
+    """Model Router Phase B rule 8. Production's default_model_resources()
+    has run as a single-candidate (qwen3:8b only) chat registry since
+    2026-09-20 (ministral-3:8b deleted -- no production fallback exists
+    today), so this test supplies its own explicit two-model registry to
+    keep proving the underlying structural invariant: a fallback
+    candidate's tool call must get the identical authorization/dispatch
+    path as the primary's, with no lighter or different treatment for a
+    later candidate. Re-add a real fallback to default_model_resources()
+    and this test would exercise the actual production order again
+    unchanged."""
     store = FakeTaskStore()
     store.seed()
     client = PrimaryFailsFallbackCallsToolClient()
-    operator = KarmoOperator(model_client=client, task_store=store)
+    resources = [
+        ModelResource(
+            model_id="qwen3:8b",
+            provider="ollama-local",
+            capabilities=frozenset({"chat", "tool_calling"}),
+            trust_tier=40,
+            local=True,
+        ),
+        ModelResource(
+            model_id="ministral-3:8b",
+            provider="ollama-local",
+            capabilities=frozenset({"chat", "tool_calling"}),
+            trust_tier=35,
+            local=True,
+        ),
+    ]
+    operator = KarmoOperator(model_client=client, task_store=store, resources=resources)
 
     response = operator.handle("what tasks are open right now?")
 
