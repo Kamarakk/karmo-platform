@@ -255,6 +255,32 @@ SAFE_CAPABILITIES = {
         idempotent=False,
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
+    # Local eyes -- see capabilities.py's vision_describe docstring for the
+    # live-verification record (2026-09-20, moondream, 8.13s, ~1.3GB
+    # resident). READ/NONE: calls this worker's own loopback Ollama only,
+    # no persistent side effect, no write anywhere.
+    "vision_describe": dict(
+        capability_id="vision_describe",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["moondream"]},
+                "question": {"type": "string", "maxLength": 2000},
+                "image_base64": {"type": "string"},
+            },
+            "required": ["question", "image_base64"],
+        },
+        output_schema={"type": "object", "properties": {"answer": {"type": "string"}}},
+        timeout_seconds=60,
+        resource_requirements={"cpu": "medium", "memory_mb": 2048},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
 }
 SAFE_CAPABILITIES.update(COMMANDER_READONLY_CAPABILITIES)
 

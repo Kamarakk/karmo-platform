@@ -16,6 +16,7 @@ the parent process; only real, externally-observable state (an actual
 socket, an env var) crosses that boundary.
 """
 
+import base64
 import hashlib
 import http.server
 import json
@@ -1402,6 +1403,110 @@ def test_capability_model_chat_tools_manifest_is_additive_not_a_version_bump():
     assert manifest["idempotent"] is False
     allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
     assert allowed == capabilities.__dict__["_ALLOWED_MODEL_CHAT_MODELS"]
+
+
+def test_capability_vision_describe_calls_local_ollama_and_returns_answer(monkeypatch):
+    image_b64 = base64.b64encode(b"fake-png-bytes").decode("ascii")
+    with _FakeOllamaServer(response_body=b'{"response": "a red square"}') as server:
+        monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", server.url)
+
+        output, summary, duration, evidence = run_capability(
+            "vision_describe",
+            {"model": "moondream", "question": "what color is this?", "image_base64": image_b64},
+            timeout_seconds=60,
+        )
+
+        assert output == {"answer": "a red square"}
+        assert "moondream" in summary
+        assert server.received_bodies == [
+            {
+                "model": "moondream",
+                "prompt": "what color is this?",
+                "images": [image_b64],
+                "stream": False,
+            }
+        ]
+
+
+def test_capability_vision_describe_defaults_model_and_question(monkeypatch):
+    image_b64 = base64.b64encode(b"fake-png-bytes").decode("ascii")
+    with _FakeOllamaServer(response_body=b'{"response": "a photo"}') as server:
+        monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", server.url)
+
+        output, summary, duration, evidence = run_capability(
+            "vision_describe", {"image_base64": image_b64}, timeout_seconds=60,
+        )
+
+        assert output == {"answer": "a photo"}
+        assert server.received_bodies[0]["model"] == "moondream"
+        assert server.received_bodies[0]["prompt"] == "Describe this image."
+
+
+def test_capability_vision_describe_refuses_model_outside_allowed_set(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+    image_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="model not in allowed set"):
+        run_capability(
+            "vision_describe",
+            {"model": "qwen3:8b", "question": "what is this?", "image_base64": image_b64},
+            timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_refuses_empty_question(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+    image_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="question must be non-empty"):
+        run_capability(
+            "vision_describe", {"question": "   ", "image_base64": image_b64}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_refuses_invalid_base64(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+
+    with pytest.raises(SandboxError, match="not valid base64"):
+        run_capability(
+            "vision_describe", {"question": "what is this?", "image_base64": "not-valid-base64!!!"}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_refuses_empty_decoded_image(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+
+    with pytest.raises(SandboxError, match="empty"):
+        run_capability(
+            "vision_describe", {"question": "what is this?", "image_base64": ""}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_refuses_oversized_image(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+    huge_b64 = base64.b64encode(b"x" * (capabilities.MAX_VISION_IMAGE_BYTES + 1)).decode("ascii")
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability(
+            "vision_describe", {"question": "what is this?", "image_base64": huge_b64}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_wraps_ollama_call_failure(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+    image_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="vision_describe call to local Ollama failed"):
+        run_capability(
+            "vision_describe", {"question": "what is this?", "image_base64": image_b64}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_manifest_matches_registered_allowed_models():
+    manifest = SAFE_CAPABILITIES["vision_describe"]
+    assert manifest["authority_class"] == CapabilityClass.READ
+    allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
+    assert allowed == capabilities.__dict__["_ALLOWED_VISION_MODELS"]
 
 
 def test_capability_document_processing_synthetic_chunking():

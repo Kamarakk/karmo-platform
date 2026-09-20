@@ -9,6 +9,8 @@ to the explicitly-scoped allowed_root workspace via
 sandbox.resolve_within_sandbox.
 """
 
+import base64
+import binascii
 import hashlib
 import json
 import os
@@ -359,6 +361,71 @@ def _model_chat_tools(payload, *, sandbox_root, allowed_root, timeout_seconds):
 
 
 register_handler("model_chat_tools", _model_chat_tools)
+
+
+# --- VISION DESCRIBE (local eyes) --------------------------------------------
+# KARMO's own local vision capability -- calls this worker's own loopback
+# Ollama running moondream (a small, purpose-built vision model, ~1.3GB
+# resident, verified live 2026-09-20: 8.13s for a real image description on
+# this exact worker, ~7GB RAM still free afterward). Deliberately a separate
+# capability from model_chat, not a shared "generate with optional image"
+# path -- moondream is the only model this worker ever calls this way, kept
+# explicit rather than letting the model list quietly grow to include a
+# vision model under a generic chat capability's allow-list.
+_ALLOWED_VISION_MODELS = frozenset({"moondream"})
+MAX_VISION_QUESTION_CHARS = 2000
+# Moondream's own images are typically well under 1MB; 5MB matches the same
+# ceiling already used by ask_claude's image input (core-service), not a
+# new number invented here.
+MAX_VISION_IMAGE_BYTES = 5_000_000
+
+
+def _vision_describe(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    model = payload.get("model", "moondream")
+    question = payload.get("question", "Describe this image.")
+    image_base64 = payload.get("image_base64")
+    if model not in _ALLOWED_VISION_MODELS:
+        raise SandboxError(f"model not in allowed set for vision_describe: {model!r}")
+    if not isinstance(question, str) or not question.strip():
+        raise SandboxError("question must be non-empty text")
+    if len(question) > MAX_VISION_QUESTION_CHARS:
+        raise SandboxError(f"question exceeds {MAX_VISION_QUESTION_CHARS} characters")
+    if not isinstance(image_base64, str) or not image_base64.strip():
+        raise SandboxError("image_base64 must be non-empty text")
+    try:
+        decoded_length = len(base64.b64decode(image_base64, validate=True))
+    except (binascii.Error, ValueError) as exc:
+        raise SandboxError("image_base64 is not valid base64") from exc
+    if decoded_length == 0:
+        raise SandboxError("image_base64 decoded to empty content")
+    if decoded_length > MAX_VISION_IMAGE_BYTES:
+        raise SandboxError(f"image exceeds {MAX_VISION_IMAGE_BYTES} bytes")
+
+    body = json.dumps({
+        "model": model,
+        "prompt": question,
+        "images": [image_base64],
+        "stream": False,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        _ollama_generate_url(),
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        raise SandboxError(f"vision_describe call to local Ollama failed: {type(exc).__name__}: {exc}") from exc
+
+    answer = result.get("response", "")
+    output = {"answer": answer}
+    summary = f"vision_describe: {model} ({len(answer)} chars)"
+    return output, summary, []
+
+
+register_handler("vision_describe", _vision_describe)
 
 
 def _document_processing_test(payload, *, sandbox_root, allowed_root, timeout_seconds):
