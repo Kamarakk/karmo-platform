@@ -197,7 +197,7 @@ SAFE_CAPABILITIES = {
         input_schema={
             "type": "object",
             "properties": {
-                "model": {"type": "string", "enum": ["qwen3:8b", "ministral-3:8b", "mistral:7b", "granite3.3:2b"]},
+                "model": {"type": "string", "enum": ["qwen3:8b", "mistral:7b"]},
                 "prompt": {"type": "string", "maxLength": 8000},
             },
             "required": ["model", "prompt"],
@@ -235,7 +235,7 @@ SAFE_CAPABILITIES = {
         input_schema={
             "type": "object",
             "properties": {
-                "model": {"type": "string", "enum": ["qwen3:8b", "ministral-3:8b", "mistral:7b", "granite3.3:2b"]},
+                "model": {"type": "string", "enum": ["qwen3:8b", "mistral:7b"]},
                 "messages": {"type": "array"},
                 "tools": {"type": "array"},
             },
