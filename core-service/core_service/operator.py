@@ -276,6 +276,49 @@ OPERATOR_REQUIRE_LOCAL = True
 OPERATOR_PRIMARY_MIN_TRUST_TIER = 30
 OPERATOR_VERIFIER_MIN_TRUST_TIER = 20
 
+# Trivial-message short-circuit (2026-09-20): a real, measured cost, not
+# a guess -- loading qwen3:8b for a single request (even one offering
+# zero tools, after the selective-tool-offering fix above) still
+# consumes ~6.2GB of karmo-ai01's 7.8GB total RAM and takes ~30-40
+# seconds, confirmed live. A pure greeting or acknowledgment carries no
+# real question, so there's no reason to pay that cost at all.
+#
+# Deliberately FULL-MESSAGE match only (re.fullmatch on the normalized
+# text), never a substring/contains check -- this project has twice
+# shipped a real production bug from a substring keyword match
+# (_STATUS_WORDS matching "memory" inside unrelated text; a separate
+# incident where "deploy" inside a canary phrase was refused as a
+# write-intent request). A full-message match cannot have that failure
+# mode: "hi, what tasks are open" does not match and falls through to
+# real chat exactly as before, tools included.
+_TRIVIAL_GREETING = re.compile(
+    r"^(hi|hello|hey|yo|howdy|good\s?morning|good\s?afternoon|good\s?evening|morning|evening)"
+    r"([\s,]*(how are you( doing)?|hows? it going|what'?s up))?$",
+    re.IGNORECASE,
+)
+_TRIVIAL_ACK = re.compile(
+    r"^(thanks|thank you|thx|ty|ok|okay|k|cool|got it|sounds good|nice|great|awesome|perfect|"
+    r"good night|goodnight|bye|goodbye|see you|later)$",
+    re.IGNORECASE,
+)
+_TRIVIAL_GREETING_REPLY = (
+    "Hello! I'm just a local AI interface for Kamara, so I don't have personal feelings, "
+    "but I'm here and ready to help. What can I do for you?"
+)
+_TRIVIAL_ACK_REPLY = "You're welcome! Let me know if there's anything else."
+
+
+def _trivial_chat_response(text: str) -> dict | None:
+    normalized = text.strip().lower().rstrip("!.?, ")
+    if not normalized:
+        return None
+    if _TRIVIAL_GREETING.fullmatch(normalized):
+        return {"kind": "chat", "message": _TRIVIAL_GREETING_REPLY, "model": None}
+    if _TRIVIAL_ACK.fullmatch(normalized):
+        return {"kind": "chat", "message": _TRIVIAL_ACK_REPLY, "model": None}
+    return None
+
+
 _WRITE_WORDS = re.compile(
     r"\b(restart|reboot|enable|disable|uninstall|modify|upgrade|kill|terminate|merge)\b",
     re.IGNORECASE,
@@ -1170,6 +1213,9 @@ class KarmoOperator:
         text = text.strip()
         if not text:
             return {"kind": "system", "message": "Ask KARMO a question or request KarmoLab status."}
+        trivial = _trivial_chat_response(text)
+        if trivial is not None:
+            return trivial
         if _WRITE_WORDS.search(text):
             return {
                 "kind": "refusal",
