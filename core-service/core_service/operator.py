@@ -285,6 +285,37 @@ _STATUS_WORDS = re.compile(
     re.IGNORECASE,
 )
 
+# Selective tool-offering (2026-09-19): a real, measured bottleneck, not a
+# guess -- offering all 4 of _CHAT_EXPOSED_TOOLS on every single turn
+# inflates qwen3:8b's effective prompt 30x (19 tokens with no tools -> 632
+# tokens with all 4), and this CPU-only host processes prompt tokens at
+# only ~22 tokens/second, so ordinary conversation (which needs zero
+# tools) was paying a ~29-second floor it never needed to. Each tool gets
+# a cheap keyword trigger, same regex-keyword style as _WRITE_WORDS/
+# _STATUS_WORDS above -- fast (no model call), no I/O, and consistent
+# with this file's own existing pattern for routing decisions.
+#
+# Honest limitation, not silently assumed away: a keyword list is not
+# exhaustive -- a question about BloomBoss that never uses any of these
+# words (or a genuinely novel phrasing) simply won't offer the tool.
+# ask_claude/ask_gpt are deliberately gated on being asked for
+# explicitly (matching how a real user actually invokes deliberate
+# external delegation) rather than always-on -- the previous "the model
+# spontaneously decides local knowledge is insufficient and reaches for
+# Claude/GPT on its own" behavior is intentionally given up here in
+# exchange for not paying their schema cost on every ordinary turn; this
+# also narrows exposure for the two tools tonight's external review
+# flagged as needing stronger isolation before being offered more freely.
+_TOOL_TRIGGER_WORDS = {
+    "list_tasks": re.compile(r"\b(task|tasks|to-do|todo|to do)\b", re.IGNORECASE),
+    "bloomboss_report": re.compile(
+        r"\b(bloom\s*b\w*oss|alocasia|cultivar|revenue|sell-through|supplier|plant sales?)\b",
+        re.IGNORECASE,
+    ),
+    "ask_claude": re.compile(r"\b(claude|anthropic|second opinion)\b", re.IGNORECASE),
+    "ask_gpt": re.compile(r"\b(gpt|chatgpt|openai)\b", re.IGNORECASE),
+}
+
 
 @dataclass(frozen=True)
 class OperatorModels:
@@ -649,13 +680,18 @@ class KarmoOperator:
             response["memory_status"] = memory_status
         return response
 
-    def _exposed_tool_schemas(self) -> list[dict]:
+    def _exposed_tool_schemas(self, text: str) -> list[dict]:
         """The tool list actually offered to the model this call -- filtered by
         what's currently configured (e.g. list_tasks needs a live task_store),
-        never by anything the model itself controls."""
+        and by a cheap keyword trigger per tool (see _TOOL_TRIGGER_WORDS) --
+        never by anything the model itself controls. text is Kamara's own
+        message, read-only, never mutated or echoed back as authority."""
         schemas = []
-        for entry in _CHAT_EXPOSED_TOOLS.values():
+        for name, entry in _CHAT_EXPOSED_TOOLS.items():
             if entry.get("requires") == "task_store" and self.task_store is None:
+                continue
+            trigger = _TOOL_TRIGGER_WORDS.get(name)
+            if trigger is not None and not trigger.search(text):
                 continue
             schemas.append(entry["schema"])
         return schemas
@@ -1009,7 +1045,7 @@ class KarmoOperator:
                 }
             )
         messages.append({"role": "user", "content": text})
-        tools = self._exposed_tool_schemas()
+        tools = self._exposed_tool_schemas(text)
 
         # Model Router Phase D2: try the chosen worker first, if one was
         # picked and there's realistically enough of the total budget
