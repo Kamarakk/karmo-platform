@@ -149,6 +149,94 @@ def test_model_can_call_list_tasks_and_use_the_real_result():
     assert payload["tasks"][0]["objective"] == "reconcile PR #26"
 
 
+class RecordingNoToolClient:
+    """Never proposes a tool call -- just records what tools it was offered
+    each request, for tests that only care about tool *selection*, not
+    execution."""
+
+    def __init__(self):
+        self.requests = []
+
+    def chat_with_tools(self, *, model, messages, tools, temperature=0.2, timeout=None):
+        self.requests.append({"model": model, "messages": messages, "tools": tools})
+        return {"content": "ok", "tool_calls": None}
+
+
+def _tool_names(tools: list[dict]) -> set:
+    return {t["function"]["name"] for t in tools}
+
+
+def test_a_message_matching_no_tool_keywords_offers_no_tools():
+    """Real, measured fix (2026-09-19): offering all 4 tools on every turn
+    inflated qwen3:8b's effective prompt 30x on this CPU-only host (19
+    tokens with none offered vs. 632 with all 4), turning ordinary
+    conversation into a ~29-second-minimum wait it never needed. A plain
+    conversational message must offer zero tools."""
+    store = FakeTaskStore()
+    store.seed()
+    client = RecordingNoToolClient()
+    operator = KarmoOperator(model_client=client, task_store=store)
+
+    operator.handle("good morning, how are you today?")
+
+    assert client.requests[0]["tools"] == []
+
+
+def test_a_task_question_offers_only_list_tasks():
+    store = FakeTaskStore()
+    store.seed()
+    client = RecordingNoToolClient()
+    operator = KarmoOperator(model_client=client, task_store=store)
+
+    operator.handle("what tasks are open right now?")
+
+    assert _tool_names(client.requests[0]["tools"]) == {"list_tasks"}
+
+
+def test_a_bloomboss_question_offers_only_bloomboss_report():
+    store = FakeTaskStore()
+    store.seed()
+    client = RecordingNoToolClient()
+    operator = KarmoOperator(model_client=client, task_store=store)
+
+    operator.handle("what is bloomboss's best selling alocasia?")
+
+    assert _tool_names(client.requests[0]["tools"]) == {"bloomboss_report"}
+
+
+def test_a_message_matching_two_tool_triggers_offers_both():
+    store = FakeTaskStore()
+    store.seed()
+    client = RecordingNoToolClient()
+    operator = KarmoOperator(model_client=client, task_store=store)
+
+    operator.handle("what tasks are open, and what does bloomboss say about revenue?")
+
+    assert _tool_names(client.requests[0]["tools"]) == {"list_tasks", "bloomboss_report"}
+
+
+def test_ask_claude_and_ask_gpt_require_being_asked_for_explicitly():
+    """Deliberate trade-off: these two are gated on explicit mention rather
+    than always-on, both to avoid their schema cost on every ordinary turn
+    and to narrow their exposure (flagged in the external D2 review as
+    needing stronger isolation before being offered more freely)."""
+    store = FakeTaskStore()
+    store.seed()
+
+    client = RecordingNoToolClient()
+    KarmoOperator(model_client=client, task_store=store).handle("what tasks are open?")
+    assert "ask_claude" not in _tool_names(client.requests[0]["tools"])
+    assert "ask_gpt" not in _tool_names(client.requests[0]["tools"])
+
+    client = RecordingNoToolClient()
+    KarmoOperator(model_client=client, task_store=store).handle("can you ask claude about this?")
+    assert _tool_names(client.requests[0]["tools"]) == {"ask_claude"}
+
+    client = RecordingNoToolClient()
+    KarmoOperator(model_client=client, task_store=store).handle("get chatgpt's opinion on this")
+    assert _tool_names(client.requests[0]["tools"]) == {"ask_gpt"}
+
+
 def test_oversized_tool_result_is_truncated_before_reaching_the_model():
     """Real, live-diagnosed bug (2026-09-19): bloomboss_report's full result
     serialized to 63,035 bytes for a single small CSV import, and feeding
