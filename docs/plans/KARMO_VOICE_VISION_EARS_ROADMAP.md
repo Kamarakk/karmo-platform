@@ -15,22 +15,28 @@ and `docs/governance/KARMO_SYSTEM_FIT_REVIEW.md`.
 
 ---
 
-## Standing constraint (Kamara's explicit decision, 2026-09-20 — do not
-revisit without her direct instruction)
+## Standing constraint (Kamara's explicit decision, 2026-09-20)
 
-**`ask_claude` and `ask_gpt` must never be extended with any new
-capability beyond what they already offer today: plain text
-question-and-answer, invoked only when she explicitly asks for Claude or
-GPT by name.** No image, audio, file, or any other input/output may be
-added to either tool. This was tested once (an image-input extension to
-`ask_claude`, built 2026-09-20) and explicitly rejected and fully
-reverted the same day (git commit `f426f5b`, reverted at `6225a42`) once
-Kamara clarified the actual rule: nothing that becomes part of what
-KARMO *does* may depend on Claude or GPT, no matter how the dependency
-is gated. **Every KARMO capability — eyes, ears, voice, all of it — must
-be built to run on KARMO's own local infrastructure.** This rules out
-the "delegate to Claude/GPT" pattern for all three channels below, not
-just eyes; see the Eyes section for what that actually costs.
+**Claude and GPT must never be the only or main source of any KARMO
+capability.** Asking `ask_claude`/`ask_gpt` for help with an image,
+video, or anything else is fine and explicitly permitted — the same way
+`ask_claude`/`ask_gpt` already work: available tools, invoked only when
+explicitly asked for by name, never automatic. `ask_claude`'s optional
+image input (added 2026-09-20) stays under this rule. What's ruled out
+is treating that delegation as *the* permanent answer for a whole
+capability with no local alternative ever pursued — "eyes" cannot be
+*only* "ask Claude to look at it," forever, with nothing local ever
+built. **Every capability below needs a real local-first path as its
+primary, long-term mechanism; Claude/GPT delegation may exist alongside
+that as an explicit, optional supplementary tool, never as the sole or
+default implementation.** See the Eyes section for what building a real
+local path actually costs on this hardware.
+
+(This section was briefly written as an outright ban on extending
+`ask_claude`/`ask_gpt` at all, and the image feature was reverted on
+that basis, same session. That was an over-correction of the actual
+instruction, caught and fixed immediately — the feature was restored.
+This is the corrected, standing rule.)
 
 ---
 
@@ -60,10 +66,13 @@ pass.
   DeepSeek/Gemini rejection precedent) — cloud dependencies are avoided
   by default, not because they're impossible, but because KARMO's
   identity is a locally-run system.
-- **`ask_claude`/`ask_gpt` exist and stay exactly as they are** (plain
-  text Q&A, explicitly invoked) — per the standing constraint above,
-  they are not a pattern to extend for eyes/ears/voice or anything else.
-  Do not propose delegating any of these three channels to them.
+- **`ask_claude`/`ask_gpt` already exist as a proven external-delegation
+  pattern** (`ask_claude_capability.py`/`ask_gpt_capability.py`): shell
+  out to a locally-installed, already-authenticated CLI, no API key
+  stored in KARMO, read-only, no access to KARMO's own data. This is a
+  real, working precedent for "delegate the expensive/hard part to an
+  external model you already have a subscription to," not a new pattern
+  that needs inventing.
 
 ## Architecture recommendation, per channel
 
@@ -111,44 +120,55 @@ duration of actually synthesizing a reply.
 
 ### Eyes (image / video understanding)
 
-**Updated 2026-09-20: delegating this to `ask_claude`/`ask_gpt` was
-built, then explicitly rejected by Kamara and fully reverted the same
-day.** Per the standing constraint above, eyes must be built on KARMO's
-own local infrastructure, same as ears and voice — no exception for
-eyes specifically, even though it's the hardest of the three to do
-locally on current hardware.
+**Delegation (built, kept) is a real, useful supplementary tool — not
+the whole answer.** `ask_claude`'s optional image input (built and
+live-verified 2026-09-20) lets Kamara explicitly ask Claude to look at
+an image today, at zero local RAM cost, using infrastructure already
+proven in production. That's genuinely useful and stays, per the
+standing constraint above. But per that same constraint, it cannot be
+treated as *the* eyes capability with nothing local ever pursued — a
+local vision path is still the real, primary goal.
 
-**The real, unavoidable cost this now has to be paid, not routed
-around**: a vision-capable local model is roughly the same size class
-as `qwen3:8b` or larger — meaningfully more RAM/compute than the small
-STT/TTS models ears and voice need. On `karmo-ai01` as it's currently
-sized (7.8GB total, ~6.2GB already consumed by `qwen3:8b` alone), there
-is no room for a second model of that size. This is a real, direct
-conflict, not a detail to smooth over. Eyes needs one of:
+**The real, unavoidable cost of a local path, not routed around**: a
+vision-capable local model is roughly the same size class as `qwen3:8b`
+or larger — meaningfully more RAM/compute than ears/voice's small
+STT/TTS models need. On `karmo-ai01` as it's currently sized (7.8GB
+total, ~6.2GB already consumed by `qwen3:8b` alone), there is no room
+for a second model of that size today. Building the real, primary local
+path needs one of:
 
 1. **A genuinely small local vision model** whose footprint fits in
    whatever headroom remains after `qwen3:8b` loads — not yet evaluated
    on this hardware; needs real candidates identified and actually
-   measured (RAM, latency) before any implementation, same discipline
-   as everything else built this session. No candidate is named here
-   because none has been tested — naming one without testing it would
-   be a guess, not a recommendation.
+   measured (RAM, latency) before implementation. No candidate is named
+   here because none has been tested — naming one without testing it
+   would be a guess, not a recommendation.
 2. **Separate hardware from `karmo-ai01`** (a dedicated worker, or the
    still-undecided VM-resource-reallocation / better-hardware questions
-   raised earlier this session) — ties eyes to those open decisions
-   rather than something to solve independently.
+   raised earlier this session).
 
-**Not scoped further than this.** Eyes is genuinely blocked on either a
-real local-model evaluation or a hardware decision — both open, neither
-started.
+**Not scoped further than this.** The local path is genuinely blocked
+on either a real model evaluation or a hardware decision, both open,
+neither started — the delegation tool covers the gap in the meantime,
+it doesn't close it.
 
 ## Phased build plan
 
-**Phase V0 — retired, do not rebuild.** Image delegation via
-`ask_claude` was built and then explicitly rejected by Kamara and fully
-reverted (git commit `f426f5b`, reverted at `6225a42`, both 2026-09-20).
-Eyes now depends on a real local-vision-model evaluation instead (see
-the Eyes section above) — there is no lowest-risk shortcut anymore.
+**Phase V0 — done, kept as a supplementary tool, not a substitute for
+V1.5 below.** `ask_claude`'s optional image input was built and
+live-verified 2026-09-20 (gated the same way `ask_claude` already is:
+explicit mention/intent, READ-only, no KARMO data access). It stays.
+Per the standing constraint, it does not count as "eyes is done" — see
+V1.5.
+
+**Phase V1.5 (local eyes, the real primary path, not started)**:
+identify and actually measure (RAM, latency, on real `karmo-ai01`
+hardware) candidate small local vision models, or resolve the hardware
+question so eyes can run on separate infrastructure. Needs its own
+System-Fit Review and Invariant Impact Review before implementation.
+This is what actually satisfies the standing constraint for eyes —
+Phase V0's delegation tool is a stopgap alongside it, not a replacement
+for it.
 
 **Phase V1 (ears)**: pick a local STT engine (System-Fit Review
 required), build the capture-and-transcribe path, wire transcribed text
@@ -168,21 +188,18 @@ client.
 
 ## What a fresh session should do first
 
-1. Read this document in full, including the standing constraint at the
-   top — it is Kamara's explicit, tested decision, not a preference to
-   re-litigate.
-2. Confirm with Kamara: (a) which local vision model candidates (if
-   any) she wants evaluated for eyes, or whether eyes waits on a
-   hardware decision instead, and (b) what client surface (Phase V3)
-   she actually wants to talk to KARMO from — this second question
-   changes what V1/V2 need to build and should be answered before
-   committing to a specific STT/TTS engine.
+1. Read this document in full, including the standing constraint —
+   Claude/GPT delegation (Phase V0, already built) is a kept
+   supplementary tool, not a substitute for the local-first work below.
+2. Confirm with Kamara: (a) which local vision model candidates she
+   wants evaluated for Phase V1.5, or whether eyes waits on a hardware
+   decision instead, and (b) what client surface (Phase V3) she
+   actually wants to talk to KARMO from — this second question changes
+   what V1/V2 need to build and should be answered before committing to
+   a specific STT/TTS engine.
 3. Run the standing governance gates (System-Fit Review, Invariant
    Impact Review) for whichever phase is chosen before writing code.
 4. Do not attempt to build more than one phase in a single session —
    each phase above is sized to be independently completable and
    deployable, matching this project's established pattern of small,
    tested, deployed slices rather than large multi-phase pushes.
-5. Never propose extending `ask_claude`/`ask_gpt` as a way to shortcut
-   any of this, even if it looks like the fastest path — that path was
-   tried and closed.
