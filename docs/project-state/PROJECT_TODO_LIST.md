@@ -30,8 +30,8 @@ and what would need to happen next.
 
 - **Selective tool-offering** (PR #106) — DONE, live, verified: only offers a tool's schema when the message matches that tool's trigger keywords, cutting `qwen3:8b`'s effective prompt inflation on tool-free turns.
 - **Trivial-message short-circuit** — DONE (built 2026-09-20, see PR opened same day): a pure greeting or acknowledgment (full-message match only, never substring) now returns a canned reply without calling the model at all, skipping the ~6.2GB/~30-40s model-load cost entirely for that class of message. 6 new tests, full suite 356 passed.
-- **`num_predict=96` hardcoded response cap** — NOT addressed. Flagged only.
-- **External-LLM answer caching** (`ask_claude`/`ask_gpt`) — NOT built. Recommendation: exact-match/short-TTL cache before any semantic/embedding approach.
+- **`num_predict=96` response cap** — DONE (2026-09-20): made a configurable constructor default on `OllamaChatClient` instead of a hardcoded literal; value itself unchanged (still 96), just no longer requires editing `ollama_client.py` to tune. Deployed.
+- **External-LLM answer caching** (`ask_claude`/`ask_gpt`) — DONE (2026-09-20): exact-match, in-memory, 1-hour TTL cache (`delegation_cache.py`), only successful text answers are ever cached. Deployed.
 - **`TOTAL_CHAT_DEADLINE_SECONDS=300.0`** — accepted trade-off, not a target state; revisit only if hardware changes the underlying token-processing speed (~22 tok/s prompt, ~3.5-4 tok/s generation, both CPU-only, no GPU anywhere in the fleet).
 
 ## C. BloomBoss
@@ -45,7 +45,7 @@ and what would need to happen next.
 - **KVE01/KVE02/KVE03 topology** — fully verified live 2026-09-19/20 (PR #100): identical spec hosts (i7-10700, 8c/16t, 15GiB RAM, Intel UHD 630 iGPU, ~477GB NVMe), all near-full RAM, no GPU acceleration anywhere. `karmo-ai01` itself is VM100 on KVE02 (previously undocumented as virtualized) — confirmed to run with only 7.8GB allocated to it, not the full host's 15GB.
 - **VM resource allocation ("use all 3 VMs to their max")** — raised, not yet decided or built. No plan exists for reallocating VM memory/CPU shares across KVE01/02/03.
 - **Mini-helper-models-on-dedicated-workers architecture** — discussed extensively, NOT decided. See recommendations doc item 4 for tonight's new RAM evidence bearing directly on this.
-- **Voice/video accessibility** — zero capability exists, not started. **Now scoped** (2026-09-20): see `docs/plans/KARMO_VOICE_VISION_EARS_ROADMAP.md` for the full architecture recommendation (image understanding via the existing `ask_claude`/`ask_gpt` delegation pattern — no new local model needed; local lightweight STT/TTS for ears/voice, not cloud calls) and phased build plan. Planning only — no System-Fit Review or implementation has happened yet.
+- **Voice/video accessibility** — zero local capability exists yet. Scoped in `docs/plans/KARMO_VOICE_VISION_EARS_ROADMAP.md`. **Standing constraint (Kamara, 2026-09-20)**: Claude/GPT may be an explicit, optional supplementary tool for any capability (e.g. `ask_claude`'s image input, built and kept) but must never be the only/main source of one. Eyes/ears/voice each need a real local-first path as the primary mechanism; local vision specifically is blocked on a model evaluation or hardware decision, neither started.
 
 ## E. Housekeeping / long-standing cleanup (not urgent, still open)
 
