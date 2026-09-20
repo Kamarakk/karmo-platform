@@ -94,6 +94,19 @@ MAX_MEMORY_CONTEXT_CHARS = 12_000
 # right way to set this precisely.
 TOTAL_CHAT_DEADLINE_SECONDS = 150.0
 
+# Real, live-diagnosed bound (2026-09-19): bloomboss_report's full result
+# serialized to 63,035 bytes for a single small CSV import -- feeding that
+# entire blob back to a CPU-only model as tool-result context took over
+# 100 seconds to process on the very next round, exceeding even a
+# 150-second total turn budget on its own. This caps every exposed tool's
+# result uniformly (not a bloomboss-specific patch), since any tool could
+# grow a similarly large result later. 6000 chars keeps a real, useful
+# amount of detail (this session's own capability handlers elsewhere use
+# a similar 8000-char bound for model-facing text) while cutting
+# processing time by roughly an order of magnitude versus the 63KB case
+# that caused this timeout.
+_MAX_TOOL_RESULT_CHARS_FOR_MODEL = 6000
+
 # Below this much remaining budget, a worker dispatch attempt is skipped
 # entirely rather than started and immediately doomed. Corrected per GPT's
 # D2 review (D2-B04): the original 15.0 was below the fastest cold-start
@@ -673,7 +686,27 @@ class KarmoOperator:
             # future mistake here fails as a visible refusal, never a silent
             # no-op the model could mistake for a real (empty) result.
             return json.dumps({"error": "tool call requires approval and was not executed"})
-        return json.dumps(decision.result, default=str)
+        serialized = json.dumps(decision.result, default=str)
+        # Real, live-diagnosed bound (2026-09-19): bloomboss_report's full
+        # result serialized to 63,035 bytes for a single small CSV import --
+        # feeding that entire blob back to a CPU-only model as tool-result
+        # context took over 100 seconds to process on the very next round,
+        # exceeding even a 150-second total turn budget. Cap it here,
+        # generically, for every exposed tool, not just this one -- never
+        # silently: a truncated result is clearly marked so the model (and,
+        # if it repeats this back, Kamara) knows more data exists but was
+        # cut for response time, not that this is the complete picture.
+        if len(serialized) > _MAX_TOOL_RESULT_CHARS_FOR_MODEL:
+            # A plain-text marker, not fabricated JSON syntax -- truncating
+            # mid-structure can't produce valid JSON anyway, so don't pretend
+            # otherwise; the model still gets the real leading content intact.
+            serialized = (
+                serialized[:_MAX_TOOL_RESULT_CHARS_FOR_MODEL]
+                + f" ...[TRUNCATED FOR RESPONSE TIME: {len(serialized)} total characters, "
+                f"showing the first {_MAX_TOOL_RESULT_CHARS_FOR_MODEL}. More detail exists "
+                f"than is shown here.]"
+            )
+        return serialized
 
     def _ask_local(self, model_id: str):
         """ask_fn for _run_tool_loop's local (karmo-ai01) path -- same
