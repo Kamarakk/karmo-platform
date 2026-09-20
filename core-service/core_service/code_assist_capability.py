@@ -11,25 +11,26 @@ _ALLOWED_MODEL_CHAT_MODELS now includes qwen2.5-coder:7b) rather than
 inventing a new worker-side handler -- "ask a different model" is exactly
 what model_chat already does; only the model name changes.
 
-Unlike vision_capability.py, this one COULD be wired into
-_CHAT_EXPOSED_TOOLS today -- a coding question is plain text already
-flowing through the existing chat interface, no client-surface gap like
-vision's image-input problem. It is not yet wired in for a different
-reason: it is still subject to the exact same dormant-until-DSN
-constraint as vision (see vision_capability.py's module docstring) --
-dispatch_code_assist() requires worker_dispatch_client.available, which
-requires the Phase D2 worker-dispatch DSN, deliberately not created.
-Wiring this into _CHAT_EXPOSED_TOOLS now would register a tool that
-always fails with "worker dispatch is not activated" until that separate
-decision is made -- harmless (fails closed, cleanly) but not useful yet.
-Wire it in once that decision is made, not before.
+Wired into _CHAT_EXPOSED_TOOLS as of 2026-09-20 -- unlike vision/ears/
+voice, a coding question is plain text already flowing through the
+existing chat interface, no client-surface gap. It fails cleanly with
+"worker dispatch is not activated" until worker_dispatch_client.available
+is true (the Phase D2 DSN, still not created) AND
+operator.D2_CHAT_ROUTING_ENABLED_FILE-style decoupling doesn't apply
+here -- this is a direct capability dispatch, not D2's own chat-routing
+decision, so it only needs worker_dispatch_client.available, same as
+vision/ears/voice.
 """
 
 from __future__ import annotations
 
+ASK_LOCAL_CODER_TOOL = "karmo.local.ask_coder"
+ASK_LOCAL_CODER_TOOL_VERSION = "1.0.0"
+
 CODE_ASSIST_MODEL = "qwen2.5-coder:7b"
 _MODEL_CHAT_TOOL_ID = "model_chat"
 _MODEL_CHAT_TOOL_VERSION = "1.0.0"
+_DEFAULT_WORKER_ID = "KARMO-WORKER01"
 
 MAX_QUESTION_CHARS = 4000
 
@@ -40,14 +41,21 @@ class CodeAssistCapabilityError(RuntimeError):
 
 def manifest() -> dict:
     return {
-        "tool_id": "karmo.local.ask_coder",
+        "tool_id": ASK_LOCAL_CODER_TOOL,
         "domain": "local-helper",
-        "version": "1.0.0",
+        "version": ASK_LOCAL_CODER_TOOL_VERSION,
         "description": (
             "Ask KARMO's own local coding-specialized model (qwen2.5-coder:7b, running on "
             "a worker) a coding question -- writing, explaining, or debugging code. Local, "
             "not Claude or GPT. Use ask_claude/ask_gpt only when this isn't enough."
         ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"question": {"type": "string", "maxLength": MAX_QUESTION_CHARS}},
+            "required": ["question"],
+            "additionalProperties": False,
+        },
+        "output_schema": {"type": "object", "properties": {"answer": {"type": "string"}}},
         "capability_class": "READ",
         "read_scope": "none -- dispatches to a worker's own loopback Ollama only",
         "write_scope": "none",
@@ -56,7 +64,17 @@ def manifest() -> dict:
         "destructive_action": False,
         "network_requirements": "none from Core's perspective -- LAN dispatch to an already-authenticated worker",
         "secret_requirements": "none beyond the existing worker-dispatch DSN, when provisioned",
+        "invocation_identity": "karmo-chat-model",
+        "timeout_seconds": 90,
+        "retry_policy": "none",
+        "idempotent": False,
+        "idempotency_mechanism": "not idempotent; each call is a live model invocation on a worker",
+        "rollback_or_compensation": "not applicable",
+        "health_check": "invoke with a trivial question and confirm a non-empty answer",
+        "deprecation_policy": "explicit version replacement",
         "dependencies": "worker_dispatch_client.available (requires /etc/karmo/core/worker-dispatch.dsn -- see vision_capability.py for why this is not yet created)",
+        "observability": "structured operator response",
+        "failure_isolation": "a dispatch failure or timeout refuses cleanly, never hangs the chat turn",
     }
 
 
@@ -92,3 +110,16 @@ def dispatch_code_assist(
     if not isinstance(response, str):
         raise CodeAssistCapabilityError("worker returned an invalid model_chat result")
     return response
+
+
+def handler(worker_dispatch_client, *, worker_id: str = _DEFAULT_WORKER_ID):
+    """Returns a dispatcher-bindable (arguments) -> dict handler closure,
+    same shape as orchestration.py's create_task_handler(task_store) --
+    the dependency (here, worker_dispatch_client) is captured at bind
+    time in KarmoOperator.__init__, not passed through tool-call
+    arguments."""
+    def _handler(arguments: dict) -> dict:
+        question = arguments.get("question")
+        answer = dispatch_code_assist(worker_dispatch_client, worker_id=worker_id, question=question)
+        return {"answer": answer}
+    return _handler

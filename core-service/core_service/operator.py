@@ -14,6 +14,7 @@ full design and the rule for safely adding a new tool later.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -26,6 +27,10 @@ from .ask_gpt_capability import ASK_GPT_TOOL
 from .ask_gpt_capability import TOOL_VERSION as ASK_GPT_TOOL_VERSION
 from .ask_gpt_capability import handler as ask_gpt_handler
 from .ask_gpt_capability import manifest as ask_gpt_manifest
+from .code_assist_capability import ASK_LOCAL_CODER_TOOL
+from .code_assist_capability import ASK_LOCAL_CODER_TOOL_VERSION
+from .code_assist_capability import handler as code_assist_handler
+from .code_assist_capability import manifest as code_assist_manifest
 from .bloomboss_capability import BLOOMBOSS_REPORT_TOOL
 from .bloomboss_capability import TOOL_VERSION as BLOOMBOSS_TOOL_VERSION
 from .bloomboss_capability import handler as bloomboss_report_handler
@@ -137,6 +142,28 @@ MIN_WORKER_DISPATCH_BUDGET_SECONDS = 30.0
 _MODEL_CHAT_TOOLS_TOOL_ID = "model_chat_tools"
 _MODEL_CHAT_TOOLS_TOOL_VERSION = "1.0.0"
 
+# Model Router Phase D2's OWN activation gate for chat-routing-to-worker,
+# deliberately separate from worker_dispatch_client.available (real
+# finding, 2026-09-20: the /etc/karmo/core/worker-dispatch.dsn file that
+# activates worker_dispatch_client is SHARED by every worker-dispatched
+# capability -- vision_describe, transcribe_audio, synthesize_speech, the
+# local coding helper -- not just D2's chat routing. Creating that DSN
+# file to enable those other capabilities would otherwise also silently
+# re-enable D2's chat routing, which has its own separate, still-open
+# concerns from two independent reviews (an over-privileged credential
+# reusing the gateway's role, no retention policy for worker-stored chat
+# content, a check-then-act worker-selection race -- see
+# docs/project-state/CURRENT_STATE.md's 2026-09-19 D2 entry) that do not
+# apply to those other capabilities at all. This file must be created
+# separately and explicitly to ever let live chat traffic route to a
+# worker again -- worker_dispatch_client.available alone is no longer
+# sufficient.
+D2_CHAT_ROUTING_ENABLED_FILE = "/etc/karmo/core/d2-chat-routing.enabled"
+
+
+def _d2_chat_routing_enabled() -> bool:
+    return os.path.exists(D2_CHAT_ROUTING_ENABLED_FILE)
+
 
 class _TurnDeadlineExceeded(Exception):
     """Internal signal that TOTAL_CHAT_DEADLINE_SECONDS ran out mid-turn --
@@ -214,6 +241,32 @@ _CHAT_EXPOSED_TOOLS = {
                     "the whole business."
                 ),
                 "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+    },
+    "ask_local_coder": {
+        "tool_id": ASK_LOCAL_CODER_TOOL,
+        "version": ASK_LOCAL_CODER_TOOL_VERSION,
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "ask_local_coder",
+                "description": (
+                    "Ask KARMO's own local coding-specialized model (running on a worker, "
+                    "not Claude or GPT) a coding question -- writing, explaining, or "
+                    "debugging code. Use ask_claude/ask_gpt only when this local model "
+                    "isn't enough."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "The coding question to ask.",
+                        },
+                    },
+                    "required": ["question"],
+                },
             },
         },
     },
@@ -357,6 +410,10 @@ _TOOL_TRIGGER_WORDS = {
     ),
     "ask_claude": re.compile(r"\b(claude|anthropic|second opinion)\b", re.IGNORECASE),
     "ask_gpt": re.compile(r"\b(gpt|chatgpt|openai)\b", re.IGNORECASE),
+    "ask_local_coder": re.compile(
+        r"\b(code|coding|python|function|script|debug|program|programming|algorithm)\b",
+        re.IGNORECASE,
+    ),
 }
 
 
@@ -518,6 +575,7 @@ class KarmoOperator:
         self.registry.register(bloomboss_manifest())
         self.registry.register(ask_claude_manifest())
         self.registry.register(ask_gpt_manifest())
+        self.registry.register(code_assist_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
@@ -526,6 +584,10 @@ class KarmoOperator:
         self.dispatcher.bind(BLOOMBOSS_REPORT_TOOL, BLOOMBOSS_TOOL_VERSION, bloomboss_report_handler)
         self.dispatcher.bind(ASK_CLAUDE_TOOL, ASK_CLAUDE_TOOL_VERSION, ask_claude_handler)
         self.dispatcher.bind(ASK_GPT_TOOL, ASK_GPT_TOOL_VERSION, ask_gpt_handler)
+        self.dispatcher.bind(
+            ASK_LOCAL_CODER_TOOL, ASK_LOCAL_CODER_TOOL_VERSION,
+            code_assist_handler(self.worker_dispatch_client),
+        )
 
         if task_store is not None:
             self.task_store = task_store
@@ -1014,7 +1076,10 @@ class KarmoOperator:
             worker_snapshots=worker_snapshots,
         )
         worker_eligible = bool(
-            live_decision and live_decision.is_worker and self.worker_dispatch_client.available
+            live_decision
+            and live_decision.is_worker
+            and self.worker_dispatch_client.available
+            and _d2_chat_routing_enabled()
         )
 
         # Deliberately no require_local/minimum_trust_tier gate here: the
