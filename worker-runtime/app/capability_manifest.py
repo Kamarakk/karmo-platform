@@ -307,6 +307,32 @@ SAFE_CAPABILITIES = {
         idempotent=False,
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
+    # Local voice -- see capabilities.py's synthesize_speech docstring for
+    # the live-verification record (2026-09-20, Piper, real-time factor
+    # 0.042 -- comfortably faster than real-time). READ/NONE: calls a
+    # local Piper binary via subprocess, no network, no persistent side
+    # effect.
+    "synthesize_speech": dict(
+        capability_id="synthesize_speech",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "maxLength": 2000},
+                "voice": {"type": "string", "enum": ["en_US-amy-medium"]},
+            },
+            "required": ["text"],
+        },
+        output_schema={"type": "object", "properties": {"audio_base64": {"type": "string"}}},
+        timeout_seconds=30,
+        resource_requirements={"cpu": "low", "memory_mb": 512},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
 }
 SAFE_CAPABILITIES.update(COMMANDER_READONLY_CAPABILITIES)
 

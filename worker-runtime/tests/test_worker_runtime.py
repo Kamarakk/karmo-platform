@@ -1592,6 +1592,74 @@ def test_capability_transcribe_audio_manifest_matches_registered_allowed_models(
     assert allowed == capabilities.__dict__["_ALLOWED_WHISPER_MODELS"]
 
 
+_FAKE_PIPER_BINARY = str(Path(__file__).resolve().parent / "fixtures" / "fake_piper_binary")
+
+
+def test_capability_synthesize_speech_calls_piper_and_returns_audio(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    output, summary, duration, evidence = run_capability(
+        "synthesize_speech", {"text": "hello there", "voice": "en_US-amy-medium"}, timeout_seconds=30,
+    )
+
+    assert base64.b64decode(output["audio_base64"]) == b"hello there"
+    assert "en_US-amy-medium" in summary
+
+
+def test_capability_synthesize_speech_defaults_to_amy_medium_voice(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    output, summary, duration, evidence = run_capability(
+        "synthesize_speech", {"text": "hi"}, timeout_seconds=30,
+    )
+
+    assert base64.b64decode(output["audio_base64"]) == b"hi"
+
+
+def test_capability_synthesize_speech_refuses_voice_outside_allowed_set(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    with pytest.raises(SandboxError, match="voice not in allowed set"):
+        run_capability(
+            "synthesize_speech", {"text": "hi", "voice": "en_GB-alan-low"}, timeout_seconds=30,
+        )
+
+
+def test_capability_synthesize_speech_refuses_empty_text(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    with pytest.raises(SandboxError, match="text must be non-empty"):
+        run_capability("synthesize_speech", {"text": "   "}, timeout_seconds=30)
+
+
+def test_capability_synthesize_speech_refuses_oversized_text(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+    huge = "x" * (capabilities.MAX_SPEECH_TEXT_CHARS + 1)
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability("synthesize_speech", {"text": huge}, timeout_seconds=30)
+
+
+def test_capability_synthesize_speech_wraps_subprocess_failure(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", f"/nonexistent/{_unused_loopback_port()}")
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    with pytest.raises(SandboxError, match="synthesize_speech subprocess failed"):
+        run_capability("synthesize_speech", {"text": "hi"}, timeout_seconds=30)
+
+
+def test_capability_synthesize_speech_manifest_matches_registered_allowed_voices():
+    manifest = SAFE_CAPABILITIES["synthesize_speech"]
+    assert manifest["authority_class"] == CapabilityClass.READ
+    allowed = set(manifest["input_schema"]["properties"]["voice"]["enum"])
+    assert allowed == capabilities.__dict__["_ALLOWED_PIPER_VOICES"]
+
+
 def test_capability_document_processing_synthetic_chunking():
     output, summary, duration, evidence = run_capability(
         "document_processing_test", {"path": "sample_document.txt"}, timeout_seconds=30, allowed_root=FIXTURES,

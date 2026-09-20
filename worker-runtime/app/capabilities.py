@@ -505,6 +505,81 @@ def _transcribe_audio(payload, *, sandbox_root, allowed_root, timeout_seconds):
 register_handler("transcribe_audio", _transcribe_audio)
 
 
+# --- SYNTHESIZE SPEECH (local voice) -----------------------------------------
+# KARMO's own local text-to-speech -- calls a dedicated Piper install on
+# this worker via subprocess (Piper has no HTTP API, unlike Ollama, and no
+# venv/import surface like faster-whisper -- it's a standalone native
+# binary). Verified live 2026-09-20 on Worker01: Piper (2023.11.14-2,
+# en_US-amy-medium voice) loaded in 0.27s and synthesized a real sentence
+# with a measured real-time factor of 0.042 (0.14s of inference for 3.27s
+# of resulting audio) -- comfortably faster than real-time on this
+# CPU-only hardware.
+_DEFAULT_PIPER_BINARY = "/home/karmo/karmo-vision-audio/piper/piper/piper"
+_DEFAULT_PIPER_VOICE_MODEL = "/home/karmo/karmo-vision-audio/piper/piper/en_US-amy-medium.onnx"
+_ALLOWED_PIPER_VOICES = frozenset({"en_US-amy-medium"})
+MAX_SPEECH_TEXT_CHARS = 2000
+
+
+def _piper_binary():
+    return os.environ.get("KARMO_PIPER_BINARY", _DEFAULT_PIPER_BINARY)
+
+
+def _piper_voice_model():
+    return os.environ.get("KARMO_PIPER_VOICE_MODEL", _DEFAULT_PIPER_VOICE_MODEL)
+
+
+def _piper_subprocess_env():
+    """Piper dynamically links against libonnxruntime/libpiper_phonemize/
+    libespeak-ng shipped alongside its own binary -- it needs
+    LD_LIBRARY_PATH pointed at that same directory to find them, the one
+    real exception to every other handler's plain _safe_subprocess_env().
+    Deliberately its own function rather than widening the shared
+    allowlist for every other capability that doesn't need this."""
+    env = _safe_subprocess_env()
+    env["LD_LIBRARY_PATH"] = str(Path(_piper_binary()).resolve().parent)
+    return env
+
+
+def _synthesize_speech(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    text = payload.get("text")
+    voice = payload.get("voice", "en_US-amy-medium")
+    if voice not in _ALLOWED_PIPER_VOICES:
+        raise SandboxError(f"voice not in allowed set for synthesize_speech: {voice!r}")
+    if not isinstance(text, str) or not text.strip():
+        raise SandboxError("text must be non-empty")
+    if len(text) > MAX_SPEECH_TEXT_CHARS:
+        raise SandboxError(f"text exceeds {MAX_SPEECH_TEXT_CHARS} characters")
+
+    output_path = Path(sandbox_root) / "output_speech.wav"
+    try:
+        result = subprocess.run(
+            [_piper_binary(), "--model", _piper_voice_model(), "--output_file", str(output_path)],
+            input=text,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=_piper_subprocess_env(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SandboxError(f"synthesize_speech timed out after {timeout_seconds}s") from exc
+    except OSError as exc:
+        raise SandboxError(f"synthesize_speech subprocess failed: {exc}") from exc
+
+    if result.returncode != 0 or not output_path.is_file():
+        raise SandboxError(f"synthesize_speech subprocess failed: {result.stderr[-500:]}")
+
+    audio_bytes = output_path.read_bytes()
+    if not audio_bytes:
+        raise SandboxError("synthesize_speech produced an empty audio file")
+
+    output = {"audio_base64": base64.b64encode(audio_bytes).decode("ascii")}
+    summary = f"synthesize_speech: {voice} ({len(audio_bytes)} bytes)"
+    return output, summary, []
+
+
+register_handler("synthesize_speech", _synthesize_speech)
+
+
 def _document_processing_test(payload, *, sandbox_root, allowed_root, timeout_seconds):
     """Synthetic chunking simulation for the bounded document job path."""
     root = _require_allowed_root(allowed_root)
