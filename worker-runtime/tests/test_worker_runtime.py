@@ -16,12 +16,14 @@ the parent process; only real, externally-observable state (an actual
 socket, an env var) crosses that boundary.
 """
 
+import base64
 import hashlib
 import http.server
 import json
 import multiprocessing
 import os
 import socket
+import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -1402,6 +1404,260 @@ def test_capability_model_chat_tools_manifest_is_additive_not_a_version_bump():
     assert manifest["idempotent"] is False
     allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
     assert allowed == capabilities.__dict__["_ALLOWED_MODEL_CHAT_MODELS"]
+
+
+def test_capability_vision_describe_calls_local_ollama_and_returns_answer(monkeypatch):
+    image_b64 = base64.b64encode(b"fake-png-bytes").decode("ascii")
+    with _FakeOllamaServer(response_body=b'{"response": "a red square"}') as server:
+        monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", server.url)
+
+        output, summary, duration, evidence = run_capability(
+            "vision_describe",
+            {"model": "moondream", "question": "what color is this?", "image_base64": image_b64},
+            timeout_seconds=60,
+        )
+
+        assert output == {"answer": "a red square"}
+        assert "moondream" in summary
+        assert server.received_bodies == [
+            {
+                "model": "moondream",
+                "prompt": "what color is this?",
+                "images": [image_b64],
+                "stream": False,
+            }
+        ]
+
+
+def test_capability_vision_describe_defaults_model_and_question(monkeypatch):
+    image_b64 = base64.b64encode(b"fake-png-bytes").decode("ascii")
+    with _FakeOllamaServer(response_body=b'{"response": "a photo"}') as server:
+        monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", server.url)
+
+        output, summary, duration, evidence = run_capability(
+            "vision_describe", {"image_base64": image_b64}, timeout_seconds=60,
+        )
+
+        assert output == {"answer": "a photo"}
+        assert server.received_bodies[0]["model"] == "moondream"
+        assert server.received_bodies[0]["prompt"] == "Describe this image."
+
+
+def test_capability_vision_describe_refuses_model_outside_allowed_set(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+    image_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="model not in allowed set"):
+        run_capability(
+            "vision_describe",
+            {"model": "qwen3:8b", "question": "what is this?", "image_base64": image_b64},
+            timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_refuses_empty_question(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+    image_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="question must be non-empty"):
+        run_capability(
+            "vision_describe", {"question": "   ", "image_base64": image_b64}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_refuses_invalid_base64(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+
+    with pytest.raises(SandboxError, match="not valid base64"):
+        run_capability(
+            "vision_describe", {"question": "what is this?", "image_base64": "not-valid-base64!!!"}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_refuses_empty_decoded_image(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+
+    with pytest.raises(SandboxError, match="empty"):
+        run_capability(
+            "vision_describe", {"question": "what is this?", "image_base64": ""}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_refuses_oversized_image(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+    huge_b64 = base64.b64encode(b"x" * (capabilities.MAX_VISION_IMAGE_BYTES + 1)).decode("ascii")
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability(
+            "vision_describe", {"question": "what is this?", "image_base64": huge_b64}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_wraps_ollama_call_failure(monkeypatch):
+    monkeypatch.setenv("KARMO_OLLAMA_GENERATE_URL", f"http://127.0.0.1:{_unused_loopback_port()}/api/generate")
+    image_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="vision_describe call to local Ollama failed"):
+        run_capability(
+            "vision_describe", {"question": "what is this?", "image_base64": image_b64}, timeout_seconds=60,
+        )
+
+
+def test_capability_vision_describe_manifest_matches_registered_allowed_models():
+    manifest = SAFE_CAPABILITIES["vision_describe"]
+    assert manifest["authority_class"] == CapabilityClass.READ
+    allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
+    assert allowed == capabilities.__dict__["_ALLOWED_VISION_MODELS"]
+
+
+_FAKE_WHISPER_SCRIPT = str(Path(__file__).resolve().parent / "fixtures" / "fake_whisper_transcribe_script.py")
+
+
+def test_capability_transcribe_audio_calls_whisper_and_returns_text(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+    audio_b64 = base64.b64encode(b"the quick brown fox").decode("ascii")
+
+    output, summary, duration, evidence = run_capability(
+        "transcribe_audio", {"model": "small", "audio_base64": audio_b64}, timeout_seconds=30,
+    )
+
+    assert output == {"text": "the quick brown fox"}
+    assert "small" in summary
+
+
+def test_capability_transcribe_audio_defaults_to_small_model(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+    audio_b64 = base64.b64encode(b"hello").decode("ascii")
+
+    output, summary, duration, evidence = run_capability(
+        "transcribe_audio", {"audio_base64": audio_b64}, timeout_seconds=30,
+    )
+
+    assert output == {"text": "hello"}
+
+
+def test_capability_transcribe_audio_refuses_model_outside_allowed_set(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+    audio_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="model not in allowed set"):
+        run_capability(
+            "transcribe_audio", {"model": "large", "audio_base64": audio_b64}, timeout_seconds=30,
+        )
+
+
+def test_capability_transcribe_audio_refuses_invalid_base64(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+
+    with pytest.raises(SandboxError, match="not valid base64"):
+        run_capability(
+            "transcribe_audio", {"audio_base64": "not-valid-base64!!!"}, timeout_seconds=30,
+        )
+
+
+def test_capability_transcribe_audio_refuses_empty_audio(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+
+    with pytest.raises(SandboxError, match="empty"):
+        run_capability("transcribe_audio", {"audio_base64": ""}, timeout_seconds=30)
+
+
+def test_capability_transcribe_audio_refuses_oversized_audio(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", _FAKE_WHISPER_SCRIPT)
+    huge_b64 = base64.b64encode(b"x" * (capabilities.MAX_AUDIO_BYTES + 1)).decode("ascii")
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability("transcribe_audio", {"audio_base64": huge_b64}, timeout_seconds=30)
+
+
+def test_capability_transcribe_audio_wraps_subprocess_failure(monkeypatch):
+    monkeypatch.setenv("KARMO_WHISPER_PYTHON", sys.executable)
+    monkeypatch.setenv("KARMO_WHISPER_SCRIPT", f"/nonexistent/{_unused_loopback_port()}.py")
+    audio_b64 = base64.b64encode(b"x").decode("ascii")
+
+    with pytest.raises(SandboxError, match="transcribe_audio subprocess failed"):
+        run_capability("transcribe_audio", {"audio_base64": audio_b64}, timeout_seconds=30)
+
+
+def test_capability_transcribe_audio_manifest_matches_registered_allowed_models():
+    manifest = SAFE_CAPABILITIES["transcribe_audio"]
+    assert manifest["authority_class"] == CapabilityClass.READ
+    allowed = set(manifest["input_schema"]["properties"]["model"]["enum"])
+    assert allowed == capabilities.__dict__["_ALLOWED_WHISPER_MODELS"]
+
+
+_FAKE_PIPER_BINARY = str(Path(__file__).resolve().parent / "fixtures" / "fake_piper_binary")
+
+
+def test_capability_synthesize_speech_calls_piper_and_returns_audio(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    output, summary, duration, evidence = run_capability(
+        "synthesize_speech", {"text": "hello there", "voice": "en_US-amy-medium"}, timeout_seconds=30,
+    )
+
+    assert base64.b64decode(output["audio_base64"]) == b"hello there"
+    assert "en_US-amy-medium" in summary
+
+
+def test_capability_synthesize_speech_defaults_to_amy_medium_voice(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    output, summary, duration, evidence = run_capability(
+        "synthesize_speech", {"text": "hi"}, timeout_seconds=30,
+    )
+
+    assert base64.b64decode(output["audio_base64"]) == b"hi"
+
+
+def test_capability_synthesize_speech_refuses_voice_outside_allowed_set(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    with pytest.raises(SandboxError, match="voice not in allowed set"):
+        run_capability(
+            "synthesize_speech", {"text": "hi", "voice": "en_GB-alan-low"}, timeout_seconds=30,
+        )
+
+
+def test_capability_synthesize_speech_refuses_empty_text(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    with pytest.raises(SandboxError, match="text must be non-empty"):
+        run_capability("synthesize_speech", {"text": "   "}, timeout_seconds=30)
+
+
+def test_capability_synthesize_speech_refuses_oversized_text(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", _FAKE_PIPER_BINARY)
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+    huge = "x" * (capabilities.MAX_SPEECH_TEXT_CHARS + 1)
+
+    with pytest.raises(SandboxError, match="exceeds"):
+        run_capability("synthesize_speech", {"text": huge}, timeout_seconds=30)
+
+
+def test_capability_synthesize_speech_wraps_subprocess_failure(monkeypatch):
+    monkeypatch.setenv("KARMO_PIPER_BINARY", f"/nonexistent/{_unused_loopback_port()}")
+    monkeypatch.setenv("KARMO_PIPER_VOICE_MODEL", "/fake/voice.onnx")
+
+    with pytest.raises(SandboxError, match="synthesize_speech subprocess failed"):
+        run_capability("synthesize_speech", {"text": "hi"}, timeout_seconds=30)
+
+
+def test_capability_synthesize_speech_manifest_matches_registered_allowed_voices():
+    manifest = SAFE_CAPABILITIES["synthesize_speech"]
+    assert manifest["authority_class"] == CapabilityClass.READ
+    allowed = set(manifest["input_schema"]["properties"]["voice"]["enum"])
+    assert allowed == capabilities.__dict__["_ALLOWED_PIPER_VOICES"]
 
 
 def test_capability_document_processing_synthetic_chunking():

@@ -197,7 +197,7 @@ SAFE_CAPABILITIES = {
         input_schema={
             "type": "object",
             "properties": {
-                "model": {"type": "string", "enum": ["qwen3:8b", "mistral:7b"]},
+                "model": {"type": "string", "enum": ["qwen3:8b", "mistral:7b", "qwen2.5-coder:7b"]},
                 "prompt": {"type": "string", "maxLength": 8000},
             },
             "required": ["model", "prompt"],
@@ -235,7 +235,7 @@ SAFE_CAPABILITIES = {
         input_schema={
             "type": "object",
             "properties": {
-                "model": {"type": "string", "enum": ["qwen3:8b", "mistral:7b"]},
+                "model": {"type": "string", "enum": ["qwen3:8b", "mistral:7b", "qwen2.5-coder:7b"]},
                 "messages": {"type": "array"},
                 "tools": {"type": "array"},
             },
@@ -250,6 +250,84 @@ SAFE_CAPABILITIES = {
         },
         timeout_seconds=120,
         resource_requirements={"cpu": "high", "memory_mb": 8192},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
+    # Local eyes -- see capabilities.py's vision_describe docstring for the
+    # live-verification record (2026-09-20, moondream, 8.13s, ~1.3GB
+    # resident). READ/NONE: calls this worker's own loopback Ollama only,
+    # no persistent side effect, no write anywhere.
+    "vision_describe": dict(
+        capability_id="vision_describe",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["moondream"]},
+                "question": {"type": "string", "maxLength": 2000},
+                "image_base64": {"type": "string"},
+            },
+            "required": ["question", "image_base64"],
+        },
+        output_schema={"type": "object", "properties": {"answer": {"type": "string"}}},
+        timeout_seconds=60,
+        resource_requirements={"cpu": "medium", "memory_mb": 2048},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
+    # Local ears -- see capabilities.py's transcribe_audio docstring for the
+    # live-verification record (2026-09-20, faster-whisper "small", 3.05s
+    # for a real 4-word phrase, exact transcript match). READ/NONE: calls a
+    # dedicated local faster-whisper venv via subprocess, no network, no
+    # persistent side effect.
+    "transcribe_audio": dict(
+        capability_id="transcribe_audio",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["small"]},
+                "audio_base64": {"type": "string"},
+            },
+            "required": ["audio_base64"],
+        },
+        output_schema={"type": "object", "properties": {"text": {"type": "string"}}},
+        timeout_seconds=60,
+        resource_requirements={"cpu": "medium", "memory_mb": 2048},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
+    # Local voice -- see capabilities.py's synthesize_speech docstring for
+    # the live-verification record (2026-09-20, Piper, real-time factor
+    # 0.042 -- comfortably faster than real-time). READ/NONE: calls a
+    # local Piper binary via subprocess, no network, no persistent side
+    # effect.
+    "synthesize_speech": dict(
+        capability_id="synthesize_speech",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "maxLength": 2000},
+                "voice": {"type": "string", "enum": ["en_US-amy-medium"]},
+            },
+            "required": ["text"],
+        },
+        output_schema={"type": "object", "properties": {"audio_base64": {"type": "string"}}},
+        timeout_seconds=30,
+        resource_requirements={"cpu": "low", "memory_mb": 512},
         network_required=False,
         secrets_required=[],
         idempotent=False,

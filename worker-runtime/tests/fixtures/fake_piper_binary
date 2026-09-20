@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""Fake stand-in for the real Piper binary -- needs no real Piper install.
+Reads text from stdin and writes it verbatim (as bytes) to the
+--output_file path, so tests can assert an exact round trip."""
+import sys
+
+args = sys.argv[1:]
+output_path = args[args.index("--output_file") + 1]
+text = sys.stdin.read()
+with open(output_path, "wb") as handle:
+    handle.write(text.encode("utf-8"))
