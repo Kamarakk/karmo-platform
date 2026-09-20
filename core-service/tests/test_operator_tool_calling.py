@@ -149,6 +149,47 @@ def test_model_can_call_list_tasks_and_use_the_real_result():
     assert payload["tasks"][0]["objective"] == "reconcile PR #26"
 
 
+def test_oversized_tool_result_is_truncated_before_reaching_the_model():
+    """Real, live-diagnosed bug (2026-09-19): bloomboss_report's full result
+    serialized to 63,035 bytes for a single small CSV import, and feeding
+    that entire blob back to a CPU-only model as tool-result context took
+    over 100 seconds on the next round, exceeding even a 150-second total
+    turn budget on its own. A tool result must be capped before it ever
+    reaches the model, with an honest, visible marker -- never a silent
+    truncation the model (or Kamara) could mistake for the complete
+    picture."""
+    from core_service.operator import _MAX_TOOL_RESULT_CHARS_FOR_MODEL
+
+    store = FakeTaskStore()
+    for i in range(400):
+        store.seed(objective=f"synthetic task {i}" * 5)  # inflate well past the cap
+    client = ToolCallThenAnswerClient(arguments={"limit": 100})
+    operator = KarmoOperator(model_client=client, task_store=store)
+
+    operator.handle("what tasks are open right now?")
+
+    tool_message = client.requests[1]["messages"][-1]
+    assert tool_message["role"] == "tool"
+    content = tool_message["content"]
+    assert len(content) <= _MAX_TOOL_RESULT_CHARS_FOR_MODEL + 300  # cap + marker text
+    assert "TRUNCATED FOR RESPONSE TIME" in content
+    assert "More detail exists" in content
+
+
+def test_small_tool_result_is_never_truncated_or_marked():
+    store = FakeTaskStore()
+    store.seed()
+    client = ToolCallThenAnswerClient()
+    operator = KarmoOperator(model_client=client, task_store=store)
+
+    operator.handle("what tasks are open right now?")
+
+    tool_message = client.requests[1]["messages"][-1]
+    assert "TRUNCATED" not in tool_message["content"]
+    # Still valid, complete, parseable JSON -- untouched below the cap.
+    json.loads(tool_message["content"])
+
+
 def test_fallback_candidates_tool_call_gets_identical_dispatch_as_primary_would():
     """Model Router Phase B rule 8. Uses the real default_model_resources()
     registry (qwen3:8b ranked first, ministral-3:8b second) so this proves
