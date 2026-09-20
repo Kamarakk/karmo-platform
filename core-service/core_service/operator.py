@@ -79,10 +79,20 @@ MAX_MEMORY_CONTEXT_CHARS = 12_000
 # + routing decision + every candidate attempt combined), replacing the
 # previous fixed-120-seconds-per-candidate architecture entirely rather
 # than sitting alongside it. This is the direct fix for a real 379.5-second
-# turn: two sequential fixed 120s timeouts, uncapped in total. 75s is the
-# plan's own initial value (its stated range is 60-90s) -- explicitly
-# provisional, to be tuned from real telemetry, not asserted as final.
-TOTAL_CHAT_DEADLINE_SECONDS = 75.0
+# turn: two sequential fixed 120s timeouts, uncapped in total.
+#
+# Corrected from the plan's own initial 75s value after a real regression
+# observed live in production (2026-09-19): karmo-ai01 is memory-tight
+# (~1.3 GiB genuinely free out of 15 GiB on its VM -- see
+# docs/project-state/NETWORK_INVENTORY.md), and a cold model load (qwen3:8b
+# not yet resident in Ollama) timed out against the 75s shared budget --
+# something the old, unbounded-per-candidate 120s-each design would not
+# have hit on a single-candidate attempt. 150.0 restores at least the old
+# single-candidate headroom while still being one shared ceiling, not
+# stacked per candidate. Still explicitly not a benchmarked p95 value --
+# a real local cold/warm latency measurement (never performed) remains the
+# right way to set this precisely.
+TOTAL_CHAT_DEADLINE_SECONDS = 150.0
 
 # Below this much remaining budget, a worker dispatch attempt is skipped
 # entirely rather than started and immediately doomed. Corrected per GPT's
