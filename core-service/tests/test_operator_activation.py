@@ -108,46 +108,30 @@ def test_general_chat_uses_local_model_router_without_tool_execution():
     assert [call["model"] for call in client.calls] == ["qwen3:8b"]
 
 
-def test_general_chat_falls_back_from_qwen_to_ministral():
+def test_general_chat_fails_closed_when_qwen_fails_no_fallback_exists():
+    """2026-09-20: ministral-3:8b (the only chat fallback) was deleted from
+    karmo-ai01's Ollama instance -- Kamara's explicit choice to run
+    qwen3:8b as the sole chat model given this hardware's real RAM
+    constraints (default_model_resources() now has a single tool-calling
+    chat candidate). A qwen3:8b failure now falls straight through to the
+    fail-closed response; there is nothing left to fall back to. This
+    replaces the old qwen->ministral fallback test and the old
+    qwen+ministral-fail->granite-exclusion test, both of which described
+    a two/three-model registry that no longer exists in production. The
+    underlying structural invariant those tests protected (a fallback
+    candidate's tool call gets identical dispatch to the primary's; a
+    non-tool-calling model is never reached) is still covered directly
+    against a synthetic registry in
+    test_operator_tool_calling.py::test_fallback_candidates_tool_call_gets_identical_dispatch_as_primary_would."""
     client = FakeModelClient(fail_models={"qwen3:8b"})
     operator = KarmoOperator(model_client=client, status_reader=fake_status)
 
     response = operator.handle("Good morning Karmo")
 
     assert response["kind"] == "chat"
-    assert response["model"] == "ministral-3:8b"
-    assert [call["model"] for call in client.calls] == ["qwen3:8b", "ministral-3:8b"]
-
-
-def test_general_chat_never_falls_back_to_granite_which_is_not_tool_calling_capable():
-    """Model Router Phase B (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
-    Section 3.4) -- direct regression test, using the real production
-    registry, for the actual 2026-09-18 incident: qwen3:8b and
-    ministral-3:8b both fail (matching both timing out under contention),
-    and granite3.3:2b -- not tagged tool_calling -- must never be reached
-    at all, replacing the old (wrong) expectation that it would silently
-    take over as a third fallback."""
-    client = FakeModelClient(fail_models={"qwen3:8b", "ministral-3:8b"})
-    operator = KarmoOperator(model_client=client, status_reader=fake_status)
-
-    response = operator.handle("Good morning Karmo")
-
-    assert response["kind"] == "chat"
     assert response["message"] == "Local chat models are unavailable. KARMO control plane remains fail-closed."
     assert "model" not in response
-    assert [call["model"] for call in client.calls] == ["qwen3:8b", "ministral-3:8b"]
-    assert "granite3.3:2b" not in [call["model"] for call in client.calls]
-
-
-def test_general_chat_fails_closed_when_all_chat_models_fail():
-    client = FakeModelClient(fail_models={"qwen3:8b", "ministral-3:8b", "granite3.3:2b"})
-    operator = KarmoOperator(model_client=client, status_reader=fake_status)
-
-    response = operator.handle("Good morning Karmo")
-
-    assert response["kind"] == "chat"
-    assert response["message"] == "Local chat models are unavailable. KARMO control plane remains fail-closed."
-    assert "model" not in response
+    assert [call["model"] for call in client.calls] == ["qwen3:8b"]
 
 
 def test_ollama_client_rejects_non_loopback_endpoint():

@@ -364,18 +364,31 @@ def default_model_resources() -> list[ModelResource]:
     # chain is Phase B's job, not this one.
     #
     # Tagged only where confirmed by real evidence, never guessed:
-    # - qwen3:8b, ministral-3:8b: confirmed live 2026-09-18 -- both were
-    #   observed attempting Ollama's tool-calling contract (they timed
-    #   out mid-call, but were engaged via /api/chat with tools, not
-    #   /api/generate) during the karmo-ai01 contention investigation.
-    # - granite3.3:2b: confirmed NOT reliably tool-calling -- live testing
-    #   the same night showed it producing fluent prose naming the
-    #   `bloomboss_report` tool instead of invoking it. Deliberately left
-    #   untagged.
+    # - qwen3:8b: confirmed live 2026-09-18 -- observed attempting
+    #   Ollama's tool-calling contract (timed out mid-call, but was
+    #   engaged via /api/chat with tools, not /api/generate) during the
+    #   karmo-ai01 contention investigation.
     # - mistral:7b: never exercised via the chat tool-calling path at all
     #   (verify-only capability, not in _chat()'s "chat" candidate set) --
     #   no evidence either way, so no claim is made. NEEDS_VERIFICATION
     #   if this model is ever considered for chat/tool-calling roles.
+    #
+    # ministral-3:8b (secondary chat fallback) and granite3.3:2b
+    # (untagged for tool_calling, and already below every trust-tier
+    # threshold that would have selected it for anything) were both
+    # deleted from karmo-ai01's Ollama instance on 2026-09-20 -- Kamara's
+    # explicit choice to run qwen3:8b as the sole chat model given this
+    # hardware's real RAM constraints (a single qwen3:8b call already
+    # consumes ~80% of the VM's total RAM; a resident second model was
+    # never realistic here). Their entries are removed here to match --
+    # leaving them in this list while the underlying model files are gone
+    # would only add a slower, doomed fallback attempt (a real "model not
+    # found" error from Ollama) on the rare path where qwen3:8b itself
+    # fails, before chat correctly falls through to the fail-closed
+    # "unavailable" response. Known, accepted trade-off: qwen3:8b now has
+    # zero chat fallback -- any qwen3:8b failure returns "unavailable"
+    # directly. Re-add a fallback model here (and re-pull it on
+    # karmo-ai01) if that trade-off changes.
     return [
         ModelResource(
             model_id="qwen3:8b",
@@ -386,28 +399,12 @@ def default_model_resources() -> list[ModelResource]:
             metadata={"role": "primary"},
         ),
         ModelResource(
-            model_id="ministral-3:8b",
-            provider="ollama-local",
-            capabilities=frozenset({"chat", "summarize", "reason", "tool_calling"}),
-            trust_tier=35,
-            local=True,
-            metadata={"role": "secondary"},
-        ),
-        ModelResource(
             model_id="mistral:7b",
             provider="ollama-local",
             capabilities=frozenset({"verify"}),
             trust_tier=30,
             local=True,
             metadata={"role": "verifier"},
-        ),
-        ModelResource(
-            model_id="granite3.3:2b",
-            provider="ollama-local",
-            capabilities=frozenset({"chat", "summarize", "fast"}),
-            trust_tier=20,
-            local=True,
-            metadata={"role": "fast_fallback"},
         ),
     ]
 
@@ -980,11 +977,13 @@ class KarmoOperator:
         # Deliberately no require_local/minimum_trust_tier gate here: the
         # trust floor (OPERATOR_PRIMARY_MIN_TRUST_TIER) governs the
         # KarmoLab status/verification path via _models(), where an
-        # auditable, high-trust report matters. Ordinary chat keeps its
-        # full fallback chain, including the low-trust "fast fallback"
-        # model, so a chat request degrades to slower/less-capable
-        # models rather than failing closed when higher-trust models are
-        # unavailable.
+        # auditable, high-trust report matters. Ordinary chat uses
+        # whatever tool-calling-capable candidates exist in
+        # default_model_resources() -- as of 2026-09-20 that's qwen3:8b
+        # alone (see that function's docstring for why the prior
+        # secondary/fast-fallback models were removed), so a qwen3:8b
+        # failure now falls straight through to the fail-closed response
+        # below rather than degrading to another model first.
         #
         # Model Router Phase B (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
         # Section 3.4) -- gated on "tool_calling", not "chat". Every chat
