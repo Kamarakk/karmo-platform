@@ -5,6 +5,7 @@ from core_service.vision_capability import (
     MAX_QUESTION_CHARS,
     VisionCapabilityError,
     dispatch_vision_describe,
+    handler,
     manifest,
 )
 from core_service.worker_dispatch import DispatchOutcome
@@ -116,3 +117,20 @@ def test_malformed_result_raises_clean_error():
 
     with pytest.raises(VisionCapabilityError, match="invalid vision_describe result"):
         dispatch_vision_describe(client, worker_id="KARMO-WORKER01", question="what is this?", image_base64="ZmFrZQ==")
+
+
+def test_handler_returns_a_dispatcher_bindable_closure():
+    client = FakeWorkerDispatchClient(outcome=_succeeded("a blue circle"))
+
+    result = handler(client)({"question": "what color?", "image_base64": "ZmFrZQ=="})
+
+    assert result == {"answer": "a blue circle"}
+    assert client.calls[0]["worker_id"] == "KARMO-WORKER01"
+
+
+def test_handler_honors_explicit_worker_id():
+    client = FakeWorkerDispatchClient(outcome=_succeeded("ok"))
+
+    handler(client, worker_id="KARMO-WORKER02")({"question": "q", "image_base64": "ZmFrZQ=="})
+
+    assert client.calls[0]["worker_id"] == "KARMO-WORKER02"

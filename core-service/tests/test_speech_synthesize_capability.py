@@ -4,6 +4,7 @@ from core_service.speech_synthesize_capability import (
     MAX_TEXT_CHARS,
     SpeechSynthesizeCapabilityError,
     dispatch_synthesize_speech,
+    handler,
     manifest,
 )
 from core_service.worker_dispatch import DispatchOutcome
@@ -94,3 +95,12 @@ def test_malformed_result_raises_clean_error():
 
     with pytest.raises(SpeechSynthesizeCapabilityError, match="invalid synthesize_speech result"):
         dispatch_synthesize_speech(client, worker_id="KARMO-WORKER01", text="hello")
+
+
+def test_handler_returns_a_dispatcher_bindable_closure():
+    client = FakeWorkerDispatchClient(outcome=_succeeded("ZmFrZS1hdWRpbw=="))
+
+    result = handler(client)({"text": "hello there"})
+
+    assert result == {"audio_base64": "ZmFrZS1hdWRpbw=="}
+    assert client.calls[0]["worker_id"] == "KARMO-WORKER01"

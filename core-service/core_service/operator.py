@@ -31,6 +31,15 @@ from .code_assist_capability import ASK_LOCAL_CODER_TOOL
 from .code_assist_capability import ASK_LOCAL_CODER_TOOL_VERSION
 from .code_assist_capability import handler as code_assist_handler
 from .code_assist_capability import manifest as code_assist_manifest
+from .vision_capability import VISION_DESCRIBE_TOOL_ID, VISION_DESCRIBE_TOOL_VERSION
+from .vision_capability import handler as vision_handler
+from .vision_capability import manifest as vision_manifest
+from .audio_transcribe_capability import TRANSCRIBE_AUDIO_TOOL_ID, TRANSCRIBE_AUDIO_TOOL_VERSION
+from .audio_transcribe_capability import handler as transcribe_audio_handler
+from .audio_transcribe_capability import manifest as transcribe_audio_manifest
+from .speech_synthesize_capability import SYNTHESIZE_SPEECH_TOOL_ID, SYNTHESIZE_SPEECH_TOOL_VERSION
+from .speech_synthesize_capability import handler as synthesize_speech_handler
+from .speech_synthesize_capability import manifest as synthesize_speech_manifest
 from .bloomboss_capability import BLOOMBOSS_REPORT_TOOL
 from .bloomboss_capability import TOOL_VERSION as BLOOMBOSS_TOOL_VERSION
 from .bloomboss_capability import handler as bloomboss_report_handler
@@ -576,6 +585,17 @@ class KarmoOperator:
         self.registry.register(ask_claude_manifest())
         self.registry.register(ask_gpt_manifest())
         self.registry.register(code_assist_manifest())
+        # Vision/ears/voice: registered + bound on the same dispatcher as
+        # every other capability, but deliberately NOT added to
+        # _CHAT_EXPOSED_TOOLS -- a text model cannot invent real
+        # image/audio bytes as a tool-call argument (see each module's
+        # own docstring). Registering them here is what lets a real
+        # client surface (the webui) call them through the same
+        # CapabilityDispatcher/ApprovalEngine authority path as every
+        # other KARMO capability, instead of a separate ad hoc path.
+        self.registry.register(vision_manifest())
+        self.registry.register(transcribe_audio_manifest())
+        self.registry.register(synthesize_speech_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
@@ -587,6 +607,18 @@ class KarmoOperator:
         self.dispatcher.bind(
             ASK_LOCAL_CODER_TOOL, ASK_LOCAL_CODER_TOOL_VERSION,
             code_assist_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            VISION_DESCRIBE_TOOL_ID, VISION_DESCRIBE_TOOL_VERSION,
+            vision_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            TRANSCRIBE_AUDIO_TOOL_ID, TRANSCRIBE_AUDIO_TOOL_VERSION,
+            transcribe_audio_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            SYNTHESIZE_SPEECH_TOOL_ID, SYNTHESIZE_SPEECH_TOOL_VERSION,
+            synthesize_speech_handler(self.worker_dispatch_client),
         )
 
         if task_store is not None:
@@ -635,6 +667,46 @@ class KarmoOperator:
             arguments=arguments,
             executor_identity="karmo-core-operator",
             approval_id=pending.approval_id,
+        )
+
+    def _dispatch_local_media(self, *, tool_id: str, version: str, arguments: dict) -> dict:
+        """Runs a local-media capability (vision/ears/voice) through the
+        same dispatcher every other KARMO caller uses. Never raises --
+        same contract as _execute_exposed_tool -- so a real client
+        surface (the webui) can report a clean error to the user instead
+        of a crashed request."""
+        try:
+            decision = self.dispatcher.dispatch(
+                requester="karmo-webui",
+                tool_id=tool_id,
+                version=version,
+                arguments=arguments,
+                executor_identity="karmo-webui",
+            )
+        except (DispatchError, CoreControlError) as exc:
+            return {"error": str(exc)}
+        except Exception as exc:  # noqa: BLE001 -- report to the caller, never crash the request
+            return {"error": f"{type(exc).__name__}: {exc}"}
+        if not decision.executed:
+            return {"error": "capability requires approval and was not executed"}
+        return decision.result
+
+    def dispatch_vision(self, *, question: str, image_base64: str) -> dict:
+        return self._dispatch_local_media(
+            tool_id=VISION_DESCRIBE_TOOL_ID, version=VISION_DESCRIBE_TOOL_VERSION,
+            arguments={"question": question, "image_base64": image_base64},
+        )
+
+    def dispatch_transcribe(self, *, audio_base64: str) -> dict:
+        return self._dispatch_local_media(
+            tool_id=TRANSCRIBE_AUDIO_TOOL_ID, version=TRANSCRIBE_AUDIO_TOOL_VERSION,
+            arguments={"audio_base64": audio_base64},
+        )
+
+    def dispatch_speak(self, *, text: str) -> dict:
+        return self._dispatch_local_media(
+            tool_id=SYNTHESIZE_SPEECH_TOOL_ID, version=SYNTHESIZE_SPEECH_TOOL_VERSION,
+            arguments={"text": text},
         )
 
     def _require_orchestration(self):

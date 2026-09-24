@@ -19,6 +19,7 @@ from __future__ import annotations
 
 SYNTHESIZE_SPEECH_TOOL_ID = "synthesize_speech"
 SYNTHESIZE_SPEECH_TOOL_VERSION = "1.0.0"
+_DEFAULT_WORKER_ID = "KARMO-WORKER01"
 
 MAX_TEXT_CHARS = 2000
 
@@ -102,3 +103,18 @@ def dispatch_synthesize_speech(
     if not isinstance(audio_base64, str):
         raise SpeechSynthesizeCapabilityError("worker returned an invalid synthesize_speech result")
     return audio_base64
+
+
+def handler(worker_dispatch_client, *, worker_id: str = _DEFAULT_WORKER_ID):
+    """Same shape/purpose as vision_capability.handler() -- see its
+    docstring for why registering this is not the same as chat-exposing
+    it."""
+    def _handler(arguments: dict) -> dict:
+        audio_base64 = dispatch_synthesize_speech(
+            worker_dispatch_client,
+            worker_id=worker_id,
+            text=arguments.get("text"),
+            voice=arguments.get("voice", "en_US-amy-medium"),
+        )
+        return {"audio_base64": audio_base64}
+    return _handler
