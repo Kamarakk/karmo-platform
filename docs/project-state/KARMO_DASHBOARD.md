@@ -27,8 +27,10 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - **BloomBoss chat-integration reliability fixes (PRs #102–#106, 2026-09-19/20)** — four real live bugs found and fixed in sequence (model guessing instead of calling a tool; chat deadline too tight for cold model load; oversized tool results fed back to the model; tool-schema token inflation), ending in selective tool-offering (only offer a tool's schema when the message matches its trigger keywords). All deployed and confirmed with a real successful chat answer.
 - **Chat performance/cost work (PRs #107–#112, 2026-09-20)** — trivial-message short-circuit (skips the model entirely for a plain greeting/ack), configurable `num_predict` cap, an exact-match cache for `ask_claude`/`ask_gpt`, and router-config cleanup after deleting unused `ministral-3:8b`/`granite3.3:2b` from `karmo-ai01`.
 - **KVE hardware fully verified live (PR #100, 2026-09-19)** — KVE01/02/03 are identical-spec hosts (i7-10700, 8c/16t, 15GiB RAM, no GPU). `karmo-ai01` itself is a VM (VM100/KVE02, 7.8GB RAM). Worker01/Worker02 confirmed to have 9.7GB each — more headroom than the brain machine — and had `ministral-3:8b`/`granite3.3:2b` deleted (PRs #108, #116) to match.
-- **Local eyes/coding-helper/ears/voice capabilities (PR #117, merged 2026-09-20)** — Moondream2 (vision), qwen2.5-coder:7b (coding helper, wired into real chat), faster-whisper (transcription), and Piper (speech synthesis), all built and live-verified on Worker01, zero Claude/GPT dependency. **Inert in production** — require the worker-dispatch DSN, which does not yet exist.
-- **D2/worker-dispatch decoupling + least-privilege credential (PR #118, merged 2026-09-20)** — a real coupling finding (the one DSN file that activates the four local capabilities above also silently re-activated Model Router D2's held-back chat routing) fixed with a second, independent gate file D2 now also requires. A dedicated least-privilege Postgres role (`karmo_core_dispatch`, migration 011) replaces the flagged role-reuse design for the dispatch credential — code merged, role not yet provisioned in production.
+- **Local eyes/coding-helper/ears/voice capabilities (PR #117, merged 2026-09-20)** — Moondream2 (vision), qwen2.5-coder:7b (coding helper, wired into real chat), faster-whisper (transcription), and Piper (speech synthesis), all built and live-verified on Worker01, zero Claude/GPT dependency. Dispatch is now active on `karmo-ai01` (see below) — still needs Worker01's own capability config reconfirmed live, and (for vision/ears/voice) the browser/phone client surface, before end users can actually reach these.
+- **D2/worker-dispatch decoupling + least-privilege credential (PR #118, merged 2026-09-20)** — a real coupling finding (the one DSN file that activates the four local capabilities above also silently re-activated Model Router D2's held-back chat routing) fixed with a second, independent gate file D2 now also requires. **`karmo_core_dispatch` role provisioned and `/etc/karmo/core/worker-dispatch.dsn` created on `karmo-ai01`, 2026-09-24** — live-verified twice (`available: True` / `auth check: OK`), including after the code redeploy below. D2's own chat-routing path remains untouched/dormant (its separate gate file was not created).
+- **Browser + phone client surface (PRs #120/#121/#125, merged 2026-09-23/24)** — webui gains mic-record, image-upload, and speak-replies (all routed through the same `CapabilityDispatcher`/`ApprovalEngine` as every other capability), plus a `tailscale-https` bind mode (real cert via Tailscale's own service) so phone mic/camera access is possible at all. Code deployed to `karmo-ai01` 2026-09-24 as part of the same redeploy that brought migration 011 current; `tailscale-https` mode itself not yet activated (separate decision — creates its own cert directory).
+- **`core-service` redeployed to `karmo-ai01`, 2026-09-24** — real finding: the previously-deployed tree predated PR #118 entirely (missing migration 011), so none of PRs #117 through #125 were actually running there despite being merged to `main` for up to 4 days. Backed up (`/opt/karmo/backups/core-deploy-20260924T182618Z/core-service-before`), redeployed from `origin/main`, restarted clean (`active (running)`, healthy status line, no new listener). Full execution log including two real bugs found and fixed live (a `psql` dollar-quoting interpolation bug that silently left a password unset, and a truncated `scp` transfer): `docs/runbooks/CORE_DISPATCH_ROLE_AND_DEPLOY_20260924.md`.
 - **`ask_claude` optional image input — reverted, then restored with corrected policy (PRs #113/#114/#115, 2026-09-20)** — built, briefly reverted on an over-strict reading of "don't depend on Claude/GPT," then restored once Kamara clarified the actual standing rule: Claude/GPT may be an explicit, optional supplementary tool for any capability, but never the sole/main source of one.
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
@@ -46,22 +48,31 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-As of 2026-09-20: chat tool-calling/BloomBoss/delegation is deployed and
-live; Model Router Phases D1/E are live, D2 is merged but deliberately
-held dormant; four local capabilities (eyes/coding-helper/ears/voice,
-PR #117) are merged but inert; the DSN-coupling gap between D2 and the
-local capabilities is fixed (PR #118). See the dashboard entries above
-and `PROJECT_TODO_LIST.md` for full detail.
+As of 2026-09-24: `karmo-ai01`'s `core-service` has been redeployed to
+current `main` (was up to 4 days stale, missing migration 011 and
+everything since PR #118) and the `karmo_core_dispatch` role + DSN are
+provisioned and live-verified. Worker-dispatched capabilities
+(vision/coding-helper/ears/voice) can now genuinely dispatch from
+Core's side. Chat tool-calling/BloomBoss/delegation remains deployed
+and live; Model Router Phases D1/E are live, D2 remains deliberately
+held dormant (its own separate gate file was not created). See the
+dashboard entries above, `PROJECT_TODO_LIST.md`, and
+`docs/runbooks/CORE_DISPATCH_ROLE_AND_DEPLOY_20260924.md` (full
+execution log, including two real bugs found and fixed live) for full
+detail.
 
-Two real open decisions, in the order they'd naturally come up:
-1. Whether/when to create the worker-dispatch DSN (activates the four
-   local capabilities; does NOT by itself re-activate D2 routing anymore,
-   per PR #118's fix) — the `karmo_core_dispatch` role from PR #118 still
-   needs provisioning in production first.
-2. The client-surface build (browser mic/speaker + phone) needed before
-   vision/ears/voice are reachable from a real conversation — not
-   started. The coding helper is already wired into chat and needs no
-   client surface, only the DSN above.
+Remaining open items, in the order they'd naturally come up:
+1. Reconfirm Worker01's own capability config (vision/ears/voice/
+   coding-helper) is still registered live — it was proven during PR
+   #117's build session but never reconfirmed after tonight's Core-side
+   changes.
+2. The client-surface build (browser mic/speaker + phone) — the
+   browser half (mic/image-upload/speak) is built and deployed (PRs
+   #120/#125); actually usable from a phone additionally needs the
+   `tailscale-https` mode activated (creates its own cert directory —
+   separate decision, not yet done).
+3. The coding helper (`ask_local_coder`) needs no client surface and
+   should be reachable from real chat right now — worth a live test.
 
 Parked, not cancelled: an ethical-hacking/pentest capability (Kamara's
 own request, cybersecurity student, authorized self-testing), deferred
@@ -88,9 +99,10 @@ External systems should be sources, destinations, or adapters — not KARMO's br
 
 1. ~~Kamara's merge/promotion decision on BloomBoss Phase 1~~ — done, merged (PR #56).
 2. ~~Spot-check BloomBoss Phase 1's analytics output~~ — done, 2026-09-17.
-3. Provision the `karmo_core_dispatch` role in production (PR #118, code merged, role not yet created) and decide whether to create the worker-dispatch DSN.
-4. Build the client surface (browser mic/speaker + phone) needed for vision/ears/voice.
-5. Decide the ethical-hacking/pentest lab-network question (parked to 2026-09-22).
+3. ~~Provision the `karmo_core_dispatch` role in production and create the worker-dispatch DSN~~ — done, live-verified, 2026-09-24.
+4. Reconfirm Worker01's local capabilities are still registered; live-test the coding helper from real chat.
+5. Activate `tailscale-https` for real phone mic/camera access (its own separate production step).
+6. Decide the ethical-hacking/pentest lab-network question (parked to 2026-09-22).
 
 ## AFTER THIS
 
@@ -144,4 +156,4 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 
 Keep it short. Historical detail belongs in `CHANGE_LOG.md`, `CURRENT_STATE.md`, and dated PROJECT SAVE files.
 
-Last refreshed: 2026-09-20 (Model Router D1/D2/E, local eyes/coding-helper/ears/voice, D2/worker-dispatch decoupling)
+Last refreshed: 2026-09-24 (karmo_core_dispatch role/DSN provisioned and live-verified; core-service redeployed to karmo-ai01, closing a multi-day deploy gap; browser/phone client surface built and deployed)

@@ -8,14 +8,12 @@ decoupling) actually run there.
 **Read this if:** finishing the karmo_core_dispatch/DSN provisioning
 task started 2026-09-24, or redeploying core-service to `karmo-ai01`
 for any later reason.
-**Status:** point-in-time facts as of 2026-09-24 (deployed core-service
-on `karmo-ai01` confirmed missing `migrations/011_grant_core_dispatch_least_privilege.sql`
--- predates PR #118). Steps 2-4 (role/DSN/restart) completed and
-**verified working live** (`PostgresWorkerDispatchClient` constructs
-and authenticates against production Postgres) -- see "Execution log"
-below. **Step 0/1 (redeploy) still not run** -- the code that would
-actually use this credential (migration 011's grants, and every
-capability added since PR #118) is not yet on `karmo-ai01`.
+**Status:** COMPLETE, 2026-09-24. All steps run and verified: the
+`karmo_core_dispatch` role/DSN work, and the `core-service` redeploy
+that brings `karmo-ai01` current through PR #125. Two real bugs found
+and fixed live along the way (see "Execution log") -- both fixed at
+their source in this file and in the codebase, not just worked around
+in the moment.
 
 ---
 
@@ -40,10 +38,35 @@ capability added since PR #118) is not yet on `karmo-ai01`.
   `PostgresWorkerDispatchClient` genuinely constructs and authenticates
   against production Postgres with this credential. The role/DSN half
   of this task is done and confirmed, not just assumed.
-- Step 0/1 (redeploying `core-service` so migration 011 and PRs
-  #117-#122 are actually present on `karmo-ai01`) has not been run as
-  of this entry -- the role/DSN work above was attempted independently
-  of it.
+- **2026-09-24, later same day, redeploy (steps 0-1) run**: built the
+  deploy tarball via `git archive` from `origin/main`, confirmed
+  migration 011 present in it. First `scp` attempt to `karmo-ai01`
+  silently produced a **0-byte file** on the remote end (transfer
+  interrupted or never completed) -- caught by explicitly checking the
+  remote file's size before proceeding, rather than assuming a
+  completed `scp` meant a complete file. Re-ran `scp` cleanly (183,569
+  bytes, matching); backed up the existing tree to
+  `/opt/karmo/backups/core-deploy-20260924T182618Z/core-service-before`;
+  extracted and installed; confirmed migration 011 present on disk;
+  restarted `karmo-core.service`.
+- **Final verification, 2026-09-24**: `ss -H -lntu` showed no new
+  listener (identical baseline: loopback 5433/6333/6334/11434, SSH,
+  Tailscale interface); `systemctl status karmo-core.service` showed
+  `active (running)`, a clean startup status line, no errors, 14+
+  minutes of stable uptime; the dispatch-client auth-check script
+  re-run against the newly-deployed code again returned
+  `available: True` / `auth check: OK`. **Both halves of this task
+  (role/DSN and redeploy) are done and independently confirmed working
+  against real production state, not assumed from a clean-looking
+  command exit.**
+
+## Lesson for future deploys, recorded here so it isn't repeated
+
+A `scp` command exiting 0 is not proof the transfer completed --
+always verify the remote file's size (or checksum) matches the local
+one before using it, the same discipline this project already applies
+to `docker exec` role/grant steps (verify via a read-only query, don't
+trust a clean-looking exit alone).
 
 ---
 
