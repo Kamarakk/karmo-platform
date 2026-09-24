@@ -194,6 +194,32 @@ def test_speak_post_routes_through_operator_and_returns_the_audio(running_server
     assert fake.speak_calls == ["hello there"]
 
 
+def test_speak_post_accepts_max_length_text_that_max_body_bytes_would_have_rejected(running_server):
+    server, fake = running_server
+    # speech_synthesize_capability.MAX_TEXT_CHARS is 2000 -- a legitimate
+    # max-length request made of 4-byte UTF-8 characters (e.g. emoji)
+    # serializes to 8000+ bytes once JSON-wrapped, over the old
+    # MAX_BODY_BYTES (8000) that /speak used to reuse from /chat. This
+    # is exactly the request the review found would have been wrongly
+    # rejected before MAX_SPEAK_BODY_BYTES was introduced.
+    text = "\U0001F600" * webui._SPEAK_MAX_TEXT_CHARS
+    # ensure_ascii=False matches a real browser's fetch() body: raw
+    # UTF-8 bytes, not \uXXXX-escaped -- json.dumps()'s ensure_ascii
+    # default would otherwise balloon each 4-byte emoji into a 12-byte
+    # escape sequence, which isn't the real-world shape this bound is
+    # sized for.
+    req = urllib.request.Request(
+        _url(server, "/speak"),
+        data=json.dumps({"text": text}, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+    )
+    with urllib.request.urlopen(req) as resp:
+        assert resp.status == 200
+        body = json.loads(resp.read())
+    assert body == {"audio_base64": "ZmFrZS1hdWRpbw=="}
+    assert fake.speak_calls == [text]
+
+
 def test_serve_refuses_unsupported_mode():
     with pytest.raises(ValueError):
         webui.serve(mode="everywhere")
@@ -284,6 +310,29 @@ def test_ensure_tailscale_cert_writes_under_cert_dir_and_creates_it(monkeypatch,
         "--key-file", key_path,
         "karmo-ai01.tail1234.ts.net",
     ]]
+
+
+def test_ensure_tailscale_cert_fixes_permissions_on_a_preexisting_looser_directory(monkeypatch, tmp_path):
+    # Real bug found by review, 2026-09-24: os.makedirs(mode=0o700) only
+    # applies that mode when it actually creates the directory --
+    # exist_ok=True silently leaves a pre-existing looser-permission
+    # directory untouched. Simulate exactly that: create the directory
+    # by hand first, with obviously looser permissions, before calling
+    # the function under test.
+    def fake_run(cmd, **kwargs):
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr(webui.subprocess, "run", fake_run)
+    cert_dir = str(tmp_path / "tailscale-tls")
+    os.makedirs(cert_dir, mode=0o755)
+    assert os.stat(cert_dir).st_mode & 0o777 == 0o755
+
+    webui._ensure_tailscale_cert("karmo-ai01.tail1234.ts.net", cert_dir)
+
+    assert os.stat(cert_dir).st_mode & 0o777 == 0o700
 
 
 def test_serve_tailscale_https_mode_fails_clean_when_tailscale_unavailable(monkeypatch):
