@@ -41,6 +41,14 @@ Grouped for review-as-you-go, in the order that unlocks real use fastest.
    (creates `/etc/karmo/core/tailscale-tls/`, runs `tailscale cert`,
    restarts the webui in the new mode) before a phone can actually use
    it.
+   **In progress 2026-09-24** (separate, related task): provisioning
+   `karmo_core_dispatch` + the worker-dispatch DSN so the local
+   capabilities themselves are dispatchable — real finding along the
+   way: `karmo-ai01`'s deployed `core-service` predates PR #118
+   entirely (missing migration 011), so a redeploy is needed first.
+   Runbook (idempotent role/DSN steps + redeploy + verification):
+   `docs/runbooks/CORE_DISPATCH_ROLE_AND_DEPLOY_20260924.md` — prepared,
+   not yet run (no SSH/production access available in that session).
 4. **Router/reliability cleanup — CLOSED, nothing to build.** Checked
    the actual code (2026-09-24) before starting: the circuit breaker is
    already wired into live routing (`live_router.py`'s
