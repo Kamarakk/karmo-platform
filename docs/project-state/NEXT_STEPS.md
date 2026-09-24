@@ -1,6 +1,78 @@
 # KARMO Next Steps
 
-## 2026-09-18 update (read this first — supersedes everything below for immediate next action)
+## 2026-09-20 update (read this first — supersedes everything below for immediate next action)
+
+Everything in the 2026-09-18 section below is resolved (chat
+tool-calling/BloomBoss/delegation deployed and live). Since then, in
+order — full detail in `CURRENT_STATE.md`'s 2026-09-19/2026-09-20
+entries, `PROJECT_TODO_LIST.md`, and
+`PROJECT_SAVE_2026-09-20_LOCAL_CAPABILITY_LINEUP.md`:
+
+1. **The multi-night `submit_result` investigation was root-caused and
+   fixed** (a missing DB grant, migration 009) — Model Router Phase D1
+   (worker tool-calling round trip) proven live end-to-end.
+2. **Model Router D2** (routing real chat traffic to a worker) was
+   built, wired into real chat, and independently reviewed twice. Both
+   reviews recommended holding activation — an over-privileged
+   credential, no data-retention policy for worker-stored chat content,
+   a check-then-act worker-selection race, and an unproven speed
+   benefit. **Merged as dormant code** — zero live behavior change.
+3. **Phase E (durable decision audit)** built, merged, deployed live. A
+   circuit breaker was built and merged but is not yet wired into any
+   live routing decision.
+4. **BloomBoss chat-integration reliability**: four real live bugs
+   found and fixed in sequence (PRs #102–#106) — the model guessing
+   instead of calling a tool, chat deadline too tight for cold model
+   load, oversized tool results fed back to the model, and tool-schema
+   token inflation — ending in selective tool-offering (only offer a
+   tool's schema when the message matches its trigger keywords).
+5. **Chat performance/cost** (PRs #107–#112): a trivial-message
+   short-circuit (skips the model for a plain greeting/ack), a
+   configurable `num_predict` cap, an exact-match cache for
+   `ask_claude`/`ask_gpt`, and router-config cleanup.
+6. **KVE hardware fully verified live** (PR #100): KVE01/02/03 are
+   identical-spec hosts, no GPU anywhere; `karmo-ai01` itself is a VM
+   (7.8GB RAM); Worker01/Worker02 have 9.7GB each — more headroom than
+   the brain machine. Unused models deleted from all three hosts (PRs
+   #108, #116) to match.
+7. **Four local capabilities built and live-verified on Worker01** (PR
+   #117, merged): eyes (Moondream2), a local coding helper
+   (qwen2.5-coder:7b, wired into real chat), ears (faster-whisper), and
+   voice (Piper) — zero Claude/GPT dependency, per Kamara's corrected
+   standing policy (Claude/GPT may be an explicit, optional
+   supplementary tool for any capability, never the sole/main source of
+   one — see item 8). **All inert in production**: require the
+   worker-dispatch DSN, which has not been created, and vision/ears/voice
+   additionally need a client surface (browser mic/speaker + phone —
+   Kamara wants all three; not started). The coding helper needs only
+   the DSN.
+8. **`ask_claude` optional image input** (PR #113) was built, then
+   briefly reverted (PR #114) on an over-strict reading of "don't depend
+   on Claude/GPT," then restored (PR #115) once Kamara clarified the
+   actual rule: supplementary and optional is fine; sole/main source is
+   not.
+9. **A real coupling bug found and fixed** (PR #118): the one DSN file
+   that activates the four local capabilities above was also the same
+   switch that would have silently re-activated D2's held-back chat
+   routing. Fixed with a second, independent gate file
+   (`/etc/karmo/core/d2-chat-routing.enabled`) D2 now also requires —
+   creating the worker-dispatch DSN alone no longer reactivates D2. Also
+   in this PR: a dedicated least-privilege Postgres role
+   (`karmo_core_dispatch`, migration 011) replaces the flagged
+   role-reuse design for the dispatch credential (code merged; the role
+   itself is not yet provisioned in production).
+10. **An ethical-hacking/pentest capability** (Kamara's own request,
+    cybersecurity student, authorized self-testing against her own
+    systems) was explicitly deferred to 2026-09-22, pending a decision
+    on an isolated lab network to allowlist as a target.
+
+**Two real open decisions, next in line:**
+- Provision `karmo_core_dispatch` in production and decide whether to
+  create the worker-dispatch DSN (item 7/9).
+- Build the client surface (browser mic/speaker + phone) for
+  vision/ears/voice (item 7).
+
+## 2026-09-18 update (superseded by the above, kept for the investigation trail)
 
 Everything in the 2026-09-17 section below is now resolved (both
 workers proven, soak-tested, closed). Since then, in order:
