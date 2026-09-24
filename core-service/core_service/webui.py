@@ -10,8 +10,16 @@ service. Two allowed bind modes, chosen explicitly, never inferred:
   from any device already authenticated on the same private tailnet --
   never the open internet, never a wildcard/all-interfaces bind.
 
-Every request goes through the exact same KarmoOperator.handle() used by
-the chat CLI -- no separate authority path, no new capability.
+Text chat goes through the exact same KarmoOperator.handle() used by the
+chat CLI -- no separate authority path, no new capability. /vision,
+/transcribe, and /speak go through KarmoOperator.dispatch_vision()/
+dispatch_transcribe()/dispatch_speak(), which route through the same
+CapabilityDispatcher/ApprovalEngine every other KARMO capability call
+uses (see vision_capability.py's module docstring for why these three
+are reachable here but deliberately not through the chat tool-loop).
+All four inherit the same worker-dispatch-DSN activation gate; until
+that DSN is provisioned, /vision, /transcribe, and /speak fail cleanly
+with a 400 "not activated" response rather than hanging or crashing.
 """
 
 from __future__ import annotations
@@ -25,18 +33,36 @@ from .operator import KarmoOperator
 DEFAULT_PORT = 8787
 DEFAULT_BIND = "127.0.0.1"
 MAX_BODY_BYTES = 8_000
+# Image/audio requests carry base64 payloads (up to ~7MB/~14MB decoded,
+# matching vision_capability.py/audio_transcribe_capability.py's own
+# caps) plus JSON/base64 overhead -- a much larger bound than plain chat
+# text, but still a bound, never unbounded (I-05).
+MAX_MEDIA_BODY_BYTES = 20_000_000
 
-_PAGE = b"""<!doctype html>
+_PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><title>KARMO</title>
 <style>
 body{font-family:monospace;max-width:720px;margin:2rem auto;padding:0 1rem;background:#111;color:#ddd}
 #log{white-space:pre-wrap;line-height:1.4;margin-bottom:1rem}
 .you{color:#8ab4f8}.karmo{color:#8fdc8f}.status{color:#888;font-size:0.85em}
-input{width:100%;padding:0.5rem;font-family:monospace;background:#222;color:#ddd;border:1px solid #444}
+input[type=text],input:not([type]){width:100%;padding:0.5rem;font-family:monospace;background:#222;color:#ddd;border:1px solid #444}
+.row{display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;flex-wrap:wrap}
+.row input[type=text]{flex:1}
+button{font-family:monospace;background:#222;color:#ddd;border:1px solid #444;padding:0.5rem;cursor:pointer}
+label{font-size:0.85em;color:#aaa;white-space:nowrap}
 </style></head>
 <body>
 <div id="log"></div>
-<input id="in" autofocus placeholder="Talk to KARMO...">
+<div class="row">
+  <input id="in" type="text" autofocus placeholder="Talk to KARMO...">
+  <button id="mic" title="Record a voice question -- fills the box above, does not auto-send">🎤</button>
+  <label><input type="checkbox" id="speak"> speak replies</label>
+</div>
+<div class="row">
+  <input id="img" type="file" accept="image/*">
+  <input id="imgq" type="text" placeholder="Ask about the image...">
+  <button id="imgbtn">Describe image</button>
+</div>
 <script>
 const log = document.getElementById('log');
 const box = document.getElementById('in');
@@ -47,6 +73,20 @@ function line(cls, text) {
   log.appendChild(d);
   window.scrollTo(0, document.body.scrollHeight);
 }
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+async function speak(text) {
+  const res = await fetch('/speak', {method: 'POST', body: JSON.stringify({text})});
+  const data = await res.json();
+  if (data.error) { line('status', 'speak error: ' + data.error); return; }
+  new Audio('data:audio/wav;base64,' + data.audio_base64).play();
+}
 box.addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter' || !box.value.trim()) return;
   const text = box.value;
@@ -56,10 +96,66 @@ box.addEventListener('keydown', async (e) => {
   const data = await res.json();
   line('karmo', 'KARMO> ' + data.message);
   if (data.memory_status) line('status', 'memory=' + data.memory_status);
+  if (document.getElementById('speak').checked) speak(data.message);
+});
+
+// Mic: click to start, click again to stop -- fills the text box with
+// the transcript for review before sending (never auto-sends), so a
+// bad transcription never silently becomes a real KARMO request.
+let mediaRecorder = null;
+let chunks = [];
+document.getElementById('mic').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio: true});
+  } catch (err) {
+    line('status', 'microphone access denied or unavailable: ' + err.message);
+    return;
+  }
+  chunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = (ev) => chunks.push(ev.data);
+  mediaRecorder.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    btn.textContent = '🎤';
+    const blob = new Blob(chunks, {type: mediaRecorder.mimeType || 'audio/webm'});
+    line('status', 'transcribing...');
+    const audio_base64 = await blobToBase64(blob);
+    const res = await fetch('/transcribe', {method: 'POST', body: JSON.stringify({audio_base64})});
+    const data = await res.json();
+    if (data.error) { line('status', 'transcribe error: ' + data.error); return; }
+    box.value = data.text;
+    box.focus();
+  };
+  mediaRecorder.start();
+  btn.textContent = '⏹';
+});
+
+document.getElementById('imgbtn').addEventListener('click', async () => {
+  const fileInput = document.getElementById('img');
+  const qBox = document.getElementById('imgq');
+  const question = qBox.value.trim();
+  if (!fileInput.files[0] || !question) {
+    line('status', 'pick an image and type a question first');
+    return;
+  }
+  line('you', 'you> [image] ' + question);
+  const image_base64 = await blobToBase64(fileInput.files[0]);
+  line('status', 'describing image...');
+  const res = await fetch('/vision', {method: 'POST', body: JSON.stringify({question, image_base64})});
+  const data = await res.json();
+  if (data.error) { line('status', 'vision error: ' + data.error); return; }
+  line('karmo', 'KARMO> ' + data.answer);
+  qBox.value = '';
 });
 </script>
 </body></html>
-"""
+""".encode("utf-8")
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -79,33 +175,72 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(_PAGE)
 
-    def do_POST(self):  # noqa: N802 - stdlib method name
-        if self.path != "/chat":
-            self.send_response(404)
-            self.end_headers()
-            return
+    def _read_json_body(self, max_bytes: int, required_keys: dict):
+        """Reads and parses the request body, checking each key in
+        required_keys (name -> expected type) is present with that type.
+        Returns the parsed dict, or None after already sending a 400."""
         length = int(self.headers.get("Content-Length", "0"))
-        if length <= 0 or length > MAX_BODY_BYTES:
+        if length <= 0 or length > max_bytes:
             self.send_response(400)
             self.end_headers()
-            return
+            return None
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            text = payload["text"]
-            if not isinstance(text, str):
-                raise TypeError
-        except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError):
+            for key, expected_type in required_keys.items():
+                if not isinstance(payload.get(key), expected_type):
+                    raise TypeError
+        except (json.JSONDecodeError, AttributeError, TypeError, UnicodeDecodeError):
             self.send_response(400)
             self.end_headers()
-            return
+            return None
+        return payload
 
-        response = self.operator.handle(text)
-        body = json.dumps(response).encode("utf-8")
-        self.send_response(200)
+    def _send_json(self, status: int, obj: dict):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_POST(self):  # noqa: N802 - stdlib method name
+        if self.path == "/chat":
+            payload = self._read_json_body(MAX_BODY_BYTES, {"text": str})
+            if payload is None:
+                return
+            self._send_json(200, self.operator.handle(payload["text"]))
+            return
+
+        if self.path == "/vision":
+            payload = self._read_json_body(
+                MAX_MEDIA_BODY_BYTES, {"question": str, "image_base64": str}
+            )
+            if payload is None:
+                return
+            result = self.operator.dispatch_vision(
+                question=payload["question"], image_base64=payload["image_base64"],
+            )
+            self._send_json(400 if "error" in result else 200, result)
+            return
+
+        if self.path == "/transcribe":
+            payload = self._read_json_body(MAX_MEDIA_BODY_BYTES, {"audio_base64": str})
+            if payload is None:
+                return
+            result = self.operator.dispatch_transcribe(audio_base64=payload["audio_base64"])
+            self._send_json(400 if "error" in result else 200, result)
+            return
+
+        if self.path == "/speak":
+            payload = self._read_json_body(MAX_BODY_BYTES, {"text": str})
+            if payload is None:
+                return
+            result = self.operator.dispatch_speak(text=payload["text"])
+            self._send_json(400 if "error" in result else 200, result)
+            return
+
+        self.send_response(404)
+        self.end_headers()
 
 
 def _resolve_tailscale_ip() -> str:

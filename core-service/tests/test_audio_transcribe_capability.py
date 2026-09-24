@@ -4,6 +4,7 @@ from core_service.audio_transcribe_capability import (
     MAX_AUDIO_BYTES_BASE64,
     AudioTranscribeCapabilityError,
     dispatch_transcribe_audio,
+    handler,
     manifest,
 )
 from core_service.worker_dispatch import DispatchOutcome
@@ -94,3 +95,12 @@ def test_malformed_result_raises_clean_error():
 
     with pytest.raises(AudioTranscribeCapabilityError, match="invalid transcribe_audio result"):
         dispatch_transcribe_audio(client, worker_id="KARMO-WORKER01", audio_base64="ZmFrZQ==")
+
+
+def test_handler_returns_a_dispatcher_bindable_closure():
+    client = FakeWorkerDispatchClient(outcome=_succeeded("hello there"))
+
+    result = handler(client)({"audio_base64": "ZmFrZQ=="})
+
+    assert result == {"text": "hello there"}
+    assert client.calls[0]["worker_id"] == "KARMO-WORKER01"

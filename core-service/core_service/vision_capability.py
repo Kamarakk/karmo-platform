@@ -37,6 +37,7 @@ from __future__ import annotations
 
 VISION_DESCRIBE_TOOL_ID = "vision_describe"
 VISION_DESCRIBE_TOOL_VERSION = "1.0.0"
+_DEFAULT_WORKER_ID = "KARMO-WORKER01"
 
 MAX_QUESTION_CHARS = 2000
 MAX_IMAGE_BYTES_BASE64 = 7_000_000  # ~5MB decoded, matching the worker's own cap, plus base64 overhead
@@ -125,3 +126,21 @@ def dispatch_vision_describe(
     if not isinstance(answer, str):
         raise VisionCapabilityError("worker returned an invalid vision_describe result")
     return answer
+
+
+def handler(worker_dispatch_client, *, worker_id: str = _DEFAULT_WORKER_ID):
+    """Returns a dispatcher-bindable (arguments) -> dict handler closure,
+    same shape as code_assist_capability.handler(). Registering this with
+    KarmoOperator's dispatcher does NOT add it to _CHAT_EXPOSED_TOOLS --
+    it makes the capability reachable through the same
+    CapabilityDispatcher/ApprovalEngine authority path for a real client
+    surface (e.g. the webui) to call directly, once one exists."""
+    def _handler(arguments: dict) -> dict:
+        answer = dispatch_vision_describe(
+            worker_dispatch_client,
+            worker_id=worker_id,
+            question=arguments.get("question"),
+            image_base64=arguments.get("image_base64"),
+        )
+        return {"answer": answer}
+    return _handler

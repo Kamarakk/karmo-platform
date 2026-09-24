@@ -23,6 +23,7 @@ from __future__ import annotations
 
 TRANSCRIBE_AUDIO_TOOL_ID = "transcribe_audio"
 TRANSCRIBE_AUDIO_TOOL_VERSION = "1.0.0"
+_DEFAULT_WORKER_ID = "KARMO-WORKER01"
 
 MAX_AUDIO_BYTES_BASE64 = 14_000_000  # ~10MB decoded, matching the worker's own cap, plus base64 overhead
 
@@ -106,3 +107,18 @@ def dispatch_transcribe_audio(
     if not isinstance(text, str):
         raise AudioTranscribeCapabilityError("worker returned an invalid transcribe_audio result")
     return text
+
+
+def handler(worker_dispatch_client, *, worker_id: str = _DEFAULT_WORKER_ID):
+    """Same shape/purpose as vision_capability.handler() -- see its
+    docstring for why registering this is not the same as chat-exposing
+    it."""
+    def _handler(arguments: dict) -> dict:
+        text = dispatch_transcribe_audio(
+            worker_dispatch_client,
+            worker_id=worker_id,
+            audio_base64=arguments.get("audio_base64"),
+            model=arguments.get("model", "small"),
+        )
+        return {"text": text}
+    return _handler
