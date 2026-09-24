@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -226,3 +227,69 @@ def test_resolve_tailscale_ip_rejects_empty_output(monkeypatch):
     monkeypatch.setattr(webui.subprocess, "run", fake_run)
     with pytest.raises(RuntimeError):
         webui._resolve_tailscale_ip()
+
+
+def test_resolve_tailscale_dns_name_uses_tailscale_status_json(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+
+        class Result:
+            stdout = json.dumps({"Self": {"DNSName": "karmo-ai01.tail1234.ts.net."}})
+
+        return Result()
+
+    monkeypatch.setattr(webui.subprocess, "run", fake_run)
+    dns_name = webui._resolve_tailscale_dns_name()
+
+    assert dns_name == "karmo-ai01.tail1234.ts.net"
+    assert calls == [["tailscale", "status", "--json"]]
+
+
+def test_resolve_tailscale_dns_name_rejects_missing_dns_name(monkeypatch):
+    def fake_run(cmd, **kwargs):
+        class Result:
+            stdout = json.dumps({"Self": {}})
+
+        return Result()
+
+    monkeypatch.setattr(webui.subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError):
+        webui._resolve_tailscale_dns_name()
+
+
+def test_ensure_tailscale_cert_writes_under_cert_dir_and_creates_it(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr(webui.subprocess, "run", fake_run)
+    cert_dir = str(tmp_path / "tailscale-tls")
+
+    cert_path, key_path = webui._ensure_tailscale_cert("karmo-ai01.tail1234.ts.net", cert_dir)
+
+    assert cert_path == str(tmp_path / "tailscale-tls" / "karmo-ai01.tail1234.ts.net.crt")
+    assert key_path == str(tmp_path / "tailscale-tls" / "karmo-ai01.tail1234.ts.net.key")
+    assert os.path.isdir(cert_dir)
+    assert calls == [[
+        "tailscale", "cert",
+        "--cert-file", cert_path,
+        "--key-file", key_path,
+        "karmo-ai01.tail1234.ts.net",
+    ]]
+
+
+def test_serve_tailscale_https_mode_fails_clean_when_tailscale_unavailable(monkeypatch):
+    def fake_run(cmd, **kwargs):
+        raise FileNotFoundError("tailscale not installed")
+
+    monkeypatch.setattr(webui.subprocess, "run", fake_run)
+    with pytest.raises(FileNotFoundError):
+        webui.serve(mode="tailscale-https")
