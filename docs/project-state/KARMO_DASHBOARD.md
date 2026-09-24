@@ -22,7 +22,14 @@ Human-friendly working dashboard for keeping the active project stage visible du
 - Worker01/Worker02 local model hosting (`qwen3:8b`/`ministral-3:8b`/`mistral:7b`/`granite3.3:2b` via `karmo-ollama` Docker container) — ✅ DEPLOYED (2026-09-16), functional smoke-tested on both, loopback-only, closes the 2026-09-13 checkpoint's "next infrastructure phase" gap
 - `model_chat` worker capability (PRs #68/#69/#70) — ✅ GRANTED to both Worker01 and Worker02, **real `SUCCEEDED` job proven on each** via manual `--once` invocation; 4 orphaned jobs reconciled via `recover_expired_leases()` → `RECOVERY_REQUIRED`
 - **Sustained-service hang root-caused and fixed (PR #74, 2026-09-17)** — `run_capability()`'s job sandbox switched `multiprocessing` context from `fork` to `spawn`. Root cause: a long-lived worker makes thousands of subprocess/SSH calls between jobs; `fork()` only clones the calling thread, so a lock held by another thread at the instant of a fork could be inherited permanently locked in the child with no thread left to release it — a silent, untraceable deadlock, matching every observed symptom (service-only, zero exceptions, no crash). Diagnosed jointly with GPT (second opinion shaped the fix's actual scope — spawn requires verified picklability, not just a context-string swap). 125/125 worker-runtime tests pass (Python 3.9 and 3.12). Merged to `main` (`af12ed8`). **✅ DEPLOYED AND PROVEN ON BOTH WORKERS (2026-09-17)**: Worker01 (`MainPID=107737`) canary-proven, then soak-tested clean for 6 consecutive checks over ~3 hours of real sustained load (17:15–20:15 UTC — same PID throughout, zero stuck jobs every check); Worker02 (`MainPID=105750`) deployed and canary-proven (`SUCCEEDED`, ~53s, job `6bf6588c-...`). **This workstream is closed** — no further action needed on either worker.
-- **KARMO chat tool-calling + BloomBoss + external delegation (PRs #75/#79/#77/#78, 2026-09-17/18)** — full implementation of `docs/architecture/KARMO_CHAT_TOOL_CALLING_AND_EXTERNAL_DELEGATION.md`, all 4 phases, merged to `main` (`ed5ecd7`). `operator.py`'s `_chat()` now has a real, bounded tool-calling loop (Ollama native function-calling, 4-round cap) restricted at definition time to `CapabilityClass.READ`-only tools (`_CHAT_EXPOSED_TOOLS`), the dispatcher itself refusing anything else as defense in depth. Four tools live: `list_tasks` (proof, no new logic), `bloomboss_report` (wraps existing `bloomboss.report.snapshot_report()` — closes the exact "KARMO can't answer BloomBoss questions" gap that started this plan), `ask_claude` and `ask_gpt` (delegate to Anthropic/OpenAI's own CLIs under Kamara's existing subscriptions, verified zero extra cost against each vendor's own docs — Claude's docs actively endorse this pattern, OpenAI's recommend against it for automation though it works the same way; built anyway at Kamara's explicit choice). Every tool proven with a **real** local model actually choosing to call it and a real result flowing back — not mocked — including catching and fixing a real null-argument bug (`list_tasks`) and two real `codex` CLI bugs (missing `--skip-git-repo-check`, stdin hang risk) via live testing before merge. 240/240 core-service tests pass (Python 3.9 and 3.12). **Not yet deployed to `karmo-ai01`** — built/tested/merged only; production deployment is a separate future step.
+- **KARMO chat tool-calling + BloomBoss + external delegation (PRs #75/#79/#77/#78, 2026-09-17/18)** — full implementation of `docs/architecture/KARMO_CHAT_TOOL_CALLING_AND_EXTERNAL_DELEGATION.md`, all 4 phases, merged to `main` (`ed5ecd7`). `operator.py`'s `_chat()` now has a real, bounded tool-calling loop (Ollama native function-calling, 4-round cap) restricted at definition time to `CapabilityClass.READ`-only tools (`_CHAT_EXPOSED_TOOLS`), the dispatcher itself refusing anything else as defense in depth. Four tools live: `list_tasks` (proof, no new logic), `bloomboss_report` (wraps existing `bloomboss.report.snapshot_report()` — closes the exact "KARMO can't answer BloomBoss questions" gap that started this plan), `ask_claude` and `ask_gpt` (delegate to Anthropic/OpenAI's own CLIs under Kamara's existing subscriptions, verified zero extra cost against each vendor's own docs — Claude's docs actively endorse this pattern, OpenAI's recommend against it for automation though it works the same way; built anyway at Kamara's explicit choice). Every tool proven with a **real** local model actually choosing to call it and a real result flowing back — not mocked — including catching and fixing a real null-argument bug (`list_tasks`) and two real `codex` CLI bugs (missing `--skip-git-repo-check`, stdin hang risk) via live testing before merge. 240/240 core-service tests pass (Python 3.9 and 3.12). **Deployed to `karmo-ai01` (PR #80, 2026-09-18)** — a real timeout/silent-fallback bug found post-deployment and fixed same day.
+- **Model Router Phases D1/D2/E (2026-09-19/20)** — D1 (worker tool-calling round trip) proven live end-to-end after root-causing a missing DB grant (migration 009). D2 (routing real chat traffic to a worker) built, wired, **independently reviewed twice, merged but deliberately held dormant** (over-privileged credential, no data-retention policy, a selection race, and an unproven speed benefit — none accepted yet). E (durable decision audit) built, merged, deployed live. Circuit breaker built/merged, not yet wired into live routing.
+- **BloomBoss chat-integration reliability fixes (PRs #102–#106, 2026-09-19/20)** — four real live bugs found and fixed in sequence (model guessing instead of calling a tool; chat deadline too tight for cold model load; oversized tool results fed back to the model; tool-schema token inflation), ending in selective tool-offering (only offer a tool's schema when the message matches its trigger keywords). All deployed and confirmed with a real successful chat answer.
+- **Chat performance/cost work (PRs #107–#112, 2026-09-20)** — trivial-message short-circuit (skips the model entirely for a plain greeting/ack), configurable `num_predict` cap, an exact-match cache for `ask_claude`/`ask_gpt`, and router-config cleanup after deleting unused `ministral-3:8b`/`granite3.3:2b` from `karmo-ai01`.
+- **KVE hardware fully verified live (PR #100, 2026-09-19)** — KVE01/02/03 are identical-spec hosts (i7-10700, 8c/16t, 15GiB RAM, no GPU). `karmo-ai01` itself is a VM (VM100/KVE02, 7.8GB RAM). Worker01/Worker02 confirmed to have 9.7GB each — more headroom than the brain machine — and had `ministral-3:8b`/`granite3.3:2b` deleted (PRs #108, #116) to match.
+- **Local eyes/coding-helper/ears/voice capabilities (PR #117, merged 2026-09-20)** — Moondream2 (vision), qwen2.5-coder:7b (coding helper, wired into real chat), faster-whisper (transcription), and Piper (speech synthesis), all built and live-verified on Worker01, zero Claude/GPT dependency. **Inert in production** — require the worker-dispatch DSN, which does not yet exist.
+- **D2/worker-dispatch decoupling + least-privilege credential (PR #118, merged 2026-09-20)** — a real coupling finding (the one DSN file that activates the four local capabilities above also silently re-activated Model Router D2's held-back chat routing) fixed with a second, independent gate file D2 now also requires. A dedicated least-privilege Postgres role (`karmo_core_dispatch`, migration 011) replaces the flagged role-reuse design for the dispatch credential — code merged, role not yet provisioned in production.
+- **`ask_claude` optional image input — reverted, then restored with corrected policy (PRs #113/#114/#115, 2026-09-20)** — built, briefly reverted on an over-strict reading of "don't depend on Claude/GPT," then restored once Kamara clarified the actual standing rule: Claude/GPT may be an explicit, optional supplementary tool for any capability, but never the sole/main source of one.
 
 ## WHAT THE MAJOR KARMO SYSTEMS ACTUALLY DO
 
@@ -39,28 +46,32 @@ Human-friendly working dashboard for keeping the active project stage visible du
 
 ## CURRENT TASK
 
-The KARMO chat tool-calling + BloomBoss + external delegation workstream
-is **fully built, tested, and merged to `main` as of 2026-09-18** — see
-its dashboard entry above for full detail. **Not yet deployed to
-`karmo-ai01`** — that's the next concrete action if this capability
-should go live for real conversational use, not just dev-tested.
+As of 2026-09-20: chat tool-calling/BloomBoss/delegation is deployed and
+live; Model Router Phases D1/E are live, D2 is merged but deliberately
+held dormant; four local capabilities (eyes/coding-helper/ears/voice,
+PR #117) are merged but inert; the DSN-coupling gap between D2 and the
+local capabilities is fixed (PR #118). See the dashboard entries above
+and `PROJECT_TODO_LIST.md` for full detail.
 
-The `model_chat` sustained-service-hang workstream (fork→spawn fix, PR
-#74) remains closed as of 2026-09-17 — both workers deployed,
-canary-proven, soak-tested. See its own entry above.
+Two real open decisions, in the order they'd naturally come up:
+1. Whether/when to create the worker-dispatch DSN (activates the four
+   local capabilities; does NOT by itself re-activate D2 routing anymore,
+   per PR #118's fix) — the `karmo_core_dispatch` role from PR #118 still
+   needs provisioning in production first.
+2. The client-surface build (browser mic/speaker + phone) needed before
+   vision/ears/voice are reachable from a real conversation — not
+   started. The coding helper is already wired into chat and needs no
+   client surface, only the DSN above.
 
-Next: deploy the new chat tools to `karmo-ai01` (small, low-risk —
-`core-service`-only, no worker changes), grow BloomBoss's real imported
-data beyond the one EMgarden invoice, or choose the next KARMO
-capability track — see `NEXT_STEPS.md`'s prioritized list (a registry
-auditor, remaining Commander read capabilities, BloomBoss Phase 2,
-broader model routing, remote/mobile access).
+Parked, not cancelled: an ethical-hacking/pentest capability (Kamara's
+own request, cybersecurity student, authorized self-testing), deferred
+pending an isolated lab network decision (target date 2026-09-22).
 
 ## CURRENT ISSUE
 
-No active code blocker. Both workers are healthy and running the
-fork-to-spawn fix. KARMO-AI01, KVE01–03, and both workers are all
-verified reachable and healthy.
+No active code blocker. KARMO-AI01, KVE01–03, and both workers are all
+verified reachable and healthy (KVE hardware fully verified live
+2026-09-19, PR #100).
 
 Palmstreet's built-in order export was unreliable/unavailable as of the
 Phase 1 build session; Seller Hub table evidence remains staged as a
@@ -76,8 +87,10 @@ External systems should be sources, destinations, or adapters — not KARMO's br
 ## NEXT GATE
 
 1. ~~Kamara's merge/promotion decision on BloomBoss Phase 1~~ — done, merged (PR #56).
-2. Spot-check BloomBoss Phase 1's analytics output against known real sales/purchases.
-3. Choose the next KARMO capability track.
+2. ~~Spot-check BloomBoss Phase 1's analytics output~~ — done, 2026-09-17.
+3. Provision the `karmo_core_dispatch` role in production (PR #118, code merged, role not yet created) and decide whether to create the worker-dispatch DSN.
+4. Build the client surface (browser mic/speaker + phone) needed for vision/ears/voice.
+5. Decide the ethical-hacking/pentest lab-network question (parked to 2026-09-22).
 
 ## AFTER THIS
 
@@ -131,4 +144,4 @@ Refresh this dashboard during every meaningful PROJECT SAVE whenever any of the 
 
 Keep it short. Historical detail belongs in `CHANGE_LOG.md`, `CURRENT_STATE.md`, and dated PROJECT SAVE files.
 
-Last refreshed: 2026-09-18 (chat tool-calling + BloomBoss + ask_claude/ask_gpt merged to main)
+Last refreshed: 2026-09-20 (Model Router D1/D2/E, local eyes/coding-helper/ears/voice, D2/worker-dispatch decoupling)
