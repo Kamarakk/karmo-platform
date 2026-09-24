@@ -10,8 +10,37 @@ task started 2026-09-24, or redeploying core-service to `karmo-ai01`
 for any later reason.
 **Status:** point-in-time facts as of 2026-09-24 (deployed core-service
 on `karmo-ai01` confirmed missing `migrations/011_grant_core_dispatch_least_privilege.sql`
--- predates PR #118). Prepared, not run -- SSH/production access was
-not available in the session that wrote this.
+-- predates PR #118). Steps 2-4 (role/DSN/restart) have been attempted
+live by Kamara, executing commands relayed by an assistant session
+with no SSH access of its own -- see "Execution log" below. Step 0/1
+(redeploy) not yet run as of the same log.
+
+---
+
+## Execution log
+
+- **2026-09-24, Kamara, before the redeploy (steps 0-1 skipped)**: ran
+  an earlier version of step 2's role-creation SQL that wrapped the
+  CREATE/ALTER choice in a `DO $$ ... $$` block. Hit
+  `ERROR: syntax error at or near ":"` -- `psql`'s `:'newpw'`
+  interpolation does not work inside dollar-quoted blocks (see step 2's
+  own note below for the full explanation). The GRANT statements after
+  it still printed success (psql doesn't abort on error by default),
+  producing misleading clean-looking output. Consequence: the DSN file
+  written immediately after (step 3, which itself wrote correctly this
+  time) contains a password that does **not** match the role's actual
+  password in Postgres. **Not yet corrected as of this log entry** --
+  step 2's corrected script below (plain top-level CREATE+ALTER, no `$$`
+  block) needs to be re-run, then step 3 re-run with the same fresh
+  password, before this DSN file should be trusted. Step 4 (restart)
+  was run and the service came back `active`, but that only proves the
+  service tolerates a DSN it can't yet authenticate with (it degrades
+  gracefully, per `worker_dispatch_client.py`'s design) -- not that
+  dispatch actually works.
+- Step 0/1 (redeploying `core-service` so migration 011 and PRs
+  #117-#122 are actually present on `karmo-ai01`) has not been run as
+  of this entry -- the role/DSN work above was attempted independently
+  of it.
 
 ---
 
@@ -71,15 +100,8 @@ Still on `karmo-ai01` (same SSH session or a fresh one):
 ```sh
 NEWPW=$(openssl rand -base64 32)
 docker exec -i karmo-postgres psql -U karmo -d karmo -v newpw="$NEWPW" <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'karmo_core_dispatch') THEN
-    CREATE ROLE karmo_core_dispatch WITH LOGIN PASSWORD :'newpw';
-  ELSE
-    ALTER ROLE karmo_core_dispatch WITH PASSWORD :'newpw';
-  END IF;
-END
-$$;
+CREATE ROLE karmo_core_dispatch WITH LOGIN PASSWORD :'newpw';
+ALTER ROLE karmo_core_dispatch WITH PASSWORD :'newpw';
 GRANT CONNECT ON DATABASE karmo TO karmo_core_dispatch;
 GRANT USAGE ON SCHEMA public TO karmo_core_dispatch;
 GRANT INSERT, SELECT, UPDATE ON public.core_approval_records TO karmo_core_dispatch;
@@ -88,9 +110,27 @@ GRANT INSERT, SELECT ON public.karmo_worker_job_payloads TO karmo_core_dispatch;
 GRANT SELECT ON public.karmo_worker_job_results TO karmo_core_dispatch;
 SQL
 ```
-Expected: no errors. This version is idempotent (safe to re-run) --
-handles both "role already exists" (2026-09-24's first attempt hit
-this) and "role never existed" in one script.
+Expected: `CREATE ROLE` (or an "already exists" error, harmless --
+psql keeps executing subsequent statements by default), then
+`ALTER ROLE`, then `GRANT` x6.
+
+**Real bug found and fixed live 2026-09-24, do not reintroduce it**: an
+earlier version of this script wrapped the CREATE/ALTER choice in a
+`DO $$ ... $$` block with an `IF NOT EXISTS` check. `psql`'s `:'var'`
+client-side interpolation is **not performed inside dollar-quoted
+regions** (`$$...$$` is treated as opaque text, specifically so
+literal PL/pgSQL bodies can be embedded safely) -- so `:'newpw'` was
+sent to the server literally, and PL/pgSQL has no such syntax, giving
+`ERROR: syntax error at or near ":"`. The role's password was never
+actually set that run, while all the GRANT statements after it still
+"succeeded" (psql doesn't abort on error by default), producing
+misleadingly clean-looking output while the about-to-be-written DSN
+file's password wouldn't match the role's real password in Postgres.
+**Always run `CREATE ROLE`/`ALTER ROLE ... WITH PASSWORD :'newpw'` as
+plain top-level statements, never inside `$$...$$`.** The
+CREATE-then-ALTER pair above is idempotent and always ends with the
+role's password equal to `$NEWPW`, whether the role was just created
+or already existed -- no conditional logic needed.
 
 ## Step 3 -- write the DSN file
 
