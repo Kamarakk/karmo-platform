@@ -13,6 +13,34 @@ and what would need to happen next.
 
 ---
 
+## Working sections (2026-09-23), toward Kamara actually using KARMO
+
+Grouped for review-as-you-go, in the order that unlocks real use fastest.
+
+1. **Wire local capabilities into chat — DONE, nothing left.** Only
+   `ask_local_coder` fits this pattern (plain text); already wired, PR
+   #118. Vision/ears/voice are architecturally *not* wireable this way —
+   a text model cannot invent real image/audio bytes as a tool-call
+   argument. Corrected 2026-09-23; do not re-attempt this as a task.
+2. **Browser client surface** — mic/speaker capture + image upload in
+   the existing webui, calling `dispatch_vision_describe()`/
+   `dispatch_transcribe_audio()`/`dispatch_synthesize_speech()` directly
+   (bypassing the LLM tool-call step for input capture). **IN PROGRESS.**
+3. **Phone access surface** — mic/speaker/camera from a phone, separate
+   from the browser surface per Kamara's explicit ask for both. Not
+   started.
+4. **Router/reliability cleanup** — wire the circuit breaker into live
+   routing; finish remaining Model Router Phase A signals (memory/CPU
+   headroom, queue depth). Not user-facing. Not started.
+
+Reminder for all of 2-4: the underlying capabilities remain inert in
+production until the worker-dispatch DSN is created and
+`karmo_core_dispatch` is provisioned (Section A above) — code can be
+completed and reviewed before that production step, but won't be
+live until it happens.
+
+---
+
 ## A. Model Router (KARMO-FIRST Orchestration / SIEL)
 
 | Phase | Status | Next action |
