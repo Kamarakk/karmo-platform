@@ -1995,3 +1995,81 @@ go toward local-only chat improvements (one dependable model, status
 without requiring a second verifier model, bounded output/truncation
 handling) rather than further distributed-routing work, until KARMO's
 hardware or measured demand actually changes the calculus.
+
+## 2026-09-24 -- karmo_core_dispatch role/DSN provisioned; core-service redeployed to karmo-ai01 (closes a multi-day deploy gap)
+
+**VERIFIED, deployed, live-tested.** Kamara ran every command herself
+(relayed by an assistant session with no SSH access of its own),
+executed directly on `karmo-ai01`. Full narrative and exact commands:
+`docs/runbooks/CORE_DISPATCH_ROLE_AND_DEPLOY_20260924.md`.
+
+```
+PRODUCTION ACCESS AUTHORIZATION
+Task: Provision karmo_core_dispatch role (migration 011) + worker-dispatch DSN; redeploy core-service to current main
+Target system/environment: karmo-ai01 -- production Postgres (karmo-postgres container), /etc/karmo/core/, /opt/karmo/core-service, karmo-core.service
+Purpose: activate PR #118's dedicated least-privilege dispatch role so worker-dispatched capabilities (local eyes/coding-helper/ears/voice, PR #117) can be provisioned; bring karmo-ai01's deployed code current (found to be up to 4 days stale, predating PR #118 entirely)
+Permitted operations: CREATE ROLE/ALTER ROLE/GRANT (migration 011's exact scope), write /etc/karmo/core/worker-dispatch.dsn, backup + replace /opt/karmo/core-service, one service restart, read-only verification (ss, systemctl status, journalctl, a dispatch-client auth-check script)
+Authority: READ-ONLY + WRITE -- exactly as scoped above, no other write
+Granted: 2026-09-24, by Kamara (direct chat instruction, executed by her own hands on karmo-ai01)
+Expires: automatically on task completion (complete as of this entry)
+```
+
+**Real finding, not assumed**: `karmo-ai01`'s deployed `/opt/karmo/core-service`
+predated PR #118 entirely (`ls` on the migration 011 path returned "No
+such file or directory") -- meaning PRs #117 through #125 (local
+eyes/coding-helper/ears/voice, the browser/phone client surface, the
+D2/dispatch decoupling fix, and three rounds of code-review fixes) had
+all been merged to `main` but were not actually running on `karmo-ai01`
+until this session's redeploy.
+
+**Two real bugs found and fixed live, not silently worked around:**
+
+1. An earlier version of the role-creation SQL wrapped the
+   `CREATE`/`ALTER` choice in a `DO $$ ... $$` block with an
+   `IF NOT EXISTS` check. `psql`'s `:'newpw'` client-side variable
+   interpolation is not performed inside dollar-quoted regions (`$$...$$`
+   is treated as opaque text, specifically so literal PL/pgSQL bodies
+   can be embedded safely) -- the literal text `:'newpw'` was sent to
+   the server, which PL/pgSQL cannot parse
+   (`ERROR: syntax error at or near ":"`). The role's password was
+   never actually set that run, while the `GRANT` statements after it
+   still printed success (psql continues past an error by default),
+   producing misleading clean-looking output. Consequence: the DSN file
+   written immediately after had a password that did not match the
+   role's real password in Postgres. Fixed with a plain top-level
+   `CREATE ROLE` + `ALTER ROLE` pair (both use `:'newpw'` outside any
+   `$$` block, where interpolation works correctly) -- idempotent
+   regardless of whether the role already existed. Re-run, then
+   verified live: a dispatch-client auth-check script (constructs
+   `PostgresWorkerDispatchClient` and opens a real connection, printing
+   only `available`/`auth check: OK`, never the credential) confirmed
+   the fix.
+2. The first `scp` of the deploy tarball to `karmo-ai01` exited
+   successfully but produced a **0-byte file** on the remote end
+   (transfer interrupted or never completed) -- caught by explicitly
+   checking the remote file's size (183,569 bytes expected) before
+   proceeding, rather than trusting a clean `scp` exit code. Re-ran the
+   transfer cleanly, confirmed matching size, then proceeded.
+
+**Final state, independently confirmed, not assumed:**
+- Backup created: `/opt/karmo/backups/core-deploy-20260924T182618Z/core-service-before`.
+- `migrations/011_grant_core_dispatch_least_privilege.sql` confirmed
+  present on disk after install.
+- `karmo-core.service` restarted; `systemctl status` showed
+  `active (running)`, a clean startup status line, no errors, 14+
+  minutes of stable uptime at last check.
+- `ss -H -lntu`: listener set unchanged from the established baseline
+  (loopback 5433/6333/6334/11434, SSH, Tailscale interface) -- no new
+  network exposure.
+- Dispatch-client auth check re-run against the newly-deployed code:
+  `available: True` / `auth check: OK`.
+
+**What this does NOT do**: does not activate Model Router Phase D2's
+chat-routing path (its own separate gate file,
+`/etc/karmo/core/d2-chat-routing.enabled`, was not created); does not
+reconfirm Worker01's own vision/ears/voice/coding-helper capability
+config is still registered (proven during PR #117's build session,
+never reconfirmed after this session's Core-side changes); does not
+activate the `tailscale-https` webui mode (a separate production step,
+its own cert directory). See `PROJECT_TODO_LIST.md` for the current
+next actions.
