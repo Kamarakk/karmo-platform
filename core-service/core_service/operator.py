@@ -1207,7 +1207,21 @@ class KarmoOperator:
             "You have no real knowledge of KARMO-specific business data (BloomBoss, tasks, or anything "
             "else a tool exists for) on your own -- you must call the matching tool to get the real answer "
             "rather than guessing, inferring from a tool's description, or answering from general "
-            "knowledge. If a tool exists that could answer the question, call it before responding."
+            "knowledge. If a tool exists that could answer the question, call it before responding. "
+            # Real live finding (2026-09-24): a coding question is a
+            # different case from BloomBoss/tasks -- the model genuinely
+            # does have real knowledge of how to write ordinary code, so
+            # the instruction above's own stated reason ("you have no
+            # real knowledge") doesn't apply, and a live test confirmed
+            # qwen3:8b answered a Fibonacci-function question directly
+            # itself (truncated by num_predict, cut off mid-function)
+            # without ever calling ask_local_coder -- confirmed by
+            # checking karmo_worker_jobs for a new dispatch, not
+            # guessed. Coding needs its own explicit instruction, not
+            # dependent on "no real knowledge."
+            "For a coding question specifically, call ask_local_coder even though you could write the code "
+            "yourself -- KARMO's local-first design routes coding work to its own dedicated coding model "
+            "rather than answering directly, whenever ask_local_coder is offered as a tool."
         )
 
         messages = [{"role": "system", "content": system_content}]

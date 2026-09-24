@@ -255,6 +255,27 @@ def test_ask_local_coder_is_offered_only_for_coding_questions():
     assert _tool_names(client.requests[0]["tools"]) == {"ask_local_coder"}
 
 
+def test_system_prompt_tells_the_model_to_call_ask_local_coder_for_coding_questions():
+    """Real live finding, 2026-09-24: a coding question is a different
+    case from BloomBoss/tasks -- the model genuinely has real knowledge
+    of ordinary code, so the general "you have no real knowledge"
+    instruction doesn't cover it. Live-tested: qwen3:8b answered a
+    Fibonacci-function question directly, never dispatching to
+    ask_local_coder (confirmed absent from karmo_worker_jobs). This is
+    a content check, not a behavioral one -- proving the model actually
+    changes behavior needs a real live retest against Ollama, the same
+    way the original bloomboss_report fix (2026-09-19) was verified."""
+    store = FakeTaskStore()
+    store.seed()
+
+    client = RecordingNoToolClient()
+    KarmoOperator(model_client=client, task_store=store).handle("write me a python function to reverse a string")
+
+    system_content = client.requests[0]["messages"][0]["content"]
+    assert "ask_local_coder" in system_content
+    assert "even though you could write the code yourself" in system_content
+
+
 def test_oversized_tool_result_is_truncated_before_reaching_the_model():
     """Real, live-diagnosed bug (2026-09-19): bloomboss_report's full result
     serialized to 63,035 bytes for a single small CSV import, and feeding
