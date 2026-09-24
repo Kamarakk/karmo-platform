@@ -224,6 +224,58 @@ question, not a technical one, and should be decided before V1/V2 pick
 exact engines, since the audio format/streaming needs may differ by
 client.
 
+## System-Fit Review — tailscale-https webui mode (retroactive, 2026-09-24)
+
+Written after the fact because a code review (2026-09-24, covering PRs
+#120-#122) correctly flagged that this gate should have run before the
+`tailscale-https` bind mode (a new TLS listener + cert-provisioning
+path) was built, not after. Recorded here per this doc's own governing
+pattern rather than only in a PR description.
+
+```text
+SYSTEM-FIT REVIEW
+Goal served: browsers refuse getUserMedia() (mic/camera) on any
+  non-localhost origin without HTTPS -- the existing plain-HTTP
+  `tailscale` mode blocked the mic/image features (this roadmap's own
+  Phase V2/V3 work) from a phone or any other non-loopback device.
+  Needed for the client surface this roadmap's Phase V3 already calls
+  for, not a new goal.
+Existing capability reused: Tailscale's own `tailscale cert` service
+  (Let's Encrypt-backed, per-tailnet MagicDNS name) -- the same
+  Tailscale enrollment already active on karmo-ai01 since 2026-09-11.
+  No new CA, no new cert-management library, no new dependency.
+New software/services added: none. One new bind mode in the existing
+  stdlib-only webui.py; `ssl` is Python's standard library.
+Important current-system facts: karmo-ai01 is already Tailscale-
+  enrolled with MagicDNS available; `tailscale cert` requires no
+  additional daemon or port -- it calls out to Tailscale's control
+  plane and writes local files. The cert/key land under
+  /etc/karmo/core/tailscale-tls/, chmod 0700 (fixed 2026-09-24 to be
+  unconditional, not just at directory-creation time).
+Main risks/lifecycle burden: cert renewal is Tailscale's own
+  responsibility (re-invoking `tailscale cert` renews when due, no new
+  cron/timer added); the private key file is a new local secret to
+  protect (mitigated: 0700 directory + tailscale cert's own file
+  permissions); this is a new TLS-terminating listener on the tailnet
+  interface, though still never the open internet and still gated
+  behind the same Tailscale ACL/enrollment as every other karmo-ai01
+  service.
+Simpler alternative considered: a self-signed cert (rejected -- every
+  browser would show a security warning/require manual trust on every
+  device, defeating the point of a phone being usable at all); a
+  reverse proxy doing TLS termination (rejected -- adds a whole new
+  process/dependency to do what Tailscale's own cert service already
+  does for free within the tailnet).
+Decision: PROCEED. Reuses existing Tailscale infrastructure, adds no
+  new dependency, and is the direct, minimal fix for a real,
+  already-identified blocker (Phase V3's client surface).
+Constraints/verification needed: not yet run in production -- creating
+  /etc/karmo/core/tailscale-tls/ and running `tailscale cert` is its
+  own Production Access Authorization, separate from this code change
+  (see docs/runbooks/CORE_DISPATCH_ROLE_AND_DEPLOY_20260924.md for the
+  related, currently-pending production step).
+```
+
 ## What a fresh session should do first
 
 1. Read this document in full, including the standing constraint —

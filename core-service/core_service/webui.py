@@ -42,6 +42,7 @@ import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from .operator import KarmoOperator
+from .speech_synthesize_capability import MAX_TEXT_CHARS as _SPEAK_MAX_TEXT_CHARS
 
 DEFAULT_PORT = 8787
 DEFAULT_BIND = "127.0.0.1"
@@ -52,6 +53,16 @@ MAX_BODY_BYTES = 8_000
 # caps) plus JSON/base64 overhead -- a much larger bound than plain chat
 # text, but still a bound, never unbounded (I-05).
 MAX_MEDIA_BODY_BYTES = 20_000_000
+# Real bug found by review, 2026-09-24: /speak's text can be up to
+# speech_synthesize_capability's own MAX_TEXT_CHARS (2000), but reusing
+# plain MAX_BODY_BYTES (sized for /chat) could reject a legitimate
+# max-length request once JSON-wrapped -- each character can be up to
+# 4 bytes in UTF-8, and JSON string-escaping (quotes, backslashes,
+# control characters) can add further bytes per character. Derived
+# from the capability's own limit (never a second hardcoded number to
+# drift out of sync); the x8 multiplier is a deliberately generous
+# worst-case bound, not a tuned value.
+MAX_SPEAK_BODY_BYTES = _SPEAK_MAX_TEXT_CHARS * 8 + 100
 
 _PAGE = """<!doctype html>
 <html><head><meta charset="utf-8">
@@ -118,6 +129,20 @@ box.addEventListener('keydown', async (e) => {
 // Mic: click to start, click again to stop -- fills the text box with
 // the transcript for review before sending (never auto-sends), so a
 // bad transcription never silently becomes a real KARMO request.
+//
+// NEEDS VERIFICATION (flagged by review, 2026-09-24, not yet tested
+// live): sends whatever container MediaRecorder produces (WebM/Opus in
+// Chrome/Firefox, possibly MP4/AAC in Safari) as-is. The worker side
+// (worker-runtime/app/capabilities.py's _transcribe_audio) writes the
+// raw bytes to a file literally named input_audio.wav regardless of
+// actual content, then hands that path to faster-whisper's
+// WhisperModel.transcribe() -- which decodes via PyAV/ffmpeg, expected
+// to sniff real content rather than trust the .wav extension, so this
+// should work for common browser codecs. That expectation has never
+// been exercised against a real MediaRecorder recording end to end
+// (worker dispatch has been inert throughout this feature's build --
+// see DEFAULT_DISPATCH_DSN_FILE). Confirm with a real mic recording
+// once worker dispatch is activated, before relying on this feature.
 let mediaRecorder = null;
 let chunks = [];
 document.getElementById('mic').addEventListener('click', async (e) => {
@@ -248,7 +273,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/speak":
-            payload = self._read_json_body(MAX_BODY_BYTES, {"text": str})
+            payload = self._read_json_body(MAX_SPEAK_BODY_BYTES, {"text": str})
             if payload is None:
                 return
             result = self.operator.dispatch_speak(text=payload["text"])
@@ -296,10 +321,19 @@ def _ensure_tailscale_cert(dns_name: str, cert_dir: str) -> tuple[str, str]:
     """Provisions (or renews, if `tailscale cert` decides it's due) a real
     cert for dns_name via Tailscale's own cert service, writing it under
     cert_dir. Returns (cert_path, key_path). cert_dir is created if
-    missing, restricted to the owner (0700) since key_path lands there --
-    defense in depth on top of whatever permissions `tailscale cert`
-    itself sets on the key file."""
+    missing and always chmod'd to 0700 (owner only) since key_path lands
+    there -- defense in depth on top of whatever permissions
+    `tailscale cert` itself sets on the key file.
+
+    Real bug found by review, 2026-09-24: os.makedirs(mode=0o700) only
+    applies that mode at creation time -- if cert_dir already exists
+    with looser permissions (e.g. a manual `mkdir -p` under the default
+    umask), exist_ok=True silently leaves the existing mode untouched,
+    so the "restricted to the owner" claim would not actually hold.
+    os.chmod() below is unconditional and always enforces 0700,
+    regardless of whether the directory pre-existed."""
     os.makedirs(cert_dir, mode=0o700, exist_ok=True)
+    os.chmod(cert_dir, 0o700)
     cert_path = os.path.join(cert_dir, f"{dns_name}.crt")
     key_path = os.path.join(cert_dir, f"{dns_name}.key")
     subprocess.run(
