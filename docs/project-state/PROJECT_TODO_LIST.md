@@ -22,13 +22,25 @@ Grouped for review-as-you-go, in the order that unlocks real use fastest.
    #118. Vision/ears/voice are architecturally *not* wireable this way —
    a text model cannot invent real image/audio bytes as a tool-call
    argument. Corrected 2026-09-23; do not re-attempt this as a task.
-2. **Browser client surface** — mic/speaker capture + image upload in
-   the existing webui, calling `dispatch_vision_describe()`/
-   `dispatch_transcribe_audio()`/`dispatch_synthesize_speech()` directly
-   (bypassing the LLM tool-call step for input capture). **IN PROGRESS.**
-3. **Phone access surface** — mic/speaker/camera from a phone, separate
-   from the browser surface per Kamara's explicit ask for both. Not
-   started.
+2. **Browser client surface — DONE.** Mic-record, image-upload+question,
+   and a "speak replies" toggle added to the webui, all routed through
+   `KarmoOperator.dispatch_vision()`/`dispatch_transcribe()`/
+   `dispatch_speak()` (same `CapabilityDispatcher`/`ApprovalEngine`
+   authority path as every other capability, deliberately still not
+   `_CHAT_EXPOSED_TOOLS`). PR #120, merged 2026-09-23.
+3. **Phone access surface — DONE (code).** Real blocker found: browsers
+   refuse `getUserMedia()` (mic/camera) on any non-localhost origin
+   without HTTPS, which the plain `tailscale` bind mode is — a phone
+   could load the page but not use the mic. Added a `tailscale-https`
+   bind mode: resolves this host's own tailnet DNS name
+   (`tailscale status --json`) and provisions a real cert via
+   `tailscale cert` (Tailscale's own Let's Encrypt-backed service),
+   serving over TLS. Also fixed a real mobile bug: the page had no
+   viewport meta tag, so phones rendered it desktop-width. **Not yet
+   run in production** — needs its own Production Access Authorization
+   (creates `/etc/karmo/core/tailscale-tls/`, runs `tailscale cert`,
+   restarts the webui in the new mode) before a phone can actually use
+   it.
 4. **Router/reliability cleanup** — wire the circuit breaker into live
    routing; finish remaining Model Router Phase A signals (memory/CPU
    headroom, queue depth). Not user-facing. Not started.

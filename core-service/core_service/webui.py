@@ -1,14 +1,25 @@
 """Browser chat UI for the KARMO Core operator.
 
 Manually started, stdlib-only development convenience -- not a systemd
-service. Two allowed bind modes, chosen explicitly, never inferred:
+service. Three allowed bind modes, chosen explicitly, never inferred:
 
 - loopback (default): 127.0.0.1 only, reached from another machine
   through an SSH port-forward.
 - tailscale: binds this host's own Tailscale interface IP (resolved via
   `tailscale ip -4`, never a caller-supplied address), reachable directly
   from any device already authenticated on the same private tailnet --
-  never the open internet, never a wildcard/all-interfaces bind.
+  never the open internet, never a wildcard/all-interfaces bind. Plain
+  HTTP -- browsers refuse getUserMedia() (mic/camera) on any non-
+  localhost origin without HTTPS, so this mode cannot use the mic/image
+  features from another device (desktop or phone), only /chat.
+- tailscale-https: same bind as tailscale, but additionally resolves
+  this host's own tailnet DNS name (`tailscale status --json`, never a
+  caller-supplied name) and provisions a real cert for it via
+  `tailscale cert` (Tailscale's own Let's Encrypt-backed service for
+  MagicDNS names) -- makes the origin a secure context, which the mic
+  and camera features require on a phone or any other non-localhost
+  device. Still never the open internet: the cert is for a name only
+  resolvable and reachable inside this tailnet.
 
 Text chat goes through the exact same KarmoOperator.handle() used by the
 chat CLI -- no separate authority path, no new capability. /vision,
@@ -25,6 +36,8 @@ with a 400 "not activated" response rather than hanging or crashing.
 from __future__ import annotations
 
 import json
+import os
+import ssl
 import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -32,6 +45,7 @@ from .operator import KarmoOperator
 
 DEFAULT_PORT = 8787
 DEFAULT_BIND = "127.0.0.1"
+DEFAULT_TLS_CERT_DIR = "/etc/karmo/core/tailscale-tls"
 MAX_BODY_BYTES = 8_000
 # Image/audio requests carry base64 payloads (up to ~7MB/~14MB decoded,
 # matching vision_capability.py/audio_transcribe_capability.py's own
@@ -40,7 +54,9 @@ MAX_BODY_BYTES = 8_000
 MAX_MEDIA_BODY_BYTES = 20_000_000
 
 _PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><title>KARMO</title>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KARMO</title>
 <style>
 body{font-family:monospace;max-width:720px;margin:2rem auto;padding:0 1rem;background:#111;color:#ddd}
 #log{white-space:pre-wrap;line-height:1.4;margin-bottom:1rem}
@@ -48,7 +64,7 @@ body{font-family:monospace;max-width:720px;margin:2rem auto;padding:0 1rem;backg
 input[type=text],input:not([type]){width:100%;padding:0.5rem;font-family:monospace;background:#222;color:#ddd;border:1px solid #444}
 .row{display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;flex-wrap:wrap}
 .row input[type=text]{flex:1}
-button{font-family:monospace;background:#222;color:#ddd;border:1px solid #444;padding:0.5rem;cursor:pointer}
+button{font-family:monospace;background:#222;color:#ddd;border:1px solid #444;padding:0.6rem 0.8rem;min-height:2.5rem;cursor:pointer}
 label{font-size:0.85em;color:#aaa;white-space:nowrap}
 </style></head>
 <body>
@@ -257,16 +273,73 @@ def _resolve_tailscale_ip() -> str:
     return ip
 
 
-def serve(mode: str = "loopback", port: int = DEFAULT_PORT) -> int:
+def _resolve_tailscale_dns_name() -> str:
+    """This host's own tailnet MagicDNS name, e.g.
+    'karmo-ai01.tailxxxxx.ts.net' -- read from `tailscale status --json`,
+    never accepted as a caller-supplied argument, same discipline as
+    _resolve_tailscale_ip()."""
+    result = subprocess.run(
+        ["tailscale", "status", "--json"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=True,
+    )
+    data = json.loads(result.stdout)
+    dns_name = data.get("Self", {}).get("DNSName", "").rstrip(".")
+    if not dns_name:
+        raise RuntimeError("tailscale status --json returned no Self.DNSName")
+    return dns_name
+
+
+def _ensure_tailscale_cert(dns_name: str, cert_dir: str) -> tuple[str, str]:
+    """Provisions (or renews, if `tailscale cert` decides it's due) a real
+    cert for dns_name via Tailscale's own cert service, writing it under
+    cert_dir. Returns (cert_path, key_path). cert_dir is created if
+    missing, restricted to the owner (0700) since key_path lands there --
+    defense in depth on top of whatever permissions `tailscale cert`
+    itself sets on the key file."""
+    os.makedirs(cert_dir, mode=0o700, exist_ok=True)
+    cert_path = os.path.join(cert_dir, f"{dns_name}.crt")
+    key_path = os.path.join(cert_dir, f"{dns_name}.key")
+    subprocess.run(
+        ["tailscale", "cert", "--cert-file", cert_path, "--key-file", key_path, dns_name],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    return cert_path, key_path
+
+
+def serve(
+    mode: str = "loopback",
+    port: int = DEFAULT_PORT,
+    cert_dir: str = DEFAULT_TLS_CERT_DIR,
+) -> int:
+    tls_files = None
     if mode == "loopback":
         bind = DEFAULT_BIND
     elif mode == "tailscale":
         bind = _resolve_tailscale_ip()
+    elif mode == "tailscale-https":
+        bind = _resolve_tailscale_ip()
+        dns_name = _resolve_tailscale_dns_name()
+        tls_files = _ensure_tailscale_cert(dns_name, cert_dir)
     else:
-        raise ValueError(f"unsupported webui bind mode: {mode!r} (use 'loopback' or 'tailscale')")
+        raise ValueError(
+            f"unsupported webui bind mode: {mode!r} (use 'loopback', 'tailscale', or 'tailscale-https')"
+        )
     _Handler.operator = KarmoOperator()
     server = HTTPServer((bind, port), _Handler)
-    print(f"KARMO webui listening on http://{bind}:{port} (mode={mode})")
+    scheme = "http"
+    if tls_files is not None:
+        cert_path, key_path = tls_files
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        scheme = "https"
+    print(f"KARMO webui listening on {scheme}://{bind}:{port} (mode={mode})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
