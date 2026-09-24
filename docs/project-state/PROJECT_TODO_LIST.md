@@ -41,9 +41,21 @@ Grouped for review-as-you-go, in the order that unlocks real use fastest.
    (creates `/etc/karmo/core/tailscale-tls/`, runs `tailscale cert`,
    restarts the webui in the new mode) before a phone can actually use
    it.
-4. **Router/reliability cleanup** — wire the circuit breaker into live
-   routing; finish remaining Model Router Phase A signals (memory/CPU
-   headroom, queue depth). Not user-facing. Not started.
+4. **Router/reliability cleanup — CLOSED, nothing to build.** Checked
+   the actual code (2026-09-24) before starting: the circuit breaker is
+   already wired into live routing (`live_router.py`'s
+   `compute_live_routing_decision(breaker_states=...)`, consulted by
+   `operator.py`'s `_compute_live_decision()`; the mutating
+   `allow_request()`/`record_result()` calls happen at the real
+   dispatch site) — done as part of D2, PR #97. This doc's own earlier
+   "not wired into real routing decisions yet" line was written before
+   PR #97 landed and was never corrected — the same doc-lag pattern
+   flagged elsewhere in this project. The remaining Phase A signals
+   (memory/CPU headroom, queue depth) still don't exist, but per this
+   doc's own note below (Section A table) have no consumer and are
+   explicitly not urgent — building them now would be exactly the
+   "new infrastructure because it's technically interesting" pattern
+   this project's governance says to avoid. Not scheduled.
 
 Reminder for all of 2-4: the underlying capabilities remain inert in
 production until the worker-dispatch DSN is created and
@@ -63,7 +75,7 @@ live until it happens.
 | D1 — worker transport proof | Proven live end-to-end (real bug found + fixed: missing DB grant, migration 009) | None |
 | D2 — live worker chat routing | Built, reviewed twice, merged **dormant** (activation DSN not created) | On hold — see item 6 in the recommendations doc. Needs: dedicated dispatch credential (not reused gateway role), a retention policy for worker-stored chat content, a fix for the check-then-act worker-selection race, and a real local-vs-worker speed benchmark before reconsidering activation |
 | E — decision audit | Built, merged, deployed (migration 010 had to be applied live — found undeployed despite code being live) | None |
-| Circuit breaker | Built, merged, **not wired into real routing decisions yet** | Needs wiring into whichever routing path is actually reactivated (D2 or a future replacement) |
+| Circuit breaker | **Wired into live routing** (`live_router.py`/`operator.py`, part of D2/PR #97) — corrected 2026-09-24, this row was stale | None |
 | F — idempotency + write-capability support | Not started | No scope defined yet |
 
 ## B. Local chat performance (current, real hardware)
