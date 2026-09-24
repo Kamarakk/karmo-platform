@@ -10,10 +10,12 @@ task started 2026-09-24, or redeploying core-service to `karmo-ai01`
 for any later reason.
 **Status:** point-in-time facts as of 2026-09-24 (deployed core-service
 on `karmo-ai01` confirmed missing `migrations/011_grant_core_dispatch_least_privilege.sql`
--- predates PR #118). Steps 2-4 (role/DSN/restart) have been attempted
-live by Kamara, executing commands relayed by an assistant session
-with no SSH access of its own -- see "Execution log" below. Step 0/1
-(redeploy) not yet run as of the same log.
+-- predates PR #118). Steps 2-4 (role/DSN/restart) completed and
+**verified working live** (`PostgresWorkerDispatchClient` constructs
+and authenticates against production Postgres) -- see "Execution log"
+below. **Step 0/1 (redeploy) still not run** -- the code that would
+actually use this credential (migration 011's grants, and every
+capability added since PR #118) is not yet on `karmo-ai01`.
 
 ---
 
@@ -29,14 +31,15 @@ with no SSH access of its own -- see "Execution log" below. Step 0/1
   producing misleading clean-looking output. Consequence: the DSN file
   written immediately after (step 3, which itself wrote correctly this
   time) contains a password that does **not** match the role's actual
-  password in Postgres. **Not yet corrected as of this log entry** --
-  step 2's corrected script below (plain top-level CREATE+ALTER, no `$$`
-  block) needs to be re-run, then step 3 re-run with the same fresh
-  password, before this DSN file should be trusted. Step 4 (restart)
-  was run and the service came back `active`, but that only proves the
-  service tolerates a DSN it can't yet authenticate with (it degrades
-  gracefully, per `worker_dispatch_client.py`'s design) -- not that
-  dispatch actually works.
+  password in Postgres.
+- **2026-09-24, same day, corrected and verified**: re-ran step 2 with
+  the corrected plain top-level `CREATE ROLE` + `ALTER ROLE` (no `$$`
+  block), rewrote the DSN with the same fresh password (step 3),
+  restarted (step 4), then ran the auth-check script below. Live
+  result: `available: True` / `auth check: OK` -- the
+  `PostgresWorkerDispatchClient` genuinely constructs and authenticates
+  against production Postgres with this credential. The role/DSN half
+  of this task is done and confirmed, not just assumed.
 - Step 0/1 (redeploying `core-service` so migration 011 and PRs
   #117-#122 are actually present on `karmo-ai01`) has not been run as
   of this entry -- the role/DSN work above was attempted independently
