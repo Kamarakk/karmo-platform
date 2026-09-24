@@ -41,14 +41,23 @@ Grouped for review-as-you-go, in the order that unlocks real use fastest.
    (creates `/etc/karmo/core/tailscale-tls/`, runs `tailscale cert`,
    restarts the webui in the new mode) before a phone can actually use
    it.
-   **In progress 2026-09-24** (separate, related task): provisioning
+   **IN PROGRESS 2026-09-24, currently in a known-bad interim state —
+   see below before touching this again.** Provisioning
    `karmo_core_dispatch` + the worker-dispatch DSN so the local
-   capabilities themselves are dispatchable — real finding along the
-   way: `karmo-ai01`'s deployed `core-service` predates PR #118
-   entirely (missing migration 011), so a redeploy is needed first.
-   Runbook (idempotent role/DSN steps + redeploy + verification):
-   `docs/runbooks/CORE_DISPATCH_ROLE_AND_DEPLOY_20260924.md` — prepared,
-   not yet run (no SSH/production access available in that session).
+   capabilities themselves are dispatchable. Real findings along the
+   way: (a) `karmo-ai01`'s deployed `core-service` predates PR #118
+   entirely (missing migration 011) — the redeploy step has **not**
+   been run yet; (b) Kamara ran an earlier, buggy version of the
+   role-creation SQL live (a `DO $$ ... $$` block that silently failed
+   to set the role's password — psql's `:'var'` interpolation doesn't
+   work inside dollar-quoting), so **the DSN file currently on
+   `karmo-ai01` has a password that does not match the role's real
+   password in Postgres.** Both the SQL bug and the redeploy gap are
+   fixed in the runbook now: `docs/runbooks/CORE_DISPATCH_ROLE_AND_DEPLOY_20260924.md`
+   (full execution log in that file). **Next action**: re-run the
+   runbook's step 2 (corrected SQL) + step 3 (rewrite the DSN with the
+   same fresh password) + step 4 (restart + the new auth-check
+   command), then step 0/1 (the redeploy, still not done at all).
 4. **Router/reliability cleanup — CLOSED, nothing to build.** Checked
    the actual code (2026-09-24) before starting: the circuit breaker is
    already wired into live routing (`live_router.py`'s
