@@ -12,21 +12,27 @@ This file is deliberately a **map, not a giant encyclopedia**. Dynamic project t
 
 Conversation history, model memory, summaries, and prior assistant recollections are useful hints but are **not authoritative project state**.
 
-**Before any KARMO action at all — including a read-only command, a quick check, or "just" a recommendation, not only implementation or consequential instructions:**
+**Context loading is tiered by task** (exact tiers in `CLAUDE.md`):
+
+- **Tier 1 — small, scoped tasks** (edits/fixes/tests in known files, read-only checks): no mandatory reads beyond `CLAUDE.md` / `AGENTS.md`.
+- **Tier 2 — feature/phase work:** read `docs/project-state/CURRENT_STATE.md`, `docs/project-state/NEXT_STEPS.md`, and the relevant plan/spec located via `docs/project-state/MASTER_INDEX.md`.
+- **Tier 3 — architecture, new service/tool/integration/datastore, migration, access/routing, deployment, or anything touching production:** the full bootstrap chain below.
+
+Full bootstrap chain (Tier 3):
 
 1. Read this file.
 2. Read `AGENTS.md`.
 3. If using Claude Code, read `CLAUDE.md`.
-4. Read `docs/project-state/MASTER_INDEX.md` **in full**. It is short and skimmable by design, precisely so this step is never worth skipping.
+4. Read `docs/project-state/MASTER_INDEX.md` in full.
 5. Read `docs/project-state/CURRENT_STATE.md`.
 6. Read `docs/project-state/KARMO_DASHBOARD.md`.
 7. Read `docs/project-state/NEXT_STEPS.md`.
-8. Read `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`, including its **Mandatory Full-Context Review Rule** — read in full, not skimmed, anything `MASTER_INDEX.md` flags as relevant to the task at hand, not just the "obviously" applicable plan document.
-9. Read the plan/spec/evidence for the specific workstream being discussed — this includes dated `docs/project-state/PROJECT_SAVE_*.md` checkpoints `MASTER_INDEX.md` points to, not only `docs/plans/`/`docs/architecture/`. A real target architecture can live in a dated project-save record and nowhere else; treat `MASTER_INDEX.md`'s pointer to one as equally authoritative as a living plan doc.
-
-This applies the same way regardless of which interface or tool is being used to do the work (terminal, IDE extension, web, or anything else) — the rule binds the work itself, not the surface it's performed through. This step was skipped once (2026-09-17/18: a real capability was designed against an incomplete picture of an already-documented target architecture) specifically because a read-only-feeling task felt exempt from it. It is not exempt, ever.
+8. Read `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`, including its **Mandatory Full-Context Review Rule** — read in full anything `MASTER_INDEX.md` flags as relevant, not just the obviously applicable plan.
+9. Read the plan/spec/evidence for the workstream — including dated `docs/project-state/PROJECT_SAVE_*.md` checkpoints `MASTER_INDEX.md` points to; a target architecture can live only in a project-save record.
 
 Do **not** ask Kamara to repeat facts that are already available in these records.
+
+When unsure of the tier, use the higher one. Lesson retained: on 2026-09-17/18 a capability was designed without checking an already-documented target architecture (Model Router / KARMO-FIRST Orchestration, 2026-09-11) — any design-shaped task is Tier 3, even if it feels read-only.
 
 If two sources disagree:
 
@@ -308,7 +314,7 @@ The repository is KARMO's durable memory layer.
 
 A new AI should:
 
-1. read the bootstrap chain in Section 1;
+1. load context per the tier in Section 1;
 2. identify the active workstream;
 3. read only the relevant deeper documents;
 4. state the current stage, active task, blockers, safety boundary, and next authorized action;
