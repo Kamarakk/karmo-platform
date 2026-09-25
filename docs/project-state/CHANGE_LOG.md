@@ -18,7 +18,7 @@ MASTER_INDEX.md for status-tag definitions.
   `e26626d` align H0.1 validation with frozen matrix. PR #2 (`f27adf2`,
   `feat/h01-handoff-import`) merged. Failure-matrix report corrected and
   superseded in place (`docs/evidence/h01/H01_FAILURE_MATRIX_REPORT.md`);
-  H01-T02–T17 PASS, H01-T01/H01-T18 BLOCKED, closeout accepted by Natalie
+  H01-T02–T17 PASS, H01-T01/H01-T18 BLOCKED, closeout accepted by Kamara
   2026-09-06.
 - **VERIFIED** (operator-attested, 2026-09-07/08) — H0.1 production cutover:
   `karmo_outbox` migration applied; `karmo-h01-relay` systemd user service
@@ -110,11 +110,11 @@ MASTER_INDEX.md for status-tag definitions.
 - **VERIFIED** (this session, 2026-09-07/08) — GitHub Spec Kit approved for
   evaluation/integration under KARMO governance; brownfield inspection
   completed (no repo files changed); initialization **not** performed,
-  pending Natalie's approval.
+  pending Kamara's approval.
 
 ## Foundation acceleration (2026-09-08, second pass same day)
 
-- **VERIFIED** (this session) — Natalie approved the `docs/project-state/`
+- **VERIFIED** (this session) — Kamara approved the `docs/project-state/`
   persistent record set created in the prior pass, then requested
   restructuring the remaining foundation work into large autonomous
   workloads.
@@ -140,7 +140,7 @@ MASTER_INDEX.md for status-tag definitions.
 
 ## Project Save Completion Rule adopted (2026-09-08, third pass same day)
 
-- **VERIFIED** (this session) — Natalie approved Workload 1 and requested
+- **VERIFIED** (this session) — Kamara approved Workload 1 and requested
   the Mandatory Project Save Completion Rule be added to governance before
   it starts. Appended to `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`
   (new section, not a numbered invariant, structured like the existing
@@ -154,7 +154,7 @@ MASTER_INDEX.md for status-tag definitions.
 
 ## ChatGPT Session Persistence adopted (2026-09-08, follow-up to Workload 1, before PR #7 merge)
 
-- **VERIFIED** (this session) — Natalie requested an extension to the
+- **VERIFIED** (this session) — Kamara requested an extension to the
   Mandatory Project Save Completion Rule (not a new rule) covering
   consequential KARMO information produced in her ChatGPT planning
   sessions: ChatGPT conversation history is explicitly not the
@@ -181,9 +181,9 @@ MASTER_INDEX.md for status-tag definitions.
 
 ## Foundation Closeout Program (2026-09-08)
 
-- **VERIFIED** — a consolidation review (requested by Natalie) analyzed
+- **VERIFIED** — a consolidation review (requested by Kamara) analyzed
   whether Workloads 2–5 of `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`
-  could be run as one autonomous program. Natalie approved and
+  could be run as one autonomous program. Kamara approved and
   pre-authorized running Workloads 2, 3, and 4 together in one session,
   including the two standing-gate actions each carried (read-only
   production access for Workload 2; `specify init` for Workload 4).
@@ -194,7 +194,7 @@ MASTER_INDEX.md for status-tag definitions.
   item 5) and the file's own preamble marks it as overriding session
   instructions. No connection to `karmo-ai01` was attempted, though the
   host was confirmed network-reachable. Full reasoning and the three
-  resolution paths offered to Natalie: `docs/project-state/CURRENT_STATE.md`,
+  resolution paths offered to Kamara: `docs/project-state/CURRENT_STATE.md`,
   "Foundation Closeout Program" section.
 - **Workload 3 (registry integrity repair tool): complete in isolation.**
   `h04/app/registry_repair.py`, isolated report/apply CLI constructing a
@@ -213,17 +213,17 @@ MASTER_INDEX.md for status-tag definitions.
   `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. PR #9, opened, not
   merged.
 - **Workload 5: not started**, per explicit instruction not to invent
-  H0.5's scope. Remains blocked on Natalie's choice.
+  H0.5's scope. Remains blocked on Kamara's choice.
 - **KARMO FOUNDATION v1: not declared complete this pass** — see
   `docs/project-state/CURRENT_STATE.md` for the exact remaining blocker
   (Workload 2's resolution) and the three paths offered to close it.
 
 ## Governance correction: Mandatory Production Access Authorization Gate (2026-09-08)
 
-- **VERIFIED** — Natalie explicitly approved resolving the conflict the
+- **VERIFIED** — Kamara explicitly approved resolving the conflict the
   Workload 2 attempt surfaced: `CLAUDE.md` item 4 and `AGENTS.md`'s
   "Authority and boundaries" section both stated an unconditional,
-  no-exception production-access prohibition, with no path for Natalie's
+  no-exception production-access prohibition, with no path for Kamara's
   own explicit, task-specific authorizations to apply.
 - Added the Mandatory Production Access Authorization Gate to
   `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`: production access
@@ -256,7 +256,7 @@ MASTER_INDEX.md for status-tag definitions.
 
 ## KARMO Foundation v1 closeout — DECLARED COMPLETE (2026-09-09)
 
-- **VERIFIED** — Natalie granted a temporary, session-scoped, task-specific
+- **VERIFIED** — Kamara granted a temporary, session-scoped, task-specific
   Production Access Authorization (target: `karmo-ai01`; read-only;
   purpose: Foundation v1 closeout) under the newly-adopted Mandatory
   Production Access Authorization Gate, and directed a full PR review/merge
@@ -284,7 +284,7 @@ MASTER_INDEX.md for status-tag definitions.
   follow-up, not a new Foundation-completion criterion, per explicit
   instruction not to invent criteria after seeing results.
 - Applying the Foundation Complete criterion already established
-  2026-09-08 (Workload 1 merged + explicit Natalie decision on Workloads
+  2026-09-08 (Workload 1 merged + explicit Kamara decision on Workloads
   2/3), unmodified: **all criteria met.** Full closeout report and
   independent-verification evidence package committed at
   `docs/evidence/foundation-v1/` (`FOUNDATION_V1_CLOSEOUT_REPORT.md`,
@@ -292,12 +292,12 @@ MASTER_INDEX.md for status-tag definitions.
   `POST_CLOSEOUT_HEALTH.md`, `VERIFICATION_CHECKLIST.md`,
   `RUN_SUMMARY.json`, `MANIFEST.sha256`).
 - H0.5/Workload 5 correctly not started — first post-foundation capability
-  phase, Natalie's scope choice, not invented.
+  phase, Kamara's scope choice, not invented.
 - **KARMO FOUNDATION v1 — COMPLETE.**
 
 ## Post-Foundation Overnight Readiness Program (2026-09-09, same day)
 
-- **VERIFIED** — Natalie authorized one large, repository-only autonomous
+- **VERIFIED** — Kamara authorized one large, repository-only autonomous
   program, explicitly prohibiting all production access, to remove
   engineering friction ahead of post-foundation capability work without
   choosing or implementing any capability.
@@ -326,7 +326,7 @@ MASTER_INDEX.md for status-tag definitions.
   **not adopted**.
 - **Workstream 5**: post-foundation capability roadmap — dependency graph,
   shared Core requirements, per-domain analysis for all 6 named domains,
-  3 sequencing alternatives. **Does not choose Natalie's first
+  3 sequencing alternatives. **Does not choose Kamara's first
   capability.**
 - Workstreams 3–5 committed together: PR #16, opened, not merged.
 - **Production access: zero.** No SSH, no database/Qdrant/container/file/
@@ -335,7 +335,7 @@ MASTER_INDEX.md for status-tag definitions.
 
 ## Core v2 Engineering Blueprint Program (2026-09-09, same day)
 
-- **VERIFIED** — Natalie authorized one large, repository-only autonomous
+- **VERIFIED** — Kamara authorized one large, repository-only autonomous
   planning/prototyping/validation program, explicitly prohibiting all
   production access and any merge, to prepare KARMO Core so future
   post-foundation capability implementation can proceed in large batches.
@@ -373,7 +373,7 @@ MASTER_INDEX.md for status-tag definitions.
 
 ## KARMO Large Autonomous Review of PR #14–#21 (2026-09-09, same day)
 
-- **VERIFIED** — Natalie authorized an independent merge-readiness and
+- **VERIFIED** — Kamara authorized an independent merge-readiness and
   cross-compatibility review of all 8 open PRs from the two prior
   programs, explicitly prohibiting production access, merges, and new
   capability implementation.
@@ -408,14 +408,14 @@ MASTER_INDEX.md for status-tag definitions.
   `docs/evidence/autonomous-review/` — the merge-readiness packet, merge
   sequence, spec/prototype conformance table, deduplicated findings
   triage, and capability decision matrix (Tool Registry vs. Voice vs.
-  BloomBoss first, plus a hybrid option) — **does not choose Natalie's
+  BloomBoss first, plus a hybrid option) — **does not choose Kamara's
   first capability**.
 - **Production access: zero. Merges: zero.** No PR marked merged. No
   capability marked implemented.
 
 ## KARMO Worker Runtime v0.1 — implemented, isolated prototype (2026-09-09)
 
-- **VERIFIED (repo)** — Natalie authorized a 15-phase Large Autonomous
+- **VERIFIED (repo)** — Kamara authorized a 15-phase Large Autonomous
   Implementation Program to build KARMO's first real post-foundation
   capability: a distributed worker runtime. Branch
   `worker-runtime/implementation`, based on `core-v2/prototypes` (a
@@ -459,7 +459,7 @@ MASTER_INDEX.md for status-tag definitions.
 
 - **VERIFIED (repo)** — an independent (ChatGPT) verification pass of PRs
   #23–#25 found 4 real blocking findings this workload's own review had
-  missed, and Natalie directed that PRs #23–#25 not be merged until they
+  missed, and Kamara directed that PRs #23–#25 not be merged until they
   were fixed and re-verified. Work was confined to the existing Worker
   Runtime branches and the synthetic/local KARMO-DEV01 environment — no
   production access, no network changes, no new PRs.
@@ -529,7 +529,7 @@ MASTER_INDEX.md for status-tag definitions.
   because approval wasn't present yet, and `poll_and_execute_once()`
   then called `submit_failure()`, permanently marking a merely-pending,
   perfectly legitimate job `FAILED` before a human ever had a chance to
-  approve it. Natalie directed that PRs #23–#25 not be merged until this
+  approve it. Kamara directed that PRs #23–#25 not be merged until this
   was fixed and re-verified; work was confined to the existing Worker
   Runtime branches and the synthetic/local KARMO-DEV01 environment — no
   production access, no network changes, no new PRs.
@@ -599,7 +599,7 @@ MASTER_INDEX.md for status-tag definitions.
   to `RUNNING`) and the approval *then* expired before `try_resume()`
   ever consumed it, the job was left stuck `RUNNING` and its assigned
   worker stuck `BUSY` forever — nothing ever noticed or released it.
-  Natalie directed that PRs #23–#25 not be merged until this was fixed
+  Kamara directed that PRs #23–#25 not be merged until this was fixed
   and re-verified; work was confined to the existing Worker Runtime
   branches and the synthetic/local KARMO-DEV01 environment — no
   production access, no network changes, no new PRs.
@@ -643,7 +643,7 @@ MASTER_INDEX.md for status-tag definitions.
 
 ## Worker Runtime v0.1 merge closeout — PRs #22, #23, #24 merged; PR #25 pending (2026-09-10, HISTORICAL — PR #25 has since merged, see the final closeout entry below)
 
-- **VERIFIED (repo)** — Natalie's approved KARMO merge sequence proceeded:
+- **VERIFIED (repo)** — Kamara's approved KARMO merge sequence proceeded:
   PR #22 (`review/pr14-21-merge-readiness`) merged into `main`; PR #23
   (Worker Runtime implementation + tests) merged into `main` at merge
   commit `11d4f86e04d22aae0072923ec387a11f0e205cbc`; PR #24

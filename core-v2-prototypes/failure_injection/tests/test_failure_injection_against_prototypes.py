@@ -43,10 +43,10 @@ def job_store():
 
 def test_postgres_unavailable_during_execution_lands_in_failed(approval_engine):
     record = approval_engine.request(
-        requester="natalie", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
+        requester="kamara", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
         arguments=ARGS, authority_class="REVERSIBLE_WRITE",
     )
-    approval_engine.approve(record.approval_id, approver="natalie")
+    approval_engine.approve(record.approval_id, approver="kamara")
 
     def _executor():
         raise PostgresUnavailable("synthetic: connection refused")
@@ -54,7 +54,7 @@ def test_postgres_unavailable_during_execution_lands_in_failed(approval_engine):
     with pytest.raises(PostgresUnavailable):
         approval_engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor_identity="natalie", action=_executor,
+            arguments=ARGS, executor_identity="kamara", action=_executor,
         )
 
     assert approval_engine.get(record.approval_id).state == ApprovalState.FAILED
@@ -91,10 +91,10 @@ def test_qdrant_unavailable_exhausts_retry_budget_and_raises():
 
 def test_tool_timeout_during_execution_lands_in_failed(approval_engine):
     record = approval_engine.request(
-        requester="natalie", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
+        requester="kamara", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
         arguments=ARGS, authority_class="REVERSIBLE_WRITE",
     )
-    approval_engine.approve(record.approval_id, approver="natalie")
+    approval_engine.approve(record.approval_id, approver="kamara")
 
     def _executor():
         raise ToolTimeout("synthetic: exceeded timeout_seconds")
@@ -102,7 +102,7 @@ def test_tool_timeout_during_execution_lands_in_failed(approval_engine):
     with pytest.raises(ToolTimeout):
         approval_engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor_identity="natalie", action=_executor,
+            arguments=ARGS, executor_identity="kamara", action=_executor,
         )
     assert approval_engine.get(record.approval_id).state == ApprovalState.FAILED
 
@@ -120,10 +120,10 @@ def test_malformed_result_is_detected_not_silently_accepted():
 
 def test_malformed_result_from_a_tool_executor_propagates_as_failure(approval_engine):
     record = approval_engine.request(
-        requester="natalie", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
+        requester="kamara", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
         arguments=ARGS, authority_class="REVERSIBLE_WRITE",
     )
-    approval_engine.approve(record.approval_id, approver="natalie")
+    approval_engine.approve(record.approval_id, approver="kamara")
 
     def _executor():
         return validate_result_shape({"status": "ok"}, required_keys=["status", "record_id"])
@@ -131,7 +131,7 @@ def test_malformed_result_from_a_tool_executor_propagates_as_failure(approval_en
     with pytest.raises(MalformedResult):
         approval_engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor_identity="natalie", action=_executor,
+            arguments=ARGS, executor_identity="kamara", action=_executor,
         )
     assert approval_engine.get(record.approval_id).state == ApprovalState.FAILED
 
@@ -198,16 +198,16 @@ def test_approval_expired_category_matches_engine_behavior():
     engine = ApprovalEngine(clock=lambda: clock_state["now"], default_ttl_seconds=30)
 
     record = engine.request(
-        requester="natalie", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
+        requester="kamara", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
         arguments=ARGS, authority_class="REVERSIBLE_WRITE",
     )
-    engine.approve(record.approval_id, approver="natalie")
+    engine.approve(record.approval_id, approver="kamara")
     clock_state["now"] += timedelta(seconds=31)
 
     with pytest.raises(ApprovalStateError):
         engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor_identity="natalie", action=lambda: pytest.fail("must never be called"),
+            arguments=ARGS, executor_identity="kamara", action=lambda: pytest.fail("must never be called"),
         )
 
 
@@ -220,10 +220,10 @@ def test_permission_denial_is_a_distinct_failure_from_approval_denial(approval_e
     this test keeps them distinct rather than conflating "not approved"
     with "not permitted"."""
     record = approval_engine.request(
-        requester="natalie", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
+        requester="kamara", tool_id=TOOL_ID, tool_version=TOOL_VERSION,
         arguments=ARGS, authority_class="REVERSIBLE_WRITE",
     )
-    approval_engine.approve(record.approval_id, approver="natalie")
+    approval_engine.approve(record.approval_id, approver="kamara")
 
     from injectors import PermissionDenied
 
@@ -233,7 +233,7 @@ def test_permission_denial_is_a_distinct_failure_from_approval_denial(approval_e
     with pytest.raises(PermissionDenied):
         approval_engine.execute(
             record.approval_id, tool_id=TOOL_ID, tool_version=TOOL_VERSION,
-            arguments=ARGS, executor_identity="natalie", action=_executor,
+            arguments=ARGS, executor_identity="kamara", action=_executor,
         )
     assert approval_engine.get(record.approval_id).state == ApprovalState.FAILED
 

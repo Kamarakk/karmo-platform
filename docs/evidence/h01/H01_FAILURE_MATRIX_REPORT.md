@@ -5,16 +5,16 @@
 - Scope: isolated, local, Docker-based PostgreSQL + Qdrant test environment only. No production host, credential, database, Qdrant collection, or document was accessed.
 - Frozen design under test: `scripts/h01/h01_isolated_build_v2.sh` (verified H0.1 isolated build, per `docs/handoff/h01/KARMO_HANDOFF_2026-09-04_H01_BUILD_COMPLETE.md`).
 
-## Closeout decision (Natalie, 2026-09-06)
+## Closeout decision (Kamara, 2026-09-06)
 
-Natalie has reviewed this corrected report and accepts the validation level
+Kamara has reviewed this corrected report and accepts the validation level
 achieved:
 
 - **H01-T02 through H01-T17: PASS.**
 - **H01-T01 and H01-T18 remain recorded as BLOCKED / NOT EXECUTED.** They are
   *not* changed to PASS — production-read-only verification for these two was
   intentionally not performed in this or any prior session.
-- Natalie accepts the residual verification risk this leaves (the live
+- Kamara accepts the residual verification risk this leaves (the live
   production/host manifest and baseline reverification described below
   remains outstanding) and has decided that H01-T01/H01-T18 will **not**
   block moving to the next development phase.
@@ -198,7 +198,7 @@ them as passed or silently omitting them:
   frozen artifacts under `test/h01/app/` is byte-identical to the
   corresponding heredoc in `scripts/h01/h01_isolated_build_v2.sh` (i.e. no
   local drift from the verified isolated build). It then skips with a message
-  stating the live-manifest component is blocked pending Natalie's approval.
+  stating the live-manifest component is blocked pending Kamara's approval.
 - `test_h01_t18_baseline_and_rollback_drill` verifies locally: the frozen
   acceptance criteria still forbid automatic event deletion and legacy
   backfill and still require rollback to preserve outbox evidence; the
@@ -207,17 +207,17 @@ them as passed or silently omitting them:
   isolated stack, that delivering one event and then separately dead-lettering
   an unrelated malformed event leaves the first event's row and Qdrant point
   completely untouched. It then skips with a message stating the live
-  production-baseline component is blocked pending Natalie's approval.
+  production-baseline component is blocked pending Kamara's approval.
 
 **Recommended next action for T01/T18:** a separate, explicitly-approved,
-read-only session (Natalie) reverifies the production PostgreSQL/Qdrant
+read-only session (Kamara) reverifies the production PostgreSQL/Qdrant
 baseline counts and the two manifest files against the values recorded in the
 handoff doc. Nothing in this session performed or attempted that access.
 
 **Later resolution (2026-09-09, recorded here for continuity, not altered
 above):** the production-read-only component described above was
 subsequently performed under a separate, explicit, task-specific,
-read-only Production Access Authorization from Natalie (KARMO Foundation
+read-only Production Access Authorization from Kamara (KARMO Foundation
 v1 closeout, Workload 2) and **passed** — both the H0.0/H0.1 manifest
 reverification and the production PostgreSQL/Qdrant baseline count
 reverification. Full detail, commands, and timestamps:
@@ -289,7 +289,7 @@ venv/bin/python -m pytest -v     # runs H01-T01..T18 (T01/T18 show as SKIPPED �
 Postgres-17-backed stack with no defects found in the preserved
 implementation. H01-T01 and H01-T18 were BLOCKED / NOT EXECUTED in this
 isolated suite on their production-read-only components as of 2026-09-06.
-Per the closeout decision above, Natalie accepted that residual risk and
+Per the closeout decision above, Kamara accepted that residual risk and
 cleared H0.1 to proceed to the next development phase on that basis. That
 outstanding production-read-only reverification was subsequently performed
 and passed on 2026-09-09 under a separate, explicit, read-only Production

@@ -1,7 +1,7 @@
 # KARMO Foundation v1 — Closeout Report
 
 - Date: 2026-09-09
-- Session: temporary, tonight-only authorization (Natalie, chat message,
+- Session: temporary, tonight-only authorization (Kamara, chat message,
   expires at session end / task completion / 4 hours, whichever first)
 - Scope: finish and verify KARMO Foundation v1 tonight, per the exact
   criteria already established in `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`,
@@ -10,7 +10,7 @@
 
 ## Foundation Complete criterion (verbatim, as already established)
 
-> Foundation Complete = Workload 1 merged + an explicit Natalie decision on
+> Foundation Complete = Workload 1 merged + an explicit Kamara decision on
 > Workloads 2/3.
 
 (`docs/project-state/CURRENT_STATE.md`, "Foundation Closeout Program"
@@ -22,7 +22,7 @@ against it.)
 | Criterion | Status |
 |---|---|
 | Workload 1 merged | **MET** — PR #7, `db4ff2f` (merged before this session began) |
-| Workload 2: Natalie's explicit decision, acted on | **MET** — Natalie issued a temporary, task-specific Production Access Authorization this session; both of Workload 2's defined checks (H01-T01 manifest verification, H01-T18 baseline count reverification) were executed and **PASSED** — see `PRODUCTION_READONLY_VERIFICATION.md` |
+| Workload 2: Kamara's explicit decision, acted on | **MET** — Kamara issued a temporary, task-specific Production Access Authorization this session; both of Workload 2's defined checks (H01-T01 manifest verification, H01-T18 baseline count reverification) were executed and **PASSED** — see `PRODUCTION_READONLY_VERIFICATION.md` |
 | Workload 3 | **MET** — complete in isolation (prior session), PR #8 merged this session, `06ab726` |
 | PRs merging (Workload 4, PROJECT SAVE, governance correction) | **MET** — PR #9 (`cd72938`), PR #10 (`87fd9cd`), and PR #12/originally-#11 (`e3443e8`) all merged this session |
 | Workload 5 / H0.5 | **Not required for Foundation Complete** — per the already-established reasoning: H0.5 is the first post-foundation capability phase, not a required foundation increment. Not started tonight, per explicit instruction. |
@@ -81,7 +81,7 @@ prominently, and as a recommended (not required) follow-up item in
 - H0.3 remains **EVALUATED — NO-PROMOTION — NOT PRODUCTION**. Not promoted
   tonight.
 - H0.5 scope: not started tonight, per explicit instruction. Remains
-  Natalie's choice.
+  Kamara's choice.
 - New recommendation (non-blocking): consider a small future fix to
   `reconciliation.check_active_version_state` so it treats a
   legacy-bootstrapped registry row the same way `check_provenance` already

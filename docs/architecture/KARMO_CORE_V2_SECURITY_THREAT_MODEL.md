@@ -76,7 +76,7 @@ independent review of a new tool's manifest before it becomes registrable.
 `financial_action` or `destructive_action` true requires the same kind of
 explicit review a production access authorization already requires,
 before first registration, not merely before first invocation. This is
-Natalie's decision, not implemented or adopted here.
+Kamara's decision, not implemented or adopted here.
 
 ### Schema manipulation
 
@@ -183,7 +183,7 @@ should see the *actual content* being posted, not just a tool-name/
 argument-hash abstraction. **Genuine gap**: no existing invariant requires
 approval UI/UX to show human-readable content, only that approval occurs.
 Not proposing a new invariant — this is an implementation-quality
-requirement for whatever surfaces approval requests to Natalie, not a
+requirement for whatever surfaces approval requests to Kamara, not a
 governance question.
 
 ## Summary: invariant coverage

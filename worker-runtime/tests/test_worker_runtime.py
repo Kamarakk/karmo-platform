@@ -585,8 +585,8 @@ def test_scenario_17_changed_arguments_invalidate_approval_binding(coordinator, 
     _register(coordinator, capabilities=["synthetic_reversible_write"])
     coordinator.heartbeat("dev01")
     coordinator.jobs.lease(worker_job.job_id, worker_id="dev01", presented_payload=worker_job.payload)
-    coordinator.jobs.request_approval_if_required(worker_job.job_id, requester="natalie")
-    coordinator.jobs.approve(worker_job.job_id, approver="natalie")
+    coordinator.jobs.request_approval_if_required(worker_job.job_id, requester="kamara")
+    coordinator.jobs.approve(worker_job.job_id, approver="kamara")
 
     # A material argument change after the approval was bound must not be
     # completable under the original approval -- attempting to lease with
@@ -621,7 +621,7 @@ def _lease_and_request_approval(coordinator, worker_job, worker_id="dev01"):
     _register(coordinator, worker_id=worker_id, capabilities=[worker_job.capability_id])
     coordinator.heartbeat(worker_id)
     coordinator.jobs.lease(worker_job.job_id, worker_id=worker_id, presented_payload=worker_job.payload)
-    coordinator.jobs.request_approval_if_required(worker_job.job_id, requester="natalie")
+    coordinator.jobs.request_approval_if_required(worker_job.job_id, requester="kamara")
     return worker_job
 
 
@@ -665,7 +665,7 @@ def test_approval_gate_expired_approval_cannot_execute(coordinator, clock, appro
         capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-expired",
     )
     _lease_and_request_approval(coordinator, worker_job)
-    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+    coordinator.jobs.approve(worker_job.job_id, approver="kamara", authorized_executor="dev01")
 
     clock.advance(400)  # WorkerJobQueue's default approval_ttl_seconds=300
 
@@ -683,7 +683,7 @@ def test_approval_gate_changed_payload_after_approval_cannot_execute(coordinator
         capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-changed",
     )
     _lease_and_request_approval(coordinator, worker_job)
-    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+    coordinator.jobs.approve(worker_job.job_id, approver="kamara", authorized_executor="dev01")
 
     executed = []
     with pytest.raises(JobProtocolError, match="do not match what was approved"):
@@ -701,7 +701,7 @@ def test_approval_gate_wrong_executor_cannot_execute(coordinator, approval_requi
         capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-wrong-executor",
     )
     _lease_and_request_approval(coordinator, worker_job)
-    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+    coordinator.jobs.approve(worker_job.job_id, approver="kamara", authorized_executor="dev01")
 
     executed = []
     with pytest.raises(JobProtocolError, match="does not match"):
@@ -719,7 +719,7 @@ def test_approval_gate_one_approval_cannot_execute_twice(coordinator, approval_r
         capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-twice",
     )
     _lease_and_request_approval(coordinator, worker_job)
-    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+    coordinator.jobs.approve(worker_job.job_id, approver="kamara", authorized_executor="dev01")
 
     first = coordinator.jobs.execute(
         worker_job.job_id, executor_identity="dev01", presented_payload=worker_job.payload,
@@ -739,7 +739,7 @@ def test_approval_gate_successful_execution_ends_executed_and_unlocks_completion
         capability_id=approval_required_capability, payload={"x": 1}, idempotency_key="gate-success",
     )
     _lease_and_request_approval(coordinator, worker_job)
-    coordinator.jobs.approve(worker_job.job_id, approver="natalie", authorized_executor="dev01")
+    coordinator.jobs.approve(worker_job.job_id, approver="kamara", authorized_executor="dev01")
 
     result = coordinator.jobs.execute(
         worker_job.job_id, executor_identity="dev01", presented_payload=worker_job.payload,
@@ -845,7 +845,7 @@ def test_worker_client_repeated_polling_while_pending_does_not_execute_or_duplic
 
 def test_worker_client_resumes_and_executes_exactly_once_after_approval(coordinator, approval_required_capability):
     client, transport, pending = _register_and_park(coordinator, approval_required_capability)
-    coordinator.jobs.approve(pending.job_id, approver="natalie", authorized_executor="dev01")
+    coordinator.jobs.approve(pending.job_id, approver="kamara", authorized_executor="dev01")
 
     completed = client.try_resume(pending)
     assert completed is not None
@@ -866,7 +866,7 @@ def test_worker_client_wrong_worker_cannot_resume(coordinator, approval_required
         architecture="arm64", capabilities=_caps(approval_required_capability), resource_limits={},
     )
     coordinator.heartbeat("dev02")
-    coordinator.jobs.approve(pending.job_id, approver="natalie", authorized_executor="dev01")
+    coordinator.jobs.approve(pending.job_id, approver="kamara", authorized_executor="dev01")
 
     impostor_client = WorkerClient(worker_id="dev02", transport=transport, allowed_root=FIXTURES)
     with pytest.raises(WorkerClientError):
@@ -881,7 +881,7 @@ def test_worker_client_wrong_worker_cannot_resume(coordinator, approval_required
 
 def test_worker_client_denial_ends_safely_and_releases_worker(coordinator, approval_required_capability):
     client, transport, pending = _register_and_park(coordinator, approval_required_capability)
-    coordinator.deny_job(pending.job_id, approver="natalie", reason="not needed")
+    coordinator.deny_job(pending.job_id, approver="kamara", reason="not needed")
 
     assert coordinator.jobs.get(pending.job_id).state == JobState.FAILED
     assert coordinator.workers.get("dev01").status == WorkerStatus.AVAILABLE  # released, not stuck BUSY
@@ -944,7 +944,7 @@ def test_worker_client_approval_expires_after_being_approved_ends_safely(coordin
     assert pending.state == JobState.WAITING_FOR_APPROVAL
 
     # 2. Approval is granted for the assigned worker.
-    coordinator.jobs.approve(pending.job_id, approver="natalie", authorized_executor="dev01")
+    coordinator.jobs.approve(pending.job_id, approver="kamara", authorized_executor="dev01")
     assert coordinator.jobs.get(pending.job_id).state == JobState.RUNNING  # approved, not yet executed
 
     # 3. Approval expires before execution.

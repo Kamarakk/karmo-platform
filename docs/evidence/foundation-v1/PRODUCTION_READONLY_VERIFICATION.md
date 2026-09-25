@@ -1,6 +1,6 @@
 # Foundation v1 — Production Read-Only Verification
 
-All commands below were executed against `karmo-ai01` under Natalie's
+All commands below were executed against `karmo-ai01` under Kamara's
 temporary, session-scoped, task-specific Production Access Authorization
 (chat message, 2026-09-09, "TEMPORARY TONIGHT-ONLY AUTHORIZATION"), per the
 shape defined in `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`'s
@@ -24,7 +24,7 @@ Purpose: Determine whether KARMO FOUNDATION v1 can be truthfully declared COMPLE
 Permitted operations: read-only file/manifest inspection, read-only SQL SELECT/\dt, read-only Qdrant HTTP GET, systemd/docker status queries, py_compile syntax check
 Authority: READ-ONLY (no write, restart, deploy, config change, or destructive action authorized or performed)
 Commands/command class: file find/sha256sum -c; docker exec ... psql -c "SELECT ..."; docker exec ... psql -c "\dt ..."; curl (Qdrant read API); systemctl/loginctl/docker status commands; run_auditor.py (report-only by construction); python -m py_compile
-Granted: 2026-09-09, by Natalie (chat message, this session)
+Granted: 2026-09-09, by Kamara (chat message, this session)
 Expires: automatically at session end / Foundation v1 closeout completion / 4 hours, whichever first — already exercised and closed out within this same session
 ```
 

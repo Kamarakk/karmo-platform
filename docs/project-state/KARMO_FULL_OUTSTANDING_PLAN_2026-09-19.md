@@ -23,7 +23,7 @@ Kamara's own words: too much back-and-forth, too many small decisions negotiated
 - Phase D1 (worker tool-calling proof): proven successful once, live, on Worker01 — a worker *can* serve a real chat round trip. Not wired into real traffic.
 - Phase E (decision audit), a circuit breaker, and Phase D2 (live worker routing): all built, tested, merged as PR #97/#93/#94. **Deliberately held inactive** after two independent external reviews found real gaps (credential over-privilege, worker tables becoming an undeclared chat-content store, a check-then-act race, and — most importantly — no proven speed benefit was ever measured). The activating credential file does not exist in production; nothing here can affect live chat unless that file is deliberately created later.
 
-**Full detail, if wanted:** `docs/project-state/CURRENT_STATE.md`'s 2026-09-19 entries; the two GPT review docs (`KARMO_D2_TECHNICAL_REVIEW_FOR_CLAUDE_2026-09-19.md`, `KARMO_D2_REVIEW_FOR_NATALIE_2026-09-19.md`).
+**Full detail, if wanted:** `docs/project-state/CURRENT_STATE.md`'s 2026-09-19 entries; the two GPT review docs (`KARMO_D2_TECHNICAL_REVIEW_FOR_CLAUDE_2026-09-19.md`, `KARMO_D2_REVIEW_FOR_KAMARA_2026-09-19.md`).
 
 ---
 

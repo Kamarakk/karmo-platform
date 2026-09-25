@@ -10,7 +10,7 @@ This session performed a code review of the H0.1 isolated failure-matrix
 test suite (`test/h01/tests/test_h01_failure_matrix.py`,
 `test/h01/conftest.py`) — the pre-cutover acceptance suite whose PASS/BLOCKED
 results are recorded in `docs/evidence/h01/H01_FAILURE_MATRIX_REPORT.md` and
-whose closeout Natalie already accepted on 2026-09-06. H0.1's production
+whose closeout Kamara already accepted on 2026-09-06. H0.1's production
 cutover completed separately on 2026-09-07/08, and Foundation v1 closeout
 (2026-09-09) separately resolved the two BLOCKED production-read-only
 components. **This session touched none of that.** It is a retroactive

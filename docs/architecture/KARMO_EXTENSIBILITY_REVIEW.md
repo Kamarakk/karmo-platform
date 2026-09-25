@@ -81,7 +81,7 @@ consumer, not a change to the H0.1 relay.
 **No blocker found**, with one standing constraint carried forward from the
 product vision rather than discovered in code (there is no trading code
 yet): **any future trade-execution capability requires an explicit human
-approval boundary** unless Natalie separately approves a different model.
+approval boundary** unless Kamara separately approves a different model.
 This is an I-09 DESTRUCTIVE/HIGH-IMPACT classification by definition, not an
 architectural finding about existing code.
 

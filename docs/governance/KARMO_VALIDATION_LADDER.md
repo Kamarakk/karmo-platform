@@ -34,7 +34,7 @@ for every workload under `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md
    (Codex or equivalent, per README.md's "Codex is the independent design,
    security, and evidence reviewer" operating rule) before anything is
    proposed for production.
-8. **Explicit production approval** — Natalie's explicit go-ahead, per
+8. **Explicit production approval** — Kamara's explicit go-ahead, per
    `AGENTS.md`; never implied by an earlier, narrower approval.
 9. **Production verification** — a minimal, read-only functional check after
    deployment (e.g. H0.1's "one delivered outbox event" test), not a full
@@ -59,7 +59,7 @@ Not every workload climbs every rung, and not every rung is expensive:
 - A new phase/feature/service/integration needs the full ladder, rungs 1–10,
   because it is exactly what I-08's "release/phase acceptance" and "a new
   integration boundary changed" triggers describe.
-- Production-facing steps (rungs 8–10) always require Natalie's explicit
+- Production-facing steps (rungs 8–10) always require Kamara's explicit
   approval per workload, regardless of how narrow rungs 1–7 were — this
   ladder never implies production authorization by itself.
 

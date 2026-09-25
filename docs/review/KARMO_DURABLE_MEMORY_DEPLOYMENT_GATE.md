@@ -221,6 +221,6 @@ Authority: READ-ONLY + WRITE — specifically: CREATE ROLE/GRANT (scoped as
   /opt/karmo/core-service, one service restart. No other write.
 Commands/command class: exactly the numbered commands in this document's
   VERIFY section
-Granted: <date, by Natalie>
+Granted: <date, by Kamara>
 Expires: automatically on task completion
 ```

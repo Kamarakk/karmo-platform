@@ -20,7 +20,7 @@ Workstream 1–15 output this same program produced, consolidated in
 
 ### User Story 1 - Implement post-foundation capabilities in large batches without repeated architecture stops (Priority: P1)
 
-Natalie wants a future large autonomous run to implement real Core v2
+Kamara wants a future large autonomous run to implement real Core v2
 components and eventually domain capabilities without stopping repeatedly
 to re-derive design decisions this program already made.
 
@@ -75,7 +75,7 @@ already is this test, for every `capability_class` × `financial_action` ×
 
 ### User Story 3 - Independently verify a future large run's own claims (Priority: P2)
 
-Natalie or ChatGPT wants to check a future Core v2 implementation run's
+Kamara or ChatGPT wants to check a future Core v2 implementation run's
 self-reported results against independent ground truth, not narrative.
 
 **Why this priority**: directly generalizes the lesson from the two prior
@@ -117,7 +117,7 @@ distinguishes a true record from a false one.
   specification's existence.
 - **FR-003**: Every proposed governance addition (configuration
   single-sourcing, tool-registration review) MUST remain explicitly
-  unadopted pending Natalie's separate decision.
+  unadopted pending Kamara's separate decision.
 - **FR-004**: The implementation dependency graph MUST be re-derivable
   from the readiness specs and architecture documents, not maintained as
   an independent, driftable source of truth.

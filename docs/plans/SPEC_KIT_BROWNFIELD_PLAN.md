@@ -14,7 +14,7 @@ Spec Kit operates strictly beneath existing KARMO governance. This is the
 binding order, not a suggestion:
 
 ```
-Natalie's explicit instructions
+Kamara's explicit instructions
         ↓
 AGENTS.md / CLAUDE.md
         ↓
@@ -105,7 +105,7 @@ isolated-before-production pattern, report-only-by-default for audit tools)
 
 ## What this plan does not authorize
 
-- Running `specify init` (Workload 4 requires Natalie's separate,
+- Running `specify init` (Workload 4 requires Kamara's separate,
   explicit go-ahead for that specific action).
 - Retroactively converting H0.0–H0.4 into Spec Kit `specs/` artifacts.
 - Any Spec Kit extension beyond the `claude` integration (e.g. the

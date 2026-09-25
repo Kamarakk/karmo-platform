@@ -176,7 +176,7 @@ print('after poll:', pending.state.value, '(expect WAITING_FOR_APPROVAL, not FAI
 still_pending = client.try_resume(pending)
 print('resume before approval:', still_pending, '(expect None -- not executed, not failed)')
 
-c.jobs.approve(pending.job_id, approver='natalie', authorized_executor='dev01')
+c.jobs.approve(pending.job_id, approver='kamara', authorized_executor='dev01')
 completed = client.try_resume(pending)
 print('after approval + resume:', completed.state.value, 'sha256:', completed.result.output['sha256'][:16] + '...')
 print('worker status:', c.workers.get('dev01').status.value, '(expect AVAILABLE)')
@@ -221,7 +221,7 @@ client = WorkerClient(worker_id='dev01', transport=LocalTransport(c),
     allowed_root='tests/fixtures/allowed_workspace')
 pending = client.poll_and_execute_once(['synthetic_expire_check'])
 print('after poll:', pending.state.value, '(expect WAITING_FOR_APPROVAL)')
-c.jobs.approve(pending.job_id, approver='natalie', authorized_executor='dev01')
+c.jobs.approve(pending.job_id, approver='kamara', authorized_executor='dev01')
 print('after approve:', c.jobs.get(pending.job_id).state.value, '(expect RUNNING)')
 clock.advance(400)  # expires before resume
 try:

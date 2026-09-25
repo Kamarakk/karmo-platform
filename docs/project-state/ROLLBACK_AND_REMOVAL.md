@@ -30,7 +30,7 @@ invent new rollback procedures beyond what those sources already describe.
   action not covered by evidence in this repo — treat as **NEEDS
   VERIFICATION** / requires its own explicit plan before attempting.
 - Outstanding: H01-T01/H01-T18 production-baseline/manifest reverification
-  was accepted as a residual risk by Natalie (2026-09-06), not performed,
+  was accepted as a residual risk by Kamara (2026-09-06), not performed,
   not waived as a future requirement (see NEXT_STEPS.md).
 
 ## H0.2 (VERIFIED, operator-attested)

@@ -1,6 +1,6 @@
 # KARMO Autonomous Workload Execution Contract
 
-Purpose: once Natalie approves a specific workload (as defined in
+Purpose: once Kamara approves a specific workload (as defined in
 `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md` or a future equivalent),
 Claude should be able to complete that workload's ordinary, reversible
 engineering steps without stopping to ask permission for each one. This
@@ -13,7 +13,7 @@ three govern.
 
 ## Precondition
 
-This contract applies **only** to a workload Natalie has explicitly
+This contract applies **only** to a workload Kamara has explicitly
 approved, and only within that workload's documented scope. It grants no
 standing authority outside an approved workload, and no authority at all
 until a workload is approved.
@@ -35,12 +35,12 @@ stopping to ask first:
 - generate evidence (reports, run logs, JUnit output) under
   `docs/evidence/<phase>/`;
 - update project documentation, including `docs/project-state/`;
-- prepare a commit or pull request for Natalie's review.
+- prepare a commit or pull request for Kamara's review.
 
 **"Fix and revalidate" default:** if an implementation defect is found
 during an approved workload and the fix is an ordinary, in-scope
 engineering correction, Claude should fix it and rerun the relevant tests
-rather than stopping to ask Natalie how to fix it. This mirrors how H0.4's
+rather than stopping to ask Kamara how to fix it. This mirrors how H0.4's
 pagination ceiling and pre-commit review findings were already handled.
 Stopping is for the boundaries below, not for ordinary defect-fixing.
 
@@ -60,10 +60,10 @@ Regardless of workload approval, Claude must not:
 - send or post anything externally (email, social media, messaging a
   customer, etc.) unless that specific external action was separately
   authorized;
-- merge a pull request when the workload requires Natalie's merge approval
+- merge a pull request when the workload requires Kamara's merge approval
   (the default — see Approval Boundaries below).
 
-## Where Claude must STOP and wait for Natalie
+## Where Claude must STOP and wait for Kamara
 
 Stop, describe the situation, and wait — do not guess and continue — when
 any of the following is reached, even mid-workload:
@@ -99,7 +99,7 @@ boundaries, and a workload's approval never pre-clears them:
 ## Relationship to the validation ladder and workload definitions
 
 Each workload in `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md` states its
-own "approval boundaries" and "where Claude must STOP for Natalie" sections.
+own "approval boundaries" and "where Claude must STOP for Kamara" sections.
 Those sections apply this contract's general rules to that workload's
 specific scope; they do not need to re-derive the general rules above, and
 this contract does not need each workload to repeat them verbatim.
@@ -111,6 +111,6 @@ or restrict autonomy itself.
 
 Claude may not treat this contract as self-amending. Any change to what
 counts as "ordinary reversible work" versus "a stop condition" is itself a
-governance change and requires Natalie's explicit approval, per the standing
+governance change and requires Kamara's explicit approval, per the standing
 gate above ("any change to KARMO governance or the engineering invariants
 themselves").

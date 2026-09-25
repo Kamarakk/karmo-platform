@@ -19,4 +19,4 @@
 - [ ] H0 phase and frozen acceptance criteria preserved
 - [ ] Tests pass or failures are documented
 - [ ] Codex review completed
-- [ ] Natalie approval required before merge/deployment
+- [ ] Kamara approval required before merge/deployment

@@ -3,7 +3,7 @@
 Status: **DESIGN ONLY. Not implemented, not started.** No model
 downloaded, no media stack installed, per explicit instruction. Produced
 under the Core v2 Engineering Blueprint Program, Workstream 10 — the
-domain that gives KARMO its "ears and a mouth," per Natalie's own stated
+domain that gives KARMO its "ears and a mouth," per Kamara's own stated
 long-term goal, treated with the weight that deserves rather than as an
 afterthought behind BloomBoss/Finance.
 

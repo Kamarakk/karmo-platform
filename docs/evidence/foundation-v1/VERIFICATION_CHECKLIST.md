@@ -1,6 +1,6 @@
 # Foundation v1 — Independent Verification Checklist
 
-For Natalie (or ChatGPT, via a repository-capable agent) to confirm
+For Kamara (or ChatGPT, via a repository-capable agent) to confirm
 Claude's claims tomorrow. All checks are read-only, safe, and short.
 
 ## 1. Confirm the four PRs actually merged

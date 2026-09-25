@@ -12,7 +12,7 @@ deduplicates and classifies.
 *(none)* — no finding in any program blocks starting the next
 post-foundation capability track. This is itself a finding worth stating
 explicitly: three full programs of review have not surfaced anything
-that must be fixed before Natalie can choose and start a capability.
+that must be fixed before Kamara can choose and start a capability.
 
 ## FIX BEFORE RELEVANT FEATURE
 
@@ -72,7 +72,7 @@ that must be fixed before Natalie can choose and start a capability.
 
 - **The two ambiguous `karmo-v05-new.html` legacy hashes** — standing
   constraint, unresolved by every program to date, correctly untouched by
-  this review too; requires Natalie's explicit version-ordering decision.
+  this review too; requires Kamara's explicit version-ordering decision.
 - **Configuration Single-Sourcing governance proposal** (prior program) —
   proposed, not adopted.
 - **Tool-registration review governance proposal** (Core v2 program) —

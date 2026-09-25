@@ -2,7 +2,7 @@
 
 Status: **DESIGN ONLY. Not implemented, not approved for implementation.**
 Produced under the Post-Foundation Overnight Readiness Program, Workstream
-3. This document does not choose Natalie's first post-foundation
+3. This document does not choose Kamara's first post-foundation
 capability and does not authorize building anything described here — see
 `docs/vision/KARMO_PRODUCT_VISION.md`'s explicit non-authorization notice,
 which applies equally to this document.
@@ -82,7 +82,7 @@ idempotent: true
 idempotency_mechanism: "order_id uniqueness constraint; retry is a no-op on conflict"
 rollback_or_compensation: "compensating void-sale tool (bloomboss.inventory.void_sale), itself its own REVERSIBLE_WRITE tool with its own approval requirement — never an in-place delete/rewrite"
 health_check: "bloomboss.db reachability, checked at registry startup and on-demand"
-deprecation_policy: "superseded_by field once a v2 exists; old version remains invocable and audited until explicitly retired by Natalie"
+deprecation_policy: "superseded_by field once a v2 exists; old version remains invocable and audited until explicitly retired by Kamara"
 dependencies: [bloomboss.inventory (read), karmo-core.audit-log (write)]
 observability: "every invocation logged to the invocation ledger (section 7) with input hash, output summary, actor, capability_class, approval_reference, result, duration"
 failure_isolation: "a failure in this tool must not affect any other domain's tools -- enforced by the registry running each domain's tools against that domain's own connection/credential scope, never a shared one"
@@ -245,7 +245,7 @@ for any future domain's own internal planning.
 - No code. No migration file. No registry table actually created.
 - No decision about which domain (Voice, Media, BloomBoss, KarmoLab,
   Personal Productivity, Finance) gets its first tool — that remains
-  entirely Natalie's choice (Workstream 5).
+  entirely Kamara's choice (Workstream 5).
 - No change to I-01 through I-09, to the Autonomous Execution Contract, or
   to the Production Access Authorization Gate — this design is built to
   sit underneath all three unchanged, translating their existing rules

@@ -9,7 +9,7 @@ Palmstreet is the first marketplace historical-data priority because most BloomB
 - structured marketplace data first;
 - screenshots/manual evidence only where structured source access is unavailable;
 - import both historical buys and sells when a connected platform exposes both;
-- Natalie and Kamara share the same canonical BloomBoss business state;
+- Kamara and Kamara share the same canonical BloomBoss business state;
 - device-neutral product direction remains unchanged.
 
 ## Implemented in isolated branch

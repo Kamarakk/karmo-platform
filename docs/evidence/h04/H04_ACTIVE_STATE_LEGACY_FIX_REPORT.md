@@ -85,5 +85,5 @@ tests closest to this change). Raw output:
 - `auditor.py`'s report-only guarantee unmodified and unaffected.
 - No schema change. No new finding type. No change to any other H0.4
   module.
-- Not merged — prepared as a PR for Natalie's review, per explicit
+- Not merged — prepared as a PR for Kamara's review, per explicit
   instruction.

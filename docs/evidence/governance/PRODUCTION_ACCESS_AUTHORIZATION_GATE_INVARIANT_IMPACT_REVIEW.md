@@ -11,13 +11,13 @@ The Foundation Closeout Program (2026-09-08) surfaced a real conflict:
 `CLAUDE.md` item 4 and `AGENTS.md`'s "Authority and boundaries" section
 both stated an unconditional, no-exception prohibition on any production
 access from an AI session, while KARMO's actual working model already
-relies on Natalie granting specific human approvals for specific
+relies on Kamara granting specific human approvals for specific
 production-facing actions (e.g. the H0.1/H0.2/H0.4 production cutovers,
 each operator-attested and explicitly authorized in the moment). Under the
 literal, unconditional wording, no explicit authorization — however
 specific — could lift the prohibition, which is not what either the
 existing approval model or `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`
-actually intended. Natalie explicitly approved resolving this conflict by
+actually intended. Kamara explicitly approved resolving this conflict by
 defining a narrow, explicit, task-specific authorization path while
 keeping production access prohibited by default.
 
@@ -104,7 +104,7 @@ existing pattern rather than introducing a new one.
 
 ## Authorization boundaries
 
-This governance change itself required, and received, Natalie's explicit
+This governance change itself required, and received, Kamara's explicit
 approval (the request that prompted it). It does not grant any production
 access by itself — no Production Access Authorization was issued or acted
 on as part of making this change; production was not accessed during this

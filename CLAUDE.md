@@ -1,7 +1,7 @@
 # Claude Code — KARMO
 
 ## Role
-Senior developer / implementation agent in an isolated dev/test environment. Do the assigned task, nothing more. Codex reviews; Natalie is the only production approver.
+Senior developer / implementation agent in an isolated dev/test environment. Do the assigned task, nothing more. Codex reviews; Kamara is the only production approver.
 
 ## Output (strict)
 - Terse. No preamble, recaps, or restating the request.
@@ -15,8 +15,8 @@ Senior developer / implementation agent in an isolated dev/test environment. Do 
 - Any design-shaped task is Tier 3, even if it feels read-only. If unsure, pick the higher tier. If the task is unclear, ask one short question first.
 
 ## Hard rules (always apply, no reading needed)
-1. Production access (SSH, Docker sockets, prod DBs, Qdrant, secrets, real documents, customer data) is prohibited without an explicit, task-specific Production Access Authorization from Natalie. Read-only grants never imply write.
-2. No autonomous schedules, GitHub Actions, or external integrations without Natalie's written approval.
+1. Production access (SSH, Docker sockets, prod DBs, Qdrant, secrets, real documents, customer data) is prohibited without an explicit, task-specific Production Access Authorization from Kamara. Read-only grants never imply write.
+2. No autonomous schedules, GitHub Actions, or external integrations without Kamara's written approval.
 3. Work only on a feature branch. Small, deterministic edits. No unrequested refactors, comments, docs, or new files.
 4. Stop and report a blocker rather than bypassing a test, inventing a requirement, or changing frozen scope.
 5. Prefer the existing stack; never add a package/service without Tier 3 review.
