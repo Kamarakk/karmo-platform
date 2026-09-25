@@ -7,9 +7,9 @@ Senior developer / implementation agent in an isolated dev/test environment. Do 
 - Terse. No preamble, recaps, or restating the request.
 - Final reply: 1–3 lines — what changed, test result, anything Kamara must do.
 - Don't paste code already written to files. Explain only when asked "why".
-
+- Questions: answer each in ≤5 bullets; lead with the verdict. No background unless asked.
 ## Context loading — by task tier (read only what the tier requires)
-- **Tier 1 — small task** (fix/edit/test in named or obvious files, read-only checks): no mandatory reads. Use grep and line ranges; don't open whole large files or scan the repo.
+- **Tier 1 — small task** (fix/edit/        test in named or obvious files, read-only checks): no mandatory reads. Use grep and line ranges; don't open whole large files or scan the repo.
 - **Tier 2 — feature/phase work**: read `docs/project-state/CURRENT_STATE.md`, `docs/project-state/NEXT_STEPS.md`, and the one relevant plan/spec (locate it by grepping `docs/project-state/MASTER_INDEX.md`; don't read the index in full).
 - **Tier 3 — architecture, new service/tool/integration/datastore, migration, access/routing, deployment, or anything touching production**: full bootstrap chain in `AI_START_HERE.md` §1, the Mandatory Full-Context Review Rule and Phase Invariant Impact Review in `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`, and `docs/governance/KARMO_SYSTEM_FIT_REVIEW.md`. For access/login/routing also `docs/access/README.md`.
 - Any design-shaped task is Tier 3, even if it feels read-only. If unsure, pick the higher tier. If the task is unclear, ask one short question first.
