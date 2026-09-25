@@ -326,7 +326,7 @@ identity-consistency-checked), and (c) the coordinator has durable
 persistence -- run a controlled test where KARMO-AI (the real
 coordinator) submits exactly one `hash_verify` or `pytest` job against a
 synthetic, explicitly-scoped test file, and KARMO-DEV01 polls, executes,
-and returns a result over the real network path, with a human (Natalie)
+and returns a result over the real network path, with a human (Kamara)
 watching the exchange live and able to kill it immediately. Do not expand
 the SAFE capability set beyond `READ`/workspace-scoped
 `REVERSIBLE_WRITE` for that first real integration test.

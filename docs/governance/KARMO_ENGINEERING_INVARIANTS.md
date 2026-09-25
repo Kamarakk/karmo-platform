@@ -1,6 +1,6 @@
 # KARMO Engineering Invariants
 
-Approved by Natalie. These nine invariants are permanent and apply to
+Approved by Kamara. These nine invariants are permanent and apply to
 every current and future KARMO phase, feature, service, migration, agent,
 integration, and deployment. This document is the single source of truth
 for them -- `AGENTS.md` and `CLAUDE.md` require compliance with it but do
@@ -388,7 +388,7 @@ governs, per this document's own precedence statement above.
 
 ### What lifts the default prohibition
 
-Only Natalie's **explicit, task-specific Production Access Authorization**
+Only Kamara's **explicit, task-specific Production Access Authorization**
 lifts the default prohibition, and only to the exact extent that
 authorization defines. A general workload approval, an approval under
 `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`, or an
@@ -463,7 +463,7 @@ secret-loading mechanism (e.g. an environment variable an application
 already reads) may be used without ever displaying, echoing, or writing
 out the value itself. This is consistent with, not an exception to,
 `AGENTS.md`'s "do not use or request secrets": that rule means never ask
-Natalie for a secret value or type one into a session; invoking an
+Kamara for a secret value or type one into a session; invoking an
 existing, already-wired loading mechanism without ever seeing or
 disclosing the value is not "using or requesting a secret" in that sense.
 
@@ -492,7 +492,7 @@ Purpose: <why>
 Permitted operations: <exact action(s)>
 Authority: READ-ONLY | READ-ONLY + WRITE (state exactly which writes)
 Commands/command class: <exact command(s) or bounded class>
-Granted: <date, by Natalie>
+Granted: <date, by Kamara>
 Expires: automatically on task completion
 ```
 
@@ -588,13 +588,13 @@ merge.
 
 KARMO architectural decisions, approvals, requirements, constraints, future
 goals, project-state changes, and other consequential information created
-during Natalie's ChatGPT planning sessions are **not** considered durably
+during Kamara's ChatGPT planning sessions are **not** considered durably
 recorded merely because they exist in ChatGPT conversation history.
 **ChatGPT conversation history is not the authoritative KARMO project
 record.** The Git repository, including `docs/project-state/`, is the
 authoritative persistent project record.
 
-When Natalie invokes **PROJECT SAVE** for a ChatGPT KARMO session, the same
+When Kamara invokes **PROJECT SAVE** for a ChatGPT KARMO session, the same
 PROJECT SAVE rule above applies, entered through this specific path:
 
 1. ChatGPT prepares a handoff containing the consequential decisions,

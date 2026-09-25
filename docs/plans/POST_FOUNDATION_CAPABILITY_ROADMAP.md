@@ -1,6 +1,6 @@
 # Post-Foundation Capability Roadmap
 
-Status: **Candidate tracks for analysis only. Does not choose Natalie's
+Status: **Candidate tracks for analysis only. Does not choose Kamara's
 first post-foundation capability.** Produced under the Post-Foundation
 Overnight Readiness Program, Workstream 5, from
 `docs/vision/KARMO_PRODUCT_VISION.md`,
@@ -162,13 +162,13 @@ review, this same program):
 - **Risks**: exactly the standing constraint already recorded in
   `docs/vision/KARMO_PRODUCT_VISION.md` — any trade-execution capability
   requires its own explicit human approval boundary, full stop, "unless
-  Natalie separately approves a different governance model in the
+  Kamara separately approves a different governance model in the
   future." Nothing in this roadmap changes that.
 - **Prerequisites**: research/paper-trading sub-areas only need Registry
   Phase A+B; live broker integration needs Phase C fully proven (ideally
   already exercised on a lower-risk domain first, per the implementation
   proposal's Phase D reasoning) plus its own separate, explicit governance
-  conversation with Natalie before design even begins.
+  conversation with Kamara before design even begins.
 - **Parallelizable with**: everything, for the research/paper-trading
   sub-areas specifically — genuinely independent of every other track.
   Live broker integration should not start until Registry Phase C exists
@@ -203,7 +203,7 @@ Registry Phase A (schema + manifest validation)
 
 - KarmoLab (read-only) and Finance (research/paper-trading) share no data
   and no risk-tier dependency on each other — the cleanest pair for
-  simultaneous work if Natalie wanted two tracks moving at once.
+  simultaneous work if Kamara wanted two tracks moving at once.
 - Media and Personal Productivity (internal-only sub-areas) are similarly
   independent of everything else.
 - BloomBoss's internal sub-areas (inventory, analytics) can proceed while
@@ -211,15 +211,15 @@ Registry Phase A (schema + manifest validation)
   Registry Phase C — a natural internal split within one track, not a
   reason to delay the whole track.
 
-## Recommended sequencing alternatives (not a choice made for Natalie)
+## Recommended sequencing alternatives (not a choice made for Kamara)
 
 **Alternative 1 — Registry-first.** Build Registry Phase A+B as its own
-small increment before touching any domain, then let Natalie pick a
+small increment before touching any domain, then let Kamara pick a
 domain with the foundation already in place. Lowest domain-specific risk,
 slightly longer time-to-first-visible-capability.
 
 **Alternative 2 — Domain-first, registry-alongside.** Start directly with
-whichever domain Natalie most wants to see progress on, building only the
+whichever domain Kamara most wants to see progress on, building only the
 narrow slice of Registry Phase A that domain's first tool actually needs
 (e.g. just enough manifest validation for one `READ` tool), expanding the
 registry generically later once a second domain arrives. Faster
@@ -232,9 +232,9 @@ implementation is materially cheaper than retrofitting").
 Explicitly build KarmoLab's read-only tools as Registry Phase D's proof
 case (as the implementation proposal already suggests), specifically
 *because* it is the lowest-risk domain, then move to whichever real
-capability domain Natalie actually wants once the registry is proven
+capability domain Kamara actually wants once the registry is proven
 end-to-end on low stakes. Slower to reach a "product" capability, safest
 path to one.
 
-Natalie's choice among these — or a different sequencing entirely — is
+Kamara's choice among these — or a different sequencing entirely — is
 the actual next decision, not made here.

@@ -14,10 +14,10 @@ Do not repeat full logs in chat. Put evidence in the pull request or `docs/evide
 
 ## Authority and boundaries
 
-- Do not access or modify production KARMO except under an explicit, task-specific Production Access Authorization from Natalie — see "Production Access Authorization" below. Production access is prohibited by default; a general workload or session approval never substitutes for this.
+- Do not access or modify production KARMO except under an explicit, task-specific Production Access Authorization from Kamara — see "Production Access Authorization" below. Production access is prohibited by default; a general workload or session approval never substitutes for this.
 - Work only on a feature branch in the approved non-production workspace.
 - Do not use or request secrets. Do not inspect private documents, database dumps, or real conversation data.
-- Do not change the H0 phase order or frozen acceptance criteria without a documented decision approved by Natalie.
+- Do not change the H0 phase order or frozen acceptance criteria without a documented decision approved by Kamara.
 - Never merge a pull request, deploy, delete data, alter production schema, restart production services, or weaken access controls.
 
 ## Mandatory System-Fit & Reuse Review

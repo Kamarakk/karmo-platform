@@ -157,7 +157,7 @@ constitution filled in per `docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md`'s
 content plan.
 
 ## H0.1 production verification closeout — H01-T01/H01-T18 (VERIFIED,
-executed 2026-09-09, Foundation v1 closeout, read-only, under Natalie's
+executed 2026-09-09, Foundation v1 closeout, read-only, under Kamara's
 temporary Production Access Authorization; exact command text with host
 paths not transcribed beyond what is already recorded, per SECURITY.md/
 `AGENTS.md` — no secret values were requested or displayed)

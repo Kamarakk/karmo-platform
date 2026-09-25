@@ -599,7 +599,7 @@ merge sequence ran.
   2026-09-09 (PR #12, `e3443e8`, superseding closed PR #11) — see
   "Production Access Authorization Gate adopted" below.
 - Foundation Closeout Program: **VERIFIED COMPLETE** (2026-09-09). Workload
-  1 merged (PR #7, `db4ff2f`). Workload 2 executed under Natalie's
+  1 merged (PR #7, `db4ff2f`). Workload 2 executed under Kamara's
   temporary, task-specific Production Access Authorization and **PASSED**
   both defined checks (H01-T01, H01-T18) — see
   `docs/evidence/foundation-v1/PRODUCTION_READONLY_VERIFICATION.md`.
@@ -620,7 +620,7 @@ merge sequence ran.
   this update.
 - ChatGPT Session Persistence: **VERIFIED** adopted (2026-09-08, same day) —
   extends the Project Save Completion Rule (same section, not a separate
-  rule) to cover Natalie's ChatGPT KARMO planning sessions: ChatGPT
+  rule) to cover Kamara's ChatGPT KARMO planning sessions: ChatGPT
   conversation history is explicitly **not** the authoritative KARMO project
   record; a ChatGPT session's consequential decisions/approvals/requirements
   only count as durably recorded once a repository-capable agent reconciles
@@ -670,7 +670,7 @@ merge sequence ran.
 
 - Isolated build and H01-T02–T17 failure-matrix acceptance: PASS (repo-evidenced).
 - H01-T01 and H01-T18 (live production/host reverification components):
-  recorded BLOCKED/NOT EXECUTED; Natalie accepted this residual risk on
+  recorded BLOCKED/NOT EXECUTED; Kamara accepted this residual risk on
   2026-09-06 and cleared H0.1 to proceed — **not** itself an authorization for
   cutover.
 - **Production cutover completed** (operator-attested, this session):
@@ -684,7 +684,7 @@ merge sequence ran.
   - Production functional test produced one delivered outbox event.
 - No repository evidence file documents the production cutover itself (by
   design — production actions are not recorded in this repo per `AGENTS.md`);
-  the above is recorded as VERIFIED on Natalie's direct, specific attestation,
+  the above is recorded as VERIFIED on Kamara's direct, specific attestation,
   not on independently re-read production state.
 - H01-T01/H01-T18's production-read-only components (referenced above as
   BLOCKED at 2026-09-06) were subsequently performed and PASSED on
@@ -829,7 +829,7 @@ in `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`, merged 2026-09-08
   `specify init` command, the constitution content plan, and the KARMO
   governance-hierarchy diagram Spec Kit must operate beneath.
 - **Initialization completed 2026-09-08** (Foundation Closeout Program,
-  Workload 4), on Natalie's explicit pre-authorization to run the exact
+  Workload 4), on Kamara's explicit pre-authorization to run the exact
   command already prepared in `docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md`:
   `uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.0.4`
   then `specify init --here --force --integration claude`, on branch
@@ -846,14 +846,14 @@ in `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`, merged 2026-09-08
 
 ## Foundation Closeout Program (2026-09-08)
 
-**VERIFIED** — Natalie approved a consolidation review's recommendation to
+**VERIFIED** — Kamara approved a consolidation review's recommendation to
 run Workloads 2, 3, and 4 of `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md`
 as one autonomous program, with pre-authorization for the two standing-gate
 actions each carried (read-only production access for Workload 2;
 `specify init` for Workload 4).
 
 - **Workload 2 (production verification closeout): PASS, executed
-  2026-09-09.** Natalie's temporary, session-scoped, task-specific
+  2026-09-09.** Kamara's temporary, session-scoped, task-specific
   Production Access Authorization (2026-09-09) lifted the default
   prohibition for exactly this task, per the newly-adopted Mandatory
   Production Access Authorization Gate (see below). Both defined checks
@@ -877,7 +877,7 @@ actions each carried (read-only production access for Workload 2;
 ### KARMO FOUNDATION v1 status: **COMPLETE, declared 2026-09-09**
 
 Per the consolidation review's own criterion (Foundation Complete =
-Workload 1 merged + an explicit Natalie decision on Workloads 2/3), applied
+Workload 1 merged + an explicit Kamara decision on Workloads 2/3), applied
 without modification: Workload 1 merged (PR #7); Workload 2 executed under
 explicit authorization and passed; Workload 3 merged. PRs #8, #9, #10, and
 the governance gate (PR #12, superseding closed PR #11) are all merged to
@@ -897,11 +897,11 @@ a data problem; recommended, not required, future follow-up). Full detail:
 
 ## Production Access Authorization Gate adopted (2026-09-08, governance correction)
 
-**VERIFIED** — Natalie explicitly approved resolving the conflict this
+**VERIFIED** — Kamara explicitly approved resolving the conflict this
 session's Workload 2 attempt surfaced: `CLAUDE.md` item 4 and `AGENTS.md`'s
 "Authority and boundaries" section both stated an unconditional,
 no-exception prohibition on any production access, leaving no path for
-Natalie's own explicit, task-specific authorizations (the same kind that
+Kamara's own explicit, task-specific authorizations (the same kind that
 already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
 
 - Added the **Mandatory Production Access Authorization Gate** to
@@ -922,7 +922,7 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
   Includes a copy-pasteable authorization-record shape.
 - `CLAUDE.md` item 4 and `AGENTS.md`'s equivalent bullet both rewritten to
   reference this gate rather than stating an unconditional, no-exception
-  prohibition (`AGENTS.md` was not named in Natalie's request but carried
+  prohibition (`AGENTS.md` was not named in Kamara's request but carried
   the identical unresolved conflict in an even more absolute form — leaving
   it as-is would have left the conflict only partially resolved).
   `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`'s existing
@@ -945,7 +945,7 @@ already governed the H0.1/H0.2/H0.4 production cutovers) to actually apply.
 
 ## Post-Foundation Overnight Readiness Program (2026-09-09)
 
-**VERIFIED** — Natalie authorized one large, repository-only autonomous
+**VERIFIED** — Kamara authorized one large, repository-only autonomous
 program the same night Foundation v1 was declared complete, explicitly
 prohibiting any production access. Five workstreams:
 
@@ -997,7 +997,7 @@ prohibiting any production access. Five workstreams:
   Dependency graph, shared Core requirements (tying to Workstream 4's
   findings), per-domain complexity/risk/prerequisites for Voice, Media,
   BloomBoss, KarmoLab, Personal Productivity, and Finance/Trading, and
-  three sequencing alternatives.  **Does not choose Natalie's first
+  three sequencing alternatives.  **Does not choose Kamara's first
   capability.** `docs/plans/POST_FOUNDATION_CAPABILITY_ROADMAP.md`.
 
 Workstreams 3–5 committed together: PR #16, merged into `main`.
@@ -1014,7 +1014,7 @@ capability implementation begun.
 
 ## Core v2 Engineering Blueprint Program (2026-09-09)
 
-**VERIFIED** — Natalie authorized one large, repository-only autonomous
+**VERIFIED** — Kamara authorized one large, repository-only autonomous
 planning/prototyping/validation program the same day Foundation v1 was
 declared complete and the Post-Foundation Overnight Readiness Program ran
 (that program's PRs #14–#17 were not touched or merged by this program,
@@ -1929,7 +1929,7 @@ Before deployment, Kamara asked for the same D2 work to be written up
 (`docs/project-state/PROJECT_SAVE_2026-09-19_MODEL_ROUTER_D2_REVIEW_FOR_CHATGPT.md`,
 committed as PR #98) and independently reviewed. Two review documents came
 back (`KARMO_D2_TECHNICAL_REVIEW_FOR_CLAUDE_2026-09-19.md`,
-`KARMO_D2_REVIEW_FOR_NATALIE_2026-09-19.md`), both recommending the same
+`KARMO_D2_REVIEW_FOR_KAMARA_2026-09-19.md`), both recommending the same
 conclusion: **hold D2 activation.**
 
 **Findings assessed and agreed with, in order of severity:**

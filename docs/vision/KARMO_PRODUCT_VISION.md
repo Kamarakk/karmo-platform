@@ -137,7 +137,7 @@ analysis, strategy/risk analysis, and broker integration as a future
 capability.
 
 **Any future capability that can execute a financial trade MUST require an
-explicit human approval boundary unless Natalie separately approves a
+explicit human approval boundary unless Kamara separately approves a
 different governance model in the future.** This is a standing constraint
 on this capability domain specifically, not merely a default that a busy
 workload can quietly opt out of — a trade-execution action is, by
@@ -162,7 +162,7 @@ personal tools.
 domains above does not authorize implementing any of them during the
 current foundation work.** The only work currently authorized is what is
 described in `docs/plans/KARMO_FOUNDATION_COMPLETION_PLAN.md` and approved,
-workload by workload, by Natalie. This vision document exists so that
+workload by workload, by Kamara. This vision document exists so that
 foundation-level decisions (naming, schema shape, coupling) can be made with
 this future direction in mind — see
 `docs/architecture/KARMO_EXTENSIBILITY_REVIEW.md` — not so that any part of

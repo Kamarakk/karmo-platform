@@ -35,7 +35,7 @@ autonomously" allowance.
 ```
 KARMO analyzes autonomously (MARKET_DATA + RESEARCH + ANALYSIS + BACKTESTING + PORTFOLIO_ANALYSIS)
   -> proposes a trade (TRADE_PROPOSAL: exact, fully-parameterized, not vague)
-    -> explains reasoning and risk (part of the same proposal, not a separate step Natalie must dig for)
+    -> explains reasoning and risk (part of the same proposal, not a separate step Kamara must dig for)
       -> requests explicit approval (Approval Engine's request(), authority_class=DESTRUCTIVE_HIGH_IMPACT)
         -> approval binds to EXACT trade parameters (arguments_digest, per the Approval Engine's own design -- Workstream 4, this program)
           -> executes ONLY after a valid, matching, unexpired, single-use approval (Approval Engine's execute(), exactly as prototyped and tested tonight)
@@ -104,7 +104,7 @@ document or by any prototype in this program.
 ## What remains for a future, separately-scoped implementation
 
 - Actual broker API integration (explicitly not tonight).
-- The UI/surface through which Natalie actually reviews a `TRADE_PROPOSAL`
+- The UI/surface through which Kamara actually reviews a `TRADE_PROPOSAL`
   and grants approval (the Approval Engine prototype proves the
   *backend* mechanism; presenting it clearly to a human is its own,
   separate design task — flagged also in Workstream 8's threat model,

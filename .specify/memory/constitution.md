@@ -19,7 +19,7 @@ implementation begins.
 Every feature is designed, implemented, and validated against isolated
 infrastructure (Docker-based PostgreSQL/Qdrant, synthetic credentials,
 non-default ports) before any production step is proposed. Production
-access, deployment, or writes require Natalie's separate, explicit
+access, deployment, or writes require Kamara's separate, explicit
 approval per `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`,
 regardless of how thoroughly the isolated stage passed.
 
@@ -56,7 +56,7 @@ recorded workflow decision.
 This constitution never restates, weakens, or competes with
 `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. Any amendment to this
 constitution that would change what counts as an engineering invariant is
-itself a governance change and requires Natalie's explicit approval, per
+itself a governance change and requires Kamara's explicit approval, per
 the standing gate in `docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md`.
 
 **Version**: 1.0.0 | **Ratified**: 2026-09-08 | **Last Amended**: 2026-09-08

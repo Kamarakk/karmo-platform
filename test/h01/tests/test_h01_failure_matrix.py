@@ -19,7 +19,7 @@ recorded in the handoff doc). That data does not exist in this repository and
 this suite must not reach out to production to get it. Those tests assert
 everything that is locally verifiable and then explicitly skip the
 live-baseline component, stating that it is blocked pending separate,
-Natalie-approved read-only production verification -- per this session's
+Kamara-approved read-only production verification -- per this session's
 corrective instructions.
 
 A small number of supplementary tests at the bottom of this file are kept for
@@ -163,7 +163,7 @@ def test_h01_t01_evidence_continuity():
         "(MANIFEST-H0-FINAL.sha256, MANIFEST-H01-ISOLATED-BUILD.sha256) "
         "requires read-only access to the production host per the handoff doc "
         "and is not available in this repository. Per corrective instructions, "
-        "this stops and requires Natalie's separate approval rather than "
+        "this stops and requires Kamara's separate approval rather than "
         "silently accessing production."
     )
 
@@ -689,7 +689,7 @@ def test_h01_t18_baseline_and_rollback_drill(pg_conn, qdrant_client):
         "karmo_semantic_memory=4/karmo_documents=8/karmo_h00_dense_baseline=8, "
         "per the handoff doc) requires separately approved, read-only access "
         "to the production host and is not performed here. Per corrective "
-        "instructions, this stops and requires Natalie's approval rather than "
+        "instructions, this stops and requires Kamara's approval rather than "
         "silently accessing production."
     )
 

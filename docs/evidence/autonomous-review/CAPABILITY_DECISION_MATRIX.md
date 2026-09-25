@@ -1,6 +1,6 @@
 # Capability Decision Matrix — A/B/C Comparison
 
-**Does not choose Natalie's first capability.** Prepared under the KARMO
+**Does not choose Kamara's first capability.** Prepared under the KARMO
 Large Autonomous Review, Workstream 9, to make that choice easier —
 comparing three concrete options plus a hybrid, on the axes requested.
 Builds on `docs/plans/POST_FOUNDATION_CAPABILITY_ROADMAP.md` and
@@ -9,7 +9,7 @@ without repeating their full content.
 
 | Axis | A. Tool/Capability Registry first | B. Voice first | C. BloomBoss first |
 |---|---|---|---|
-| **User value** | Indirect — no end-user-visible capability by itself | Direct and high — "ears and a mouth," Natalie's own stated long-term goal | Direct and high — real business operations value |
+| **User value** | Indirect — no end-user-visible capability by itself | Direct and high — "ears and a mouth," Kamara's own stated long-term goal | Direct and high — real business operations value |
 | **Dependency requirements** | None beyond what already exists (isolated prototypes proven, 160/160 tests) | Needs the registry (at least Phase A) **plus** a genuinely new Core abstraction (continuous-capability model) this review confirmed does not exist even as a prototype | Needs registry Phase A+B minimum; Phase C before any external-communication tool |
 | **How much Core v2 must exist first** | This *is* the Core v2 work — building it for real (Phase A/B minimum) | The most Core v2 must exist first of the three — registry Phase A/B/C **and** a new abstraction not yet designed in implementation detail (Workstream 10's own top finding) | Moderate — internal tools (inventory, cost) only need Phase A/B; external tools (customer messaging, social posting) need Phase C |
 | **Implementation effort** | MEDIUM (Phase A) to LARGE (Phase A+B+C) — sized in the dependency graph | VERY LARGE — the continuous-capability model alone is sized VERY LARGE in the dependency graph, before any Voice-specific work even starts | LARGE overall, but decomposable — internal sub-areas alone are a MEDIUM slice |
@@ -42,5 +42,5 @@ decision rather than blocking on them now.
 
 ## What this matrix does not do
 
-Choose. Natalie's decision, informed by this comparison and the fuller
+Choose. Kamara's decision, informed by this comparison and the fuller
 roadmap/dependency-graph documents it summarizes.

@@ -807,7 +807,7 @@ churn stops here.** Focus moves to the KARMO AI / Agent Engineering
 Learning Program and other directly useful capability work, unless
 Kamara explicitly chooses to open a new engineering track.
 
-## Items requiring Natalie's decision
+## Items requiring Kamara's decision
 
 ### From the Post-Foundation Overnight Readiness Program (MERGED)
 1. ~~Merge/reject PR #14~~ — **merged** into `main`.
@@ -937,4 +937,4 @@ program.
 - No governance was modified by either program.
 - No Voice/Media/BloomBoss/KarmoLab/Personal-Productivity/Finance
   capability was implemented or started.
-- No first-capability scope was chosen on Natalie's behalf.
+- No first-capability scope was chosen on Kamara's behalf.

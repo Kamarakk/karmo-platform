@@ -191,7 +191,7 @@ issue** in are listed at the end, not silently omitted.
   an explicit flag (`--apply`) or an explicit human trigger; nothing
   self-escalates.
 
-## Proposed invariant candidate — NOT adopted, Natalie's decision
+## Proposed invariant candidate — NOT adopted, Kamara's decision
 
 Only one recurring defect class (F5) was not already covered by an
 existing invariant:
@@ -207,4 +207,4 @@ existing invariant:
 This is **proposed only** — governance is not modified by this session.
 If adopted, it would most naturally sit alongside I-05 (resources/scale)
 or as a lightweight addition near I-02 (production parity). Whether to
-adopt it, and in what exact form, is Natalie's decision.
+adopt it, and in what exact form, is Kamara's decision.

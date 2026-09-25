@@ -4,7 +4,7 @@ Status: **PROPOSAL. Not approved. Not started.** Companion to
 `docs/architecture/KARMO_TOOL_CAPABILITY_REGISTRY.md` (the architecture)
 and `specs/001-tool-capability-registry/spec.md` (the Spec-Kit-shaped
 specification). This document proposes *how* the registry could be built,
-in phases, if and when Natalie chooses to build it — it does not choose
+in phases, if and when Kamara chooses to build it — it does not choose
 that for her, and no phase below is authorized by this document alone.
 
 ## Why propose phasing now, without implementing
@@ -12,7 +12,7 @@ that for her, and no phase below is authorized by this document alone.
 The Extensibility Review already identified this as "the single largest
 piece of unbuilt Core surface" and the one place a wrong first
 implementation would be expensive to retrofit. A phased proposal lets
-Natalie evaluate scope and cost before any Invariant Impact Review or
+Kamara evaluate scope and cost before any Invariant Impact Review or
 `/speckit-plan` cycle begins, consistent with the standing rule that
 Workload 5/H0.5 scope is chosen, not inferred.
 
@@ -52,7 +52,7 @@ Workload 5/H0.5 scope is chosen, not inferred.
 
 ### Phase D — First real domain tool, end to end
 
-- One single, low-risk `READ`-class tool from whichever domain Natalie
+- One single, low-risk `READ`-class tool from whichever domain Kamara
   chooses first (Workstream 5), registered and invoked through the full
   Phase A–C stack, to prove the registry works end-to-end before any
   higher-risk tool is ever registered.
@@ -86,7 +86,7 @@ scoping pass rather than a number guessed here.
 - Phase B depends on Phase A's schema existing.
 - Phase C depends on Phase A and B, and on the Production Access
   Authorization Gate (already adopted).
-- Phase D depends on Phase C and on Natalie's domain choice (Workstream 5).
+- Phase D depends on Phase C and on Kamara's domain choice (Workstream 5).
 
 See `docs/plans/POST_FOUNDATION_CAPABILITY_ROADMAP.md` for how this
 registry work relates to, and could be sequenced against, the six

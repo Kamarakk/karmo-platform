@@ -46,12 +46,12 @@ Registry itself).
 | KarmoLab read-only tools | DOMAIN-SPECIFIC | SMALL | Tool Registry Phase A+B only — the lowest-cost real domain work possible |
 | KarmoLab administration tools | DOMAIN-SPECIFIC | MEDIUM | Tool Registry Phase C; reuses the Production Access Authorization Gate directly |
 | Finance market-data/research/paper-trading tools | DOMAIN-SPECIFIC | MEDIUM | Tool Registry Phase A+B only |
-| Finance trade-execution tool | DOMAIN-SPECIFIC | LARGE | Tool Registry Phase C fully proven, Approval Engine fully proven, plus its own separate governance conversation with Natalie (unchanged from the prior program's roadmap) |
+| Finance trade-execution tool | DOMAIN-SPECIFIC | LARGE | Tool Registry Phase C fully proven, Approval Engine fully proven, plus its own separate governance conversation with Kamara (unchanged from the prior program's roadmap) |
 | Failure-injection framework (real, applied to real Core v2 components) | OPTIONAL now, MUST BUILD FIRST before production trust | MEDIUM | components it will test must exist first |
 | Autonomous-run evidence/verification tooling (real, wired to real git/gh) | OPTIONAL | SMALL–MEDIUM | this program's prototype (already proven); needs real subprocess/API implementations of the injected interfaces |
 | Security threat-model mitigations requiring code (SSRF allowlist, path-traversal guards in the dispatcher) | MUST BUILD FIRST | SMALL | Tool Registry Phase C |
-| Proposed "configuration single-sourcing" invariant (governance) | DEFER | N/A | Natalie's decision; not an implementation item |
-| Proposed "tool registration review" governance addition | DEFER | N/A | Natalie's decision; not an implementation item |
+| Proposed "configuration single-sourcing" invariant (governance) | DEFER | N/A | Kamara's decision; not an implementation item |
+| Proposed "tool registration review" governance addition | DEFER | N/A | Kamara's decision; not an implementation item |
 
 ## Candidate implementation batches
 
@@ -113,11 +113,11 @@ program's Workstream 3 than to a normal implementation batch.
 
 Finance trade-execution (needs its own governance conversation before any
 batch, per Workstream 11); the two proposed governance additions
-(Natalie's decision, not an implementation task at all).
+(Kamara's decision, not an implementation task at all).
 
 ## What this graph does not do
 
-Choose which batch happens first, or whether Natalie wants Batch 3
+Choose which batch happens first, or whether Kamara wants Batch 3
 (KarmoLab proving ground) before or after committing to a specific
 vertical's Batch 4. That remains open — see
 `docs/plans/POST_FOUNDATION_CAPABILITY_ROADMAP.md`'s three sequencing

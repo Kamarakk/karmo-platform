@@ -56,7 +56,7 @@ consequence of this specification existing.
 | Finance/Trading | `docs/plans/FINANCE_TRADING_SAFETY_SPEC.md` | Fits Core v2 for every tier except trade execution, which needs its own separate governance conversation before design even begins |
 
 **No domain above is chosen as the first post-foundation capability by
-this document.** That choice remains Natalie's, informed by
+this document.** That choice remains Kamara's, informed by
 `docs/plans/POST_FOUNDATION_CAPABILITY_ROADMAP.md` and
 `docs/plans/CORE_V2_IMPLEMENTATION_DEPENDENCY_GRAPH.md` (this program).
 

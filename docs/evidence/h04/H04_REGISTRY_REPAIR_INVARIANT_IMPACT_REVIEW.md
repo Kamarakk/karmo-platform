@@ -86,7 +86,7 @@ module) — proven the same way `test_auditor_is_report_only` proves
 `auditor.py`'s guarantee: a write-call-injection test that fails hard if
 any mutating API is reached during plan-building. No automatic/scheduled
 invocation is added — this remains a human-run CLI, matching
-`CLAUDE.md`'s prohibition on new autonomous schedules without Natalie's
+`CLAUDE.md`'s prohibition on new autonomous schedules without Kamara's
 written approval. Any production run of this tool (even with `--apply`) is
 a separate, future, explicitly-authorized action — out of this workload's
 scope entirely; only isolated-stack use is in scope here.

@@ -259,9 +259,9 @@ flowchart TB
   with (I-01–I-09, the Mandatory Phase Invariant Impact Review, the
   Mandatory Project Save Completion Rule, the Mandatory Production Access
   Authorization Gate).
-- **OWNER**: Natalie (approval authority); `docs/governance/` (canonical
+- **OWNER**: Kamara (approval authority); `docs/governance/` (canonical
   location).
-- **INPUTS**: explicit governance-change approval from Natalie only.
+- **INPUTS**: explicit governance-change approval from Kamara only.
 - **OUTPUTS**: the compliance obligation every phase/workload/session
   operates under.
 - **STATE**: `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`,

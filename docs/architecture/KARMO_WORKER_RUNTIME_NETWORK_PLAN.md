@@ -93,7 +93,7 @@ oversight -- do not assume `resume()` is network-ready either.
    proving it is the `worker_id` it claims to be -- not just a
    consistent hostname/platform/architecture tuple (today's only check).
    Candidate: a per-worker signed token issued out-of-band by a human
-   operator (Natalie) at worker provisioning time, verified by the
+   operator (Kamara) at worker provisioning time, verified by the
    coordinator on every call, not just at registration.
 2. **Coordinator authentication**: the worker must be able to verify it
    is actually talking to the real KARMO coordinator, not an

@@ -6,7 +6,7 @@ It must never contain secrets, production conversation data, customer/private do
 
 ## Operating rule
 
-Claude is the isolated development/test implementer. Codex is the independent design, security, and evidence reviewer. Natalie is the only production approver.
+Claude is the isolated development/test implementer. Codex is the independent design, security, and evidence reviewer. Kamara is the only production approver.
 
 ## Current status
 

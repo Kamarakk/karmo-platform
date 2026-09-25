@@ -1,7 +1,7 @@
 # KARMO Autonomous-Run Verification System
 
 Status: **DESIGN**, with a working prototype schema + validator (see
-`core-v2-prototypes/run_evidence/`). Formalizes the process Natalie and
+`core-v2-prototypes/run_evidence/`). Formalizes the process Kamara and
 ChatGPT established across the last two sessions (the Foundation v1
 closeout evidence package and this program's own workstream reports) into
 a reusable, checkable shape for every future large Claude run. Produced
@@ -102,7 +102,7 @@ grants Claude additional permissions, expands scope, or waives any
 approval gate — including the Mandatory Production Access Authorization
 Gate. A high trust score from ten prior runs does not pre-clear an
 eleventh run for anything it wasn't already explicitly authorized for.
-**Natalie remains the sole authority for permission changes**, exactly as
+**Kamara remains the sole authority for permission changes**, exactly as
 stated in this program's own instruction. A low trust score is useful
 information (something to ask about before approving the next run); a
 high one is not itself an approval.

@@ -2,7 +2,7 @@
 
 No merge commands were executed to produce this document — every step
 below was verified via local simulation only (`git merge` on a scratch
-branch, never pushed, discarded after). Natalie (or whoever has merge
+branch, never pushed, discarded after). Kamara (or whoever has merge
 authority) performs the actual merges on GitHub.
 
 ## Sequence

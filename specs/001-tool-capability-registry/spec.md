@@ -10,7 +10,7 @@ Produced under the Post-Foundation Overnight Readiness Program, Workstream
 3, as a Spec-Kit-shaped artifact per that program's instruction to "use
 Spec Kit artifacts where appropriate." This is *not* the output of
 `/speckit-specify` run against an approved feature — no such approval
-exists yet. It exists so that, if and when Natalie chooses this as a
+exists yet. It exists so that, if and when Kamara chooses this as a
 post-foundation capability track, a specification is already drafted for
 her review rather than starting from a blank template. Choosing it is
 explicitly **not** decided by this document — see
@@ -81,7 +81,7 @@ without a matching authorization; confirm it is blocked and logged as
 
 ### User Story 3 - Independently audit what actually happened (Priority: P2)
 
-Natalie (or a future ChatGPT/ops session) wants to confirm no tool was
+Kamara (or a future ChatGPT/ops session) wants to confirm no tool was
 ever invoked above its declared approval floor, and that every
 `financial_action`/`destructive_action` call has a recorded human
 approval reference.

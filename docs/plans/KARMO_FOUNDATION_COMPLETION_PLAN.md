@@ -6,7 +6,7 @@ reconstructed from assumption. Where the record does not yet define a
 scope (H0.5's content), this plan says so rather than inventing one.
 
 Each workload below is designed to run under
-`docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md` once Natalie
+`docs/governance/KARMO_AUTONOMOUS_EXECUTION_CONTRACT.md` once Kamara
 approves it, and to validate itself using
 `docs/governance/KARMO_VALIDATION_LADDER.md`. Neither is restated per
 workload — only the workload-specific scope of each is given.
@@ -71,7 +71,7 @@ production-facing, nothing destructive.
 **Approval boundaries:** this workload's own purpose is to commit, so
 workload approval covers branch/commit/PR creation (an ordinary reversible
 git operation on a feature branch, not one of the standing gates). Merge
-still requires Natalie's separate approval, matching every prior PR in this
+still requires Kamara's separate approval, matching every prior PR in this
 repository's history.
 
 **Dependencies on previous workloads:** none.
@@ -79,7 +79,7 @@ repository's history.
 **What Claude may execute autonomously:** branch, stage, commit, targeted
 H0.4 re-verification, PR preparation.
 
-**Where Claude must STOP for Natalie:** before merging the PR; immediately,
+**Where Claude must STOP for Kamara:** before merging the PR; immediately,
 without committing, if any diff of the H0.3/frozen-design content shows an
 unexpected difference from what this reconciliation already read (would
 indicate undocumented drift, not a simple commit).
@@ -91,11 +91,11 @@ mostly gated by PR review turnaround, not implementation time.
 
 ## Workload 2 — Production Verification Closeout (H01-T01/H01-T18)
 
-**Objective:** close the residual risk Natalie accepted on 2026-09-06 by
+**Objective:** close the residual risk Kamara accepted on 2026-09-06 by
 reverifying, read-only, the two production-state components the H0.1
 failure matrix left BLOCKED.
 
-**Prerequisites:** Natalie's **explicit, separate authorization for
+**Prerequisites:** Kamara's **explicit, separate authorization for
 read-only production access** — workload approval alone does not clear
 this; production access is a standing gate regardless of workload
 approval, per the autonomous execution contract.
@@ -140,12 +140,12 @@ stays intact) recording the H01-T01/T18 reverification result, plus a
 
 **Approval boundaries:** Claude may prepare the exact commands and the
 report template autonomously. **Must STOP before any actual production
-connection** and present the exact commands for Natalie's authorization
+connection** and present the exact commands for Kamara's authorization
 first.
 
 **Dependencies on previous workloads:** none; independent of Workload 1.
 
-**Where Claude must STOP for Natalie:** before establishing any production
+**Where Claude must STOP for Kamara:** before establishing any production
 connection; immediately upon finding any discrepancy against the recorded
 baseline (do not silently reconcile — this is exactly the "evidence
 conflicts with an authoritative record" stop condition).
@@ -179,7 +179,7 @@ isolated acceptance suite against the existing H0.4 Docker stack.
 
 **Explicitly out of scope:** any automatic/scheduled/background repair (no
 cron, no daemon — `CLAUDE.md` prohibits new autonomous schedules without
-Natalie's written approval); any change to `auditor.py`'s report-only
+Kamara's written approval); any change to `auditor.py`'s report-only
 guarantee; any production execution of the new tool (a separate, future
 approval, exactly as `bootstrap_legacy_registry.py`'s own production dry-run
 and `--apply` runs each required explicit authorization).
@@ -221,7 +221,7 @@ matching the bootstrap tool's own history.
 **Dependencies on previous workloads:** none strictly; logically extends
 already-accepted H0.4 architecture.
 
-**Where Claude must STOP for Natalie:** before any production execution of
+**Where Claude must STOP for Kamara:** before any production execution of
 the tool (even with `--apply` on the isolated stack, that's fine — only
 production is gated); if the design would require touching `auditor.py`'s
 report-only guarantee (a scope-expansion signal, not an ordinary
@@ -239,7 +239,7 @@ existing patterns); a few hours of autonomous implementation and testing.
 the brownfield inspection already completed and the detailed plan in
 `docs/plans/SPEC_KIT_BROWNFIELD_PLAN.md`.
 
-**Prerequisites:** Natalie's **explicit, separate authorization to actually
+**Prerequisites:** Kamara's **explicit, separate authorization to actually
 run `specify init`** — this remains a standing requirement regardless of
 workload approval, per Phase 7's explicit instruction to prepare but not
 execute.
@@ -283,13 +283,13 @@ only.
 
 **Approval boundaries:** Claude may prepare everything (branch, constitution
 draft text, exact commands) autonomously. **Must STOP before running
-`specify init`.** Merge requires Natalie's separate approval.
+`specify init`.** Merge requires Kamara's separate approval.
 
 **Dependencies on previous workloads:** none technically; logically should
 precede Workload 5, since H0.5 is intended to run through the Spec Kit
 workflow.
 
-**Where Claude must STOP for Natalie:** before executing `specify init`;
+**Where Claude must STOP for Kamara:** before executing `specify init`;
 before merging the resulting PR.
 
 **Estimated effort:** small — under an hour of autonomous execution once
@@ -303,12 +303,12 @@ draft is the only real writing task.
 **Objective:** define and begin the next KARMO development phase under the
 now-mandatory invariant-review-first, Spec Kit-structured workflow.
 
-**Prerequisites:** Workload 4 merged; **Natalie has chosen H0.5's actual
+**Prerequisites:** Workload 4 merged; **Kamara has chosen H0.5's actual
 feature scope.** This is explicitly undetermined as of this plan — no H0.5
 hardening-plan document exists anywhere in this repository, and this plan
 does not invent one, per instruction.
 
-**Exact scope:** TBD, pending Natalie's scope decision. Once chosen, the
+**Exact scope:** TBD, pending Kamara's scope decision. Once chosen, the
 fixed process is: Invariant Impact Review → `/speckit.specify` →
 `/speckit.plan` → `/speckit.tasks` → `/speckit.implement` → validation
 ladder → evidence → phase acceptance (per
@@ -329,7 +329,7 @@ defined by this workload's own `/speckit.specify` and `/speckit.plan`
 artifacts once scope is chosen — that is the point of running it through
 Spec Kit rather than predefining it in this document.
 
-**Approval boundaries:** Natalie must approve H0.5's scope before
+**Approval boundaries:** Kamara must approve H0.5's scope before
 `/speckit.specify` is run. After that, ordinary implementation follows the
 autonomous execution contract like any other approved workload, subject to
 whatever production/destructive/external boundaries that workload's own
@@ -337,8 +337,8 @@ whatever production/destructive/external boundaries that workload's own
 
 **Dependencies on previous workloads:** Workload 4.
 
-**Where Claude must STOP for Natalie:** before choosing H0.5's scope (must
-come from Natalie, not be inferred); at whatever production/destructive/
+**Where Claude must STOP for Kamara:** before choosing H0.5's scope (must
+come from Kamara, not be inferred); at whatever production/destructive/
 external-action boundary this workload's own plan identifies, once scoped.
 
 **Estimated effort:** cannot be meaningfully estimated until scope is

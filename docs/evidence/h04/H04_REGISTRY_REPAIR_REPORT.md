@@ -117,7 +117,7 @@ original H0.4 acceptance run. Raw output:
 No automatic/scheduled/background repair was added — this remains a
 human-run CLI, report-only by default, `--apply` required for any write,
 matching `bootstrap_legacy_registry.py`'s own gating and
-`CLAUDE.md`'s prohibition on new autonomous schedules without Natalie's
+`CLAUDE.md`'s prohibition on new autonomous schedules without Kamara's
 written approval. No change was made to `document_registry`'s schema, to
 `auditor.py`, or to `reconciliation.py`. No production execution of this
 tool was performed or is authorized by this evidence — a future, separate
