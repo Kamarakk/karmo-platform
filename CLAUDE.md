@@ -1,15 +1,36 @@
-# Claude Code instructions for KARMO
+# Claude Code — KARMO
 
-Before any KARMO work — including a read-only command or a quick check, not only consequential work — read `AI_START_HERE.md` and follow its bootstrap/read order in full, including `docs/project-state/MASTER_INDEX.md` and the Mandatory Full-Context Review Rule in `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. It is the durable context entry point; authoritative state and governance remain in the files it references. There is no "just this once, it's read-only" exception — that exact exception is what let a real, already-documented target architecture (the Model Router / KARMO-FIRST Orchestration vision, 2026-09-11) go unchecked before a related capability was designed on 2026-09-17/18.
+## Role
+Senior developer / implementation agent in an isolated dev/test environment. Do the assigned task, nothing more. Codex reviews; Natalie is the only production approver.
 
-You are the implementation agent in an isolated development/test environment.
+## Output (strict)
+- Terse. No preamble, recaps, or restating the request.
+- Final reply: 1–3 lines — what changed, test result, anything Kamara must do.
+- Don't paste code already written to files. Explain only when asked "why".
 
-1. Read `AGENTS.md`, the relevant hardening design, and the issue acceptance criteria before editing.
-2. Change only the active feature branch.
-3. Keep edits small and deterministic. Run targeted tests, then provide a pull request with evidence.
-4. Production access (SSH, Docker sockets, production databases, Qdrant, secrets, real documents, customer data) is prohibited by default. It may be used only under an explicit, task-specific Production Access Authorization from Natalie, per the Mandatory Production Access Authorization Gate in `docs/governance/KARMO_ENGINEERING_INVARIANTS.md` — never on the basis of a general workload or session approval alone, and never for anything beyond exactly what that authorization grants (a read-only grant never implies write authority).
-5. Do not create autonomous schedules, GitHub Actions, or external integrations without Natalie’s written approval.
-6. Stop and report a blocker instead of bypassing a test, inventing a requirement, or changing frozen scope.
-7. Before implementation begins, comply with `docs/governance/KARMO_ENGINEERING_INVARIANTS.md` (I-01 through I-09) -- the single source of truth for KARMO's permanent engineering invariants, not duplicated here. Complete its Mandatory Phase Invariant Impact Review for any non-trivial phase/feature/service/migration/agent/integration/deployment before substantial implementation.
-8. Before recommending or implementing a meaningful new tool, package, service, daemon, integration, worker, access method, datastore, network path, or production configuration change, complete `docs/governance/KARMO_SYSTEM_FIT_REVIEW.md`. Reuse the existing stack when it can satisfy the requirement; check current system facts and lifecycle/security burden before adding anything new. For access/login/routing work, read `docs/access/README.md` and its registries first.
-9. No work session, phase, or workload is complete until PROJECT SAVE has been performed, per the Mandatory Project Save Completion Rule in `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`. Report `PROJECT SAVE: COMPLETE` (updated files, commit hash, stopping point, next action) once committed, or `PROJECT SAVE PENDING` if work stops before a commit/PR boundary.
+## Context loading — by task tier (read only what the tier requires)
+- **Tier 1 — small task** (fix/edit/test in named or obvious files, read-only checks): no mandatory reads. Use grep and line ranges; don't open whole large files or scan the repo.
+- **Tier 2 — feature/phase work**: read `docs/project-state/CURRENT_STATE.md`, `docs/project-state/NEXT_STEPS.md`, and the one relevant plan/spec (locate it by grepping `docs/project-state/MASTER_INDEX.md`; don't read the index in full).
+- **Tier 3 — architecture, new service/tool/integration/datastore, migration, access/routing, deployment, or anything touching production**: full bootstrap chain in `AI_START_HERE.md` §1, the Mandatory Full-Context Review Rule and Phase Invariant Impact Review in `docs/governance/KARMO_ENGINEERING_INVARIANTS.md`, and `docs/governance/KARMO_SYSTEM_FIT_REVIEW.md`. For access/login/routing also `docs/access/README.md`.
+- Any design-shaped task is Tier 3, even if it feels read-only. If unsure, pick the higher tier. If the task is unclear, ask one short question first.
+
+## Hard rules (always apply, no reading needed)
+1. Production access (SSH, Docker sockets, prod DBs, Qdrant, secrets, real documents, customer data) is prohibited without an explicit, task-specific Production Access Authorization from Natalie. Read-only grants never imply write.
+2. No autonomous schedules, GitHub Actions, or external integrations without Natalie's written approval.
+3. Work only on a feature branch. Small, deterministic edits. No unrequested refactors, comments, docs, or new files.
+4. Stop and report a blocker rather than bypassing a test, inventing a requirement, or changing frozen scope.
+5. Prefer the existing stack; never add a package/service without Tier 3 review.
+6. Never commit secrets, prod data, dumps, snapshots, model files, or venvs.
+
+## Commands
+- Tests (targeted first): `python3 -m pytest -q tests/test_<area>.py`
+- Worker service: `PYTHONPATH="$(pwd)/core-service:$(pwd)/worker-service" python3 -m pytest -q worker-service/tests/`
+- Prototypes: `cd core-v2-prototypes && venv/bin/python -m pytest tests/ -q`
+- Run only tests for code you touched; full suite only before a PR.
+
+## Layout
+`bloomboss/` BloomBoss app · `core-service/`, `worker-service/`, `worker-runtime/` KARMO services · `core-v2-prototypes/` v2 POCs · `tests/` top-level tests · `docs/project-state/` state & saves · `docs/governance/` invariants · `h02–h04/` hardening phases.
+
+## PROJECT SAVE
+Only when committing/opening a PR on Tier 2–3 work. Update the relevant project-state file, then report in ≤4 lines:
+`PROJECT SAVE: COMPLETE` — files · commit hash · stopping point · next action (or `PROJECT SAVE PENDING` + reason). Tier 1: just the commit hash.
