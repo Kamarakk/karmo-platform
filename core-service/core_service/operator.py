@@ -415,7 +415,9 @@ _STATUS_WORDS = re.compile(
 _TOOL_TRIGGER_WORDS = {
     "list_tasks": re.compile(r"\b(task|tasks|to-do|todo|to do)\b", re.IGNORECASE),
     "bloomboss_report": re.compile(
-        r"\b(bloom\s*b\w*oss|alocasia|cultivar|revenue|sell-through|supplier|plant sales?)\b",
+        r"\b(bloom\s*b\w*oss|alocasia|cultivars?|revenue|sell-through|suppliers?|plants?|nursery"
+        r"|sales|sold|sell|selling|sells|best[\s-]?sellers?|margins?|profits?|profitable|profitability"
+        r"|orders?|purchases?|inventory|stock|my business)\b",
         re.IGNORECASE,
     ),
     "ask_claude": re.compile(r"\b(claude|anthropic|second opinion)\b", re.IGNORECASE),

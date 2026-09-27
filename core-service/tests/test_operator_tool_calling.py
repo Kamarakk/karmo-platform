@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import uuid
 
+import pytest
+
 from core_service.control import ApprovalRequirement
 from core_service.model_router import ModelResource
 from core_service.ollama_client import OllamaClientError
@@ -203,6 +205,29 @@ def test_a_bloomboss_question_offers_only_bloomboss_report():
     operator.handle("what is bloomboss's best selling alocasia?")
 
     assert _tool_names(client.requests[0]["tools"]) == {"bloomboss_report"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "how many plants did we sell last month?",
+        "what were my sales in August?",
+        "which items are my best sellers?",
+        "what's my profit margin looking like?",
+        "how is my business doing?",
+        "how much inventory do I have in stock?",
+    ],
+)
+def test_business_questions_without_the_word_bloomboss_still_offer_bloomboss_report(text):
+    """Live gap (2026-09-27): a BloomBoss question phrased in plain business
+    words (sales, plants, profit) matched no trigger, so the tool was never
+    offered and KARMO answered without it."""
+    client = RecordingNoToolClient()
+    operator = KarmoOperator(model_client=client, task_store=FakeTaskStore())
+
+    operator.handle(text)
+
+    assert "bloomboss_report" in _tool_names(client.requests[0]["tools"])
 
 
 def test_a_message_matching_two_tool_triggers_offers_both():
