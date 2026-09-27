@@ -170,7 +170,7 @@ target allowlist has anything real to allowlist.
 ## E. Housekeeping / long-standing cleanup (not urgent, still open)
 
 - `core-v2-prototypes/` vs `worker-service/` coupling and stale README claim (found 2026-09-17, never resolved): decide whether to extract the shared `approval_engine`/`job_model`/`tool_registry` code into a real non-prototype package, whether `worker-service/` should be finished/merged/deleted, and fix the now-false "nothing in this directory is wired into production" claim. Any deletion goes through the standing deletion-approval gate (list candidates individually, Kamara approves each).
-- Worker heartbeat renewed only once per loop iteration, before `poll_once()` runs — a long enough capability call could let a worker's own heartbeat lease expire mid-submission. Found 2026-09-19, not fixed.
+- Worker heartbeat renewed only once per loop iteration, before `poll_once()` runs — a long enough capability call could let a worker's own heartbeat lease expire mid-submission. Found 2026-09-19. **Fixed in code 2026-09-27** (`ssh_worker_client.py` renews the heartbeat after execution, before `submit_result`); not yet deployed to Worker01/Worker02.
 - `llama3.2:3b`/`qwen3:4b` — confirmed already removed from `karmo-ai01`'s Ollama install (moot, no action needed).
 - Two ambiguous legacy document hashes (`karmo-v05-new.html`) — intentionally left unresolved pending a human decision on version ordering. Do not resolve without that explicit decision.
 - Report-only registry auditor (reconciling `tool_registry` against actual invocations) — recommended, never started, worth doing before the registry grows past its current ~5 tools.

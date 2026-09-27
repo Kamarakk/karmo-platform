@@ -80,6 +80,10 @@ class SshRemoteWorkerClient:
         self.credential_provider = credential_provider
         self.result_authenticator = result_authenticator
         self.executor = executor
+        # Remembered from the loop's own heartbeat so poll_once() can renew
+        # the worker lease after a long capability run -- Core rejects
+        # submit_result once the worker heartbeat lease has lapsed.
+        self._heartbeat_lease_seconds = None
 
     def _credential(self) -> str:
         token = self.credential_provider()
@@ -88,6 +92,7 @@ class SshRemoteWorkerClient:
         return token
 
     def heartbeat(self, *, lease_seconds: int = 90, ollama_snapshot: dict | None = None):
+        self._heartbeat_lease_seconds = lease_seconds
         return self.transport.heartbeat(
             worker_id=self.config.worker_id,
             credential_token=self._credential(),
@@ -167,6 +172,17 @@ class SshRemoteWorkerClient:
             result=result,
             execution_ticket_digest=token_digest(ticket),
         )
+        # The loop heartbeats only once per cycle, before poll. A capability
+        # that ran longer than the heartbeat lease would otherwise have its
+        # finished result refused by Core ("worker heartbeat lease expired"),
+        # deterministically, on every retry. Best-effort: a failed renewal
+        # still falls through to submit_result's own bounded retry/error.
+        if self._heartbeat_lease_seconds is not None:
+            try:
+                self.heartbeat(lease_seconds=self._heartbeat_lease_seconds)
+            except Exception:  # noqa: BLE001 -- submit_result surfaces the real failure
+                pass
+
         final = None
         submit_error = None
         for attempt in range(SUBMIT_RESULT_MAX_ATTEMPTS):
