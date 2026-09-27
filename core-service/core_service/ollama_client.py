@@ -45,9 +45,10 @@ class OllamaChatClient:
     # measured live), separate from the tool-schema-inflation cost already
     # fixed by selective tool-offering. Made a constructor default instead
     # of a hardcoded literal so a future tuning pass doesn't require
-    # touching this file again -- the value itself is intentionally
-    # unchanged here, not silently raised or lowered as a side effect.
-    DEFAULT_NUM_PREDICT = 96
+    # touching this file again. Raised 96 -> 300 (2026-09-27, Kamara's
+    # approval): 96 cut real BloomBoss answers off mid-list. It is a cap,
+    # not a target -- the model stops when its answer is done.
+    DEFAULT_NUM_PREDICT = 300
 
     def __init__(self, base_url: str = "http://127.0.0.1:11434", *, timeout: float = 120.0,
                  num_predict: int = DEFAULT_NUM_PREDICT):

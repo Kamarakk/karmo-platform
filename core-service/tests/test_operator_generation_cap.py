@@ -33,7 +33,7 @@ def test_local_operator_request_has_generation_limit():
         client = OllamaChatClient(f"http://127.0.0.1:{server.server_port}")
         result = client.chat(model="qwen3:8b", messages=[{"role": "user", "content": "Reply OK"}])
         assert result == "OK"
-        assert captured["options"]["num_predict"] == 96
+        assert captured["options"]["num_predict"] == 300
     finally:
         server.shutdown()
         thread.join(timeout=5)
@@ -41,8 +41,8 @@ def test_local_operator_request_has_generation_limit():
 
 def test_num_predict_is_configurable_per_client_2026_09_20():
     """The generation cap was previously a hardcoded literal in
-    _request_message; it's now a constructor default (DEFAULT_NUM_PREDICT
-    stays 96, unchanged) so a future tuning pass can construct
+    _request_message; it's now a constructor default (DEFAULT_NUM_PREDICT,
+    300 since 2026-09-27) so a future tuning pass can construct
     OllamaChatClient(num_predict=...) without editing ollama_client.py."""
     captured = {}
 

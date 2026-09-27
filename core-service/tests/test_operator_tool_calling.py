@@ -197,7 +197,7 @@ def test_a_task_question_offers_only_list_tasks():
     assert _tool_names(client.requests[0]["tools"]) == {"list_tasks", "bloomboss_report"}
 
 
-def test_a_bloomboss_question_offers_only_bloomboss_report():
+def test_a_bloomboss_question_offers_no_tools_once_the_report_is_prerun():
     store = FakeTaskStore()
     store.seed()
     client = RecordingNoToolClient()
@@ -205,7 +205,7 @@ def test_a_bloomboss_question_offers_only_bloomboss_report():
 
     operator.handle("what is bloomboss's best selling alocasia?")
 
-    assert _tool_names(client.requests[0]["tools"]) == {"bloomboss_report"}
+    assert _tool_names(client.requests[0]["tools"]) == set()
 
 
 @pytest.mark.parametrize(
@@ -220,16 +220,18 @@ def test_a_bloomboss_question_offers_only_bloomboss_report():
         "how are the Ninja Albos doing?",
     ],
 )
-def test_bloomboss_report_is_offered_whatever_the_wording(text):
+def test_bloomboss_report_is_prerun_whatever_the_wording(text):
     """Live gap (2026-09-27): a BloomBoss question phrased in plain business
     words matched no keyword trigger, so the tool was never offered and KARMO
-    answered without it. The tool is now offered on every turn."""
+    answered without it. The report now runs before the model is asked, and
+    is not offered again (its schema only slows the CPU model's prompt read)."""
     client = RecordingNoToolClient()
     operator = KarmoOperator(model_client=client, task_store=FakeTaskStore())
 
     operator.handle(text)
 
-    assert "bloomboss_report" in _tool_names(client.requests[0]["tools"])
+    assert "bloomboss_report" not in _tool_names(client.requests[0]["tools"])
+    assert any(m["role"] == "tool" for m in client.requests[0]["messages"])
 
 
 def test_a_message_matching_two_tool_triggers_offers_both():
@@ -240,7 +242,7 @@ def test_a_message_matching_two_tool_triggers_offers_both():
 
     operator.handle("what tasks are open, and what does bloomboss say about revenue?")
 
-    assert _tool_names(client.requests[0]["tools"]) == {"list_tasks", "bloomboss_report"}
+    assert _tool_names(client.requests[0]["tools"]) == {"list_tasks"}
 
 
 def test_ask_claude_and_ask_gpt_require_being_asked_for_explicitly():
