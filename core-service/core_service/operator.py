@@ -47,6 +47,7 @@ from .bloomboss_capability import manifest as bloomboss_manifest
 from .control import ApprovalEngine, CapabilityClass, CoreControlError
 from .dispatcher import CapabilityDispatcher, DispatchError
 from .durable_memory import NullMemoryBackend, build_default_memory_backend
+from .identity import KARMO_IDENTITY
 from .karmolab import read_status
 from .model_router import ModelResource, ModelRouter, ModelRoutingError
 from .ollama_client import OllamaChatClient, OllamaClientError
@@ -1189,7 +1190,8 @@ class KarmoOperator:
 
         memory_context, read_failure = self._memory_context(text)
         system_content = (
-            "You are KARMO, Kamara's local AI control-plane interface. "
+            KARMO_IDENTITY
+            + "You are KARMO, Kamara's local AI control-plane interface. "
             "You are currently in bounded activation mode. You may converse and explain, "
             "but you have no write, deployment, financial, destructive, arbitrary shell, "
             "or secret-reading authority. Never imply otherwise. "
