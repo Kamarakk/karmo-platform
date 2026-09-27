@@ -47,6 +47,7 @@ from .bloomboss_capability import manifest as bloomboss_manifest
 from .control import ApprovalEngine, CapabilityClass, CoreControlError
 from .dispatcher import CapabilityDispatcher, DispatchError
 from .durable_memory import NullMemoryBackend, build_default_memory_backend
+from .identity import KARMO_IDENTITY
 from .karmolab import read_status
 from .model_router import ModelResource, ModelRouter, ModelRoutingError
 from .ollama_client import OllamaChatClient, OllamaClientError
@@ -411,12 +412,12 @@ _STATUS_WORDS = re.compile(
 # exchange for not paying their schema cost on every ordinary turn; this
 # also narrows exposure for the two tools tonight's external review
 # flagged as needing stronger isolation before being offered more freely.
+# bloomboss_report has no trigger (2026-09-27, Kamara's request): it is
+# offered on every chat turn so a BloomBoss question is never missed because
+# of its wording. Accepted cost: its schema (~100 prompt tokens) on every
+# turn, a few seconds at this host's ~22 tokens/second.
 _TOOL_TRIGGER_WORDS = {
     "list_tasks": re.compile(r"\b(task|tasks|to-do|todo|to do)\b", re.IGNORECASE),
-    "bloomboss_report": re.compile(
-        r"\b(bloom\s*b\w*oss|alocasia|cultivar|revenue|sell-through|supplier|plant sales?)\b",
-        re.IGNORECASE,
-    ),
     "ask_claude": re.compile(r"\b(claude|anthropic|second opinion)\b", re.IGNORECASE),
     "ask_gpt": re.compile(r"\b(gpt|chatgpt|openai)\b", re.IGNORECASE),
     "ask_local_coder": re.compile(
@@ -1189,7 +1190,8 @@ class KarmoOperator:
 
         memory_context, read_failure = self._memory_context(text)
         system_content = (
-            "You are KARMO, Kamara's local AI control-plane interface. "
+            KARMO_IDENTITY
+            + "You are KARMO, Kamara's local AI control-plane interface. "
             "You are currently in bounded activation mode. You may converse and explain, "
             "but you have no write, deployment, financial, destructive, arbitrary shell, "
             "or secret-reading authority. Never imply otherwise. "
