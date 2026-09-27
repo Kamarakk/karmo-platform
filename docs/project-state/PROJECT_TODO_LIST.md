@@ -41,6 +41,16 @@ Grouped for review-as-you-go, in the order that unlocks real use fastest.
    (creates `/etc/karmo/core/tailscale-tls/`, runs `tailscale cert`,
    restarts the webui in the new mode) before a phone can actually use
    it.
+   **LIVE, 2026-09-27.** Kamara enabled HTTPS certificates in the
+   tailnet and the webui runs as `webui tailscale-https` on karmo-ai01
+   (https://karmo-ai01.tail2d74d7.ts.net:8787; plain-HTTP address no
+   longer served; no Serve/Funnel). Still a manual process, not
+   systemd -- does not survive a reboot. Phone test then showed voice
+   notes rejected by the 48 KiB worker-link argument bound; fix
+   (fetch large arguments in pieces, shrink photos/voice in the
+   browser) is on branch `claude/project-thread-lm83cs`, **not yet
+   deployed** (Core first, then Worker01). Speak-reply audio coming
+   back in one frame is still unfixed.
    **DONE, 2026-09-24, fully live-verified.** `karmo_core_dispatch`
    role + `/etc/karmo/core/worker-dispatch.dsn` provisioned; `core-service`
    redeployed to `karmo-ai01` (was up to 4 days stale, missing

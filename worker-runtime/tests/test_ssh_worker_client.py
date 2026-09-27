@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from ssh_worker_client import (
@@ -227,3 +229,62 @@ def test_remote_worker_returns_none_without_work_and_does_not_authorize():
     result = _client(transport, signer, lambda *a, **k: None).poll_once()
     assert result is None
     assert events == ["poll"]
+
+
+BIG_ARGS = {"host": "karmo-ai01", "blob": "A" * 100_000}
+BIG_DIGEST = _arguments_digest("karmolab.host_health", "1", BIG_ARGS)
+
+
+class LargeTransport(Transport):
+    """Poll leaves the arguments out; fetch_arguments serves them in pieces."""
+
+    def __init__(self, *, events=None, piece_chars=30_000, tamper=False):
+        work = _work(digest=BIG_DIGEST)
+        self.serialized = json.dumps(BIG_ARGS, sort_keys=True, separators=(",", ":"))
+        work["arguments"] = None
+        work["arguments_bytes"] = len(self.serialized)
+        super().__init__(work=work, events=events)
+        self.piece_chars = piece_chars
+        self.tamper = tamper
+
+    def fetch_arguments(self, *, offset, lease, **kwargs):
+        self.events.append("fetch")
+        assert lease["worker_id"] == "karmo-worker01"
+        chunk = self.serialized[offset:offset + self.piece_chars]
+        if self.tamper:
+            chunk = chunk.replace("A", "B")
+        return {"offset": offset, "total_bytes": len(self.serialized), "chunk": chunk}
+
+
+def test_remote_worker_assembles_large_arguments_before_authorization():
+    events = []
+    seen = {}
+
+    def executor(tool_id, arguments, **kwargs):
+        events.append("execute")
+        seen["arguments"] = arguments
+        return {"status": "healthy"}, "healthy", 0.01, []
+
+    result = _client(LargeTransport(events=events), Signer(), executor).poll_once()
+    assert events == ["poll", "fetch", "fetch", "fetch", "fetch", "authorize", "execute", "submit"]
+    assert seen["arguments"] == BIG_ARGS
+    assert result["success"] is True
+
+
+def test_remote_worker_refuses_tampered_large_arguments_before_authorization():
+    events = []
+    with pytest.raises(RemoteWorkerClientError, match="digest mismatch"):
+        _client(LargeTransport(events=events, tamper=True), Signer(),
+                lambda *a, **kw: None).poll_once()
+    assert "authorize" not in events
+
+
+def test_remote_worker_refuses_malformed_arguments_piece():
+    class BadPiece(LargeTransport):
+        def fetch_arguments(self, *, offset, **kwargs):
+            return {"offset": offset + 1, "total_bytes": len(self.serialized), "chunk": "x"}
+
+    events = []
+    with pytest.raises(RemoteWorkerClientError, match="invalid arguments piece"):
+        _client(BadPiece(events=events), Signer(), lambda *a, **kw: None).poll_once()
+    assert "authorize" not in events
