@@ -412,14 +412,12 @@ _STATUS_WORDS = re.compile(
 # exchange for not paying their schema cost on every ordinary turn; this
 # also narrows exposure for the two tools tonight's external review
 # flagged as needing stronger isolation before being offered more freely.
+# bloomboss_report has no trigger (2026-09-27, Kamara's request): it is
+# offered on every chat turn so a BloomBoss question is never missed because
+# of its wording. Accepted cost: its schema (~100 prompt tokens) on every
+# turn, a few seconds at this host's ~22 tokens/second.
 _TOOL_TRIGGER_WORDS = {
     "list_tasks": re.compile(r"\b(task|tasks|to-do|todo|to do)\b", re.IGNORECASE),
-    "bloomboss_report": re.compile(
-        r"\b(bloom\s*b\w*oss|alocasia|cultivars?|revenue|sell-through|suppliers?|plants?|nursery"
-        r"|sales|sold|sell|selling|sells|best[\s-]?sellers?|margins?|profits?|profitable|profitability"
-        r"|orders?|purchases?|inventory|stock|my business)\b",
-        re.IGNORECASE,
-    ),
     "ask_claude": re.compile(r"\b(claude|anthropic|second opinion)\b", re.IGNORECASE),
     "ask_gpt": re.compile(r"\b(gpt|chatgpt|openai)\b", re.IGNORECASE),
     "ask_local_coder": re.compile(

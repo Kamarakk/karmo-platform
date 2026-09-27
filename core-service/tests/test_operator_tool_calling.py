@@ -169,12 +169,13 @@ def _tool_names(tools: list[dict]) -> set:
     return {t["function"]["name"] for t in tools}
 
 
-def test_a_message_matching_no_tool_keywords_offers_no_tools():
+def test_a_message_matching_no_tool_keywords_offers_only_bloomboss_report():
     """Real, measured fix (2026-09-19): offering all 4 tools on every turn
     inflated qwen3:8b's effective prompt 30x on this CPU-only host (19
     tokens with none offered vs. 632 with all 4), turning ordinary
     conversation into a ~29-second-minimum wait it never needed. A plain
-    conversational message must offer zero tools."""
+    conversational message offers no keyword-gated tools. bloomboss_report
+    is the one exception: always offered (2026-09-27, Kamara's request)."""
     store = FakeTaskStore()
     store.seed()
     client = RecordingNoToolClient()
@@ -182,7 +183,7 @@ def test_a_message_matching_no_tool_keywords_offers_no_tools():
 
     operator.handle("good morning, how are you today?")
 
-    assert client.requests[0]["tools"] == []
+    assert _tool_names(client.requests[0]["tools"]) == {"bloomboss_report"}
 
 
 def test_a_task_question_offers_only_list_tasks():
@@ -193,7 +194,7 @@ def test_a_task_question_offers_only_list_tasks():
 
     operator.handle("what tasks are open right now?")
 
-    assert _tool_names(client.requests[0]["tools"]) == {"list_tasks"}
+    assert _tool_names(client.requests[0]["tools"]) == {"list_tasks", "bloomboss_report"}
 
 
 def test_a_bloomboss_question_offers_only_bloomboss_report():
@@ -216,12 +217,13 @@ def test_a_bloomboss_question_offers_only_bloomboss_report():
         "what's my profit margin looking like?",
         "how is my business doing?",
         "how much inventory do I have in stock?",
+        "how are the Ninja Albos doing?",
     ],
 )
-def test_business_questions_without_the_word_bloomboss_still_offer_bloomboss_report(text):
+def test_bloomboss_report_is_offered_whatever_the_wording(text):
     """Live gap (2026-09-27): a BloomBoss question phrased in plain business
-    words (sales, plants, profit) matched no trigger, so the tool was never
-    offered and KARMO answered without it."""
+    words matched no keyword trigger, so the tool was never offered and KARMO
+    answered without it. The tool is now offered on every turn."""
     client = RecordingNoToolClient()
     operator = KarmoOperator(model_client=client, task_store=FakeTaskStore())
 
@@ -256,11 +258,11 @@ def test_ask_claude_and_ask_gpt_require_being_asked_for_explicitly():
 
     client = RecordingNoToolClient()
     KarmoOperator(model_client=client, task_store=store).handle("can you ask claude about this?")
-    assert _tool_names(client.requests[0]["tools"]) == {"ask_claude"}
+    assert _tool_names(client.requests[0]["tools"]) == {"ask_claude", "bloomboss_report"}
 
     client = RecordingNoToolClient()
     KarmoOperator(model_client=client, task_store=store).handle("get chatgpt's opinion on this")
-    assert _tool_names(client.requests[0]["tools"]) == {"ask_gpt"}
+    assert _tool_names(client.requests[0]["tools"]) == {"ask_gpt", "bloomboss_report"}
 
 
 def test_ask_local_coder_is_offered_only_for_coding_questions():
@@ -277,7 +279,7 @@ def test_ask_local_coder_is_offered_only_for_coding_questions():
 
     client = RecordingNoToolClient()
     KarmoOperator(model_client=client, task_store=store).handle("write me a python function to reverse a string")
-    assert _tool_names(client.requests[0]["tools"]) == {"ask_local_coder"}
+    assert _tool_names(client.requests[0]["tools"]) == {"ask_local_coder", "bloomboss_report"}
 
 
 def test_system_prompt_tells_the_model_to_call_ask_local_coder_for_coding_questions():
