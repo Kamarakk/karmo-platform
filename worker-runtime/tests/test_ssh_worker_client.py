@@ -40,6 +40,7 @@ class Transport:
         self.submitted = None
 
     def heartbeat(self, **kwargs):
+        self.events.append("heartbeat")
         return {"lease_expires_at": "soon"}
 
     def poll(self, **kwargs):
@@ -227,3 +228,42 @@ def test_remote_worker_returns_none_without_work_and_does_not_authorize():
     result = _client(transport, signer, lambda *a, **k: None).poll_once()
     assert result is None
     assert events == ["poll"]
+
+
+def test_heartbeat_lease_is_renewed_after_execution_before_submit():
+    """A capability that outlives the heartbeat lease must not have its
+    finished result refused by Core -- the lease is renewed after execution,
+    immediately before submit_result."""
+    events = []
+    transport = Transport(events=events)
+
+    def executor(*args, **kwargs):
+        events.append("execute")
+        return {"status": "healthy"}, "healthy", 0.01, []
+
+    client = _client(transport, Signer(), executor)
+    client.heartbeat(lease_seconds=90)
+    client.poll_once()
+    assert events == ["heartbeat", "poll", "authorize", "execute", "heartbeat", "submit"]
+
+
+def test_failed_heartbeat_renewal_still_submits_result():
+    events = []
+
+    class FailingRenewalTransport(Transport):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.heartbeats = 0
+
+        def heartbeat(self, **kwargs):
+            self.heartbeats += 1
+            if self.heartbeats > 1:
+                raise RuntimeError("gateway hiccup")
+            return super().heartbeat(**kwargs)
+
+    transport = FailingRenewalTransport(events=events)
+    client = _client(transport, Signer(), lambda *a, **k: ({"ok": True}, "ok", 0.01, []))
+    client.heartbeat(lease_seconds=90)
+    result = client.poll_once()
+    assert result["success"] is True
+    assert events[-1] == "submit"
