@@ -87,6 +87,57 @@ def known_cultivar_names() -> frozenset[str]:
     return frozenset(names)
 
 
+def _pct(value) -> str:
+    try:
+        return f"{float(value) * 100:.0f}%"
+    except (TypeError, ValueError):
+        return "unknown"
+
+
+def _money(value) -> str:
+    return "unknown" if value in (None, "") else f"${value}"
+
+
+def _cultivar_line(name: str, row: dict) -> str:
+    line = f"- {name}: {row.get('units', 0)} units, {row.get('sold', 0)} sold, {row.get('lost', 0)} lost, revenue {_money(row.get('revenue'))}"
+    if row.get("sold"):
+        line += (
+            f", profit {_money(row.get('realized_profit_on_known_costs'))}"
+            f", margin {_pct(row.get('realized_gross_margin_on_known_costs'))}"
+        )
+    return line
+
+
+def chat_digest(result: dict, question: str) -> str:
+    """A few plain-text lines of handler()'s result for the chat model to
+    answer from. Live measurement (2026-09-27): the full result, even capped
+    at 6000 chars, was ~2,800 prompt tokens and took 2.5-3 minutes to read
+    on karmo-ai01's CPU. Only real figures from the report; cultivars the
+    question names get their line, otherwise every cultivar gets one."""
+    lowered = question.lower()
+    lines = []
+    for report in result.get("reports", []):
+        summary = report.get("business_summary") or {}
+        lines.append(f"BloomBoss data from {report.get('source', {}).get('name', 'unknown file')}:")
+        lines.append(
+            f"Totals: {summary.get('unit_count', 0)} units, {summary.get('sale_count', 0)} sold, "
+            f"revenue {_money(summary.get('total_revenue'))}, "
+            f"gross profit {_money(summary.get('realized_gross_profit_on_known_costs'))}, "
+            f"margin {_pct(summary.get('realized_gross_margin_on_known_costs'))}, "
+            f"sell-through {_pct(summary.get('sell_through_rate'))}, "
+            f"{summary.get('active_inventory_units', 0)} still in inventory "
+            f"({_money(summary.get('known_capital_tied_up'))} tied up)."
+        )
+        cultivars = report.get("cultivar_summary") or {}
+        named = {name: row for name, row in cultivars.items() if name.lower() in lowered}
+        for name, row in (named or cultivars).items():
+            lines.append(_cultivar_line(name, row))
+    for error in result.get("errors", []):
+        lines.append(f"Could not load {error.get('file')}.")
+    lines.append(result.get("coverage_note", ""))
+    return "\n".join(line for line in lines if line)
+
+
 def handler(arguments: dict) -> dict:
     if not _HISTORICAL_DATA_DIR.is_dir():
         raise BloomBossCapabilityError(

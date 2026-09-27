@@ -77,3 +77,25 @@ def test_naming_the_tool_again_after_it_ran_does_not_loop():
     KarmoOperator(model_client=client).handle("tell me something interesting")
 
     assert len(client.requests) == 2
+
+
+def test_prerun_report_is_a_short_digest_of_the_named_cultivar():
+    """Live measurement (2026-09-27): the 6000-char report took 2.5-3 minutes
+    of prompt reading on karmo-ai01's CPU. The model now gets a few lines."""
+    client = ScriptedClient("answer")
+    KarmoOperator(model_client=client).handle("how are the Ninja Albos doing?")
+
+    digest = _tool_results(client.requests[0])[0]
+    assert len(digest) < 1000
+    assert "- Ninja Albo: 10 units, 1 sold, 0 lost, revenue $350, profit $250.91, margin 72%" in digest
+    assert "Melo Albo" not in digest
+
+
+def test_digest_lists_every_cultivar_when_none_is_named():
+    client = ScriptedClient("answer")
+    KarmoOperator(model_client=client).handle("what should I restock for BloomBoss?")
+
+    digest = _tool_results(client.requests[0])[0]
+    assert "Totals: 75 units, 5 sold, revenue $1090" in digest
+    assert "- Melo Albo: 5 units, 0 sold" in digest
+    assert len(digest) < 2000

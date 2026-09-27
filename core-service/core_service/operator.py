@@ -42,6 +42,7 @@ from .speech_synthesize_capability import handler as synthesize_speech_handler
 from .speech_synthesize_capability import manifest as synthesize_speech_manifest
 from .bloomboss_capability import BLOOMBOSS_REPORT_TOOL
 from .bloomboss_capability import TOOL_VERSION as BLOOMBOSS_TOOL_VERSION
+from .bloomboss_capability import chat_digest as bloomboss_chat_digest
 from .bloomboss_capability import handler as bloomboss_report_handler
 from .bloomboss_capability import known_cultivar_names
 from .bloomboss_capability import manifest as bloomboss_manifest
@@ -915,7 +916,7 @@ class KarmoOperator:
             schemas.append(entry["schema"])
         return schemas
 
-    def _execute_exposed_tool(self, call: dict) -> str:
+    def _execute_exposed_tool(self, call: dict, render=None) -> str:
         """Runs one model-proposed tool call through the same dispatcher every
         other KARMO caller uses. Returns a JSON string (the tool-result content
         Ollama expects back) -- never raises, so one bad tool call can't crash
@@ -955,6 +956,8 @@ class KarmoOperator:
             # future mistake here fails as a visible refusal, never a silent
             # no-op the model could mistake for a real (empty) result.
             return json.dumps({"error": "tool call requires approval and was not executed"})
+        if render is not None:
+            return render(decision.result)
         serialized = json.dumps(decision.result, default=str)
         # Real, live-diagnosed bound (2026-09-19): bloomboss_report's full
         # result serialized to 63,035 bytes for a single small CSV import --
@@ -1012,14 +1015,18 @@ class KarmoOperator:
         bloomboss_report before the model is asked and returns it as an
         assistant tool call plus its tool result -- the same message shape
         the tool loop itself produces. Only when the tool is actually offered
-        this turn; the result is data, never authority."""
+        this turn; the result is data, never authority. The result goes in as
+        a short digest of the figures (bloomboss_chat_digest), not the full
+        report -- see its docstring for the measured cost."""
         offered = {t["function"]["name"] for t in tools}
         if "bloomboss_report" not in offered or not _is_bloomboss_question(text):
             return []
         call = {"function": {"name": "bloomboss_report", "arguments": {}}}
         return [
             {"role": "assistant", "content": "", "tool_calls": [call]},
-            {"role": "tool", "content": self._execute_exposed_tool(call)},
+            {"role": "tool", "content": self._execute_exposed_tool(
+                call, render=lambda result: bloomboss_chat_digest(result, text))},
+            {"role": "system", "content": "Answer from the BloomBoss figures above in a few short sentences."},
         ]
 
     def _run_tool_loop(self, ask_fn, messages: list[dict], tools: list[dict], *, deadline: float) -> str:
@@ -1302,7 +1309,12 @@ class KarmoOperator:
             )
         messages.append({"role": "user", "content": text})
         tools = self._exposed_tool_schemas(text)
-        messages.extend(self._prefetched_tool_messages(text, tools))
+        prefetched = self._prefetched_tool_messages(text, tools)
+        if prefetched:
+            # Already run above; offering it again only adds its schema to a
+            # prompt the CPU model reads at ~19 tokens/second.
+            messages.extend(prefetched)
+            tools = [t for t in tools if t["function"]["name"] != "bloomboss_report"]
 
         # Model Router Phase D2: try the chosen worker first, if one was
         # picked and there's realistically enough of the total budget
