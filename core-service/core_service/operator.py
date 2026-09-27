@@ -43,6 +43,7 @@ from .speech_synthesize_capability import manifest as synthesize_speech_manifest
 from .bloomboss_capability import BLOOMBOSS_REPORT_TOOL
 from .bloomboss_capability import TOOL_VERSION as BLOOMBOSS_TOOL_VERSION
 from .bloomboss_capability import handler as bloomboss_report_handler
+from .bloomboss_capability import known_cultivar_names
 from .bloomboss_capability import manifest as bloomboss_manifest
 from .control import ApprovalEngine, CapabilityClass, CoreControlError
 from .dispatcher import CapabilityDispatcher, DispatchError
@@ -425,6 +426,49 @@ _TOOL_TRIGGER_WORDS = {
         re.IGNORECASE,
     ),
 }
+
+# Deterministic BloomBoss routing (2026-09-27, live finding): with the tool
+# offered, qwen3:8b answered "how are the Ninja Albos doing?" by telling
+# Kamara to "use the bloomboss_report tool" instead of calling it. A question
+# matching these words, or naming a cultivar in the imported data, now gets
+# bloomboss_report run up front, through the
+# same dispatcher, and its real result placed in the conversation before the
+# model answers -- so the answer never depends on the model choosing to call.
+_BLOOMBOSS_QUESTION_WORDS = re.compile(
+    r"\b(bloom\s*b\w*oss|alocasias?|anthuriums?|philodendrons?|monsteras?|cultivars?|revenue"
+    r"|sell-through|suppliers?|plants?|nursery|emgarden|palm\s*street|sales|sold|sell|selling|sells"
+    r"|best[\s-]?sellers?|margins?|profits?|profitable|profitability|orders?|purchases?|inventory"
+    r"|stock|invoices?|my business)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_bloomboss_question(text: str) -> bool:
+    if _BLOOMBOSS_QUESTION_WORDS.search(text):
+        return True
+    lowered = text.lower()
+    return any(name in lowered for name in known_cultivar_names())
+
+
+def _named_instead_of_called(content: str, tools: list[dict], messages: list[dict]) -> list[dict] | None:
+    """Live finding (2026-09-27): a model can answer by telling Kamara to
+    "use the bloomboss_report tool" rather than calling it. If the answer
+    names an offered tool that takes no required arguments and that tool has
+    no result in this turn yet, return that call so the loop runs it and asks
+    again -- once per tool, so this can never loop."""
+    already_called = {
+        call.get("function", {}).get("name")
+        for message in messages
+        for call in (message.get("tool_calls") or [])
+    }
+    for tool in tools:
+        function = tool["function"]
+        name = function["name"]
+        if name in already_called or function.get("parameters", {}).get("required"):
+            continue
+        if name in (content or ""):
+            return [{"function": {"name": name, "arguments": {}}}]
+    return None
 
 
 @dataclass(frozen=True)
@@ -963,6 +1007,21 @@ class KarmoOperator:
             return outcome.result
         return ask
 
+    def _prefetched_tool_messages(self, text: str, tools: list[dict]) -> list[dict]:
+        """For a BloomBoss question (see _BLOOMBOSS_QUESTION_WORDS), runs
+        bloomboss_report before the model is asked and returns it as an
+        assistant tool call plus its tool result -- the same message shape
+        the tool loop itself produces. Only when the tool is actually offered
+        this turn; the result is data, never authority."""
+        offered = {t["function"]["name"] for t in tools}
+        if "bloomboss_report" not in offered or not _is_bloomboss_question(text):
+            return []
+        call = {"function": {"name": "bloomboss_report", "arguments": {}}}
+        return [
+            {"role": "assistant", "content": "", "tool_calls": [call]},
+            {"role": "tool", "content": self._execute_exposed_tool(call)},
+        ]
+
     def _run_tool_loop(self, ask_fn, messages: list[dict], tools: list[dict], *, deadline: float) -> str:
         """Drives the tool-call round trip: ask (local or, Phase D2, a
         worker -- ask_fn abstracts which), run any tool calls it proposes
@@ -983,6 +1042,8 @@ class KarmoOperator:
                 raise _TurnDeadlineExceeded()
             response = ask_fn(messages, tools, remaining)
             tool_calls = response.get("tool_calls")
+            if not tool_calls:
+                tool_calls = _named_instead_of_called(response["content"], tools, messages)
             if not tool_calls:
                 return response["content"]
             messages.append({"role": "assistant", "content": response["content"], "tool_calls": tool_calls})
@@ -1241,6 +1302,7 @@ class KarmoOperator:
             )
         messages.append({"role": "user", "content": text})
         tools = self._exposed_tool_schemas(text)
+        messages.extend(self._prefetched_tool_messages(text, tools))
 
         # Model Router Phase D2: try the chosen worker first, if one was
         # picked and there's realistically enough of the total budget

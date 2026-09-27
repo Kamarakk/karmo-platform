@@ -10,6 +10,7 @@ Section 3.2, for the design this implements.
 
 from __future__ import annotations
 
+import csv
 import sys
 from pathlib import Path
 
@@ -66,6 +67,24 @@ def manifest() -> dict:
         "observability": "structured operator response",
         "failure_isolation": "a missing/invalid CSV refuses cleanly, never partial/invented data",
     }
+
+
+def known_cultivar_names() -> frozenset[str]:
+    """Lower-cased cultivar names in the imported historical CSVs, so chat can
+    recognize a BloomBoss question that names a plant ("how are the Ninja
+    Albos doing?") without any business keyword. Never raises: missing or
+    unreadable data just means no names."""
+    names = set()
+    try:
+        for csv_path in _HISTORICAL_DATA_DIR.glob("*.csv"):
+            with csv_path.open(newline="", encoding="utf-8") as handle:
+                for row in csv.DictReader(handle):
+                    name = (row.get("cultivar") or "").strip().lower()
+                    if name:
+                        names.add(name)
+    except (OSError, UnicodeDecodeError, csv.Error):
+        pass
+    return frozenset(names)
 
 
 def handler(arguments: dict) -> dict:
