@@ -11,6 +11,7 @@ Section 3.2, for the design this implements.
 from __future__ import annotations
 
 import csv
+import re
 import sys
 from pathlib import Path
 
@@ -99,7 +100,11 @@ def _money(value) -> str:
 
 
 def _cultivar_line(name: str, row: dict) -> str:
-    line = f"- {name}: {row.get('units', 0)} units, {row.get('sold', 0)} sold, {row.get('lost', 0)} lost, revenue {_money(row.get('revenue'))}"
+    line = (
+        f"- {name}: {row.get('units', 0)} units, {row.get('sold', 0)} sold "
+        f"({_pct(row.get('sell_through_rate'))} sell-through), {row.get('lost', 0)} lost, "
+        f"revenue {_money(row.get('revenue'))}"
+    )
     if row.get("sold"):
         line += (
             f", profit {_money(row.get('realized_profit_on_known_costs'))}"
@@ -136,6 +141,63 @@ def chat_digest(result: dict, question: str) -> str:
         lines.append(f"Could not load {error.get('file')}.")
     lines.append(result.get("coverage_note", ""))
     return "\n".join(line for line in lines if line)
+
+
+# A plain status lookup ("how are the Ninja Albos doing?", "Melo Albo
+# numbers") versus a question that needs judgment ("should I restock...").
+_LOOKUP_WORDS = re.compile(
+    r"\b(how(?:'s| is| are| did| have)|doing|performing|performance|stats|numbers|figures|sold)\b",
+    re.IGNORECASE,
+)
+_JUDGMENT_WORDS = re.compile(
+    r"\b(should|restock|reorder|recommend\w*|advice|advise|why|compare|compared|versus|vs|better|worse"
+    r"|best|worst|predict\w*|forecast\w*|plan|strategy|price|pricing|worth)\b",
+    re.IGNORECASE,
+)
+
+
+def _named_cultivars(names, question: str) -> list:
+    lowered = question.lower()
+    return [name for name in names if name.lower() in lowered]
+
+
+def is_lookup_question(question: str) -> bool:
+    """True for a status lookup naming at least one imported cultivar, which
+    lookup_answer() can answer from the figures alone. Cheap: reads only the
+    cultivar names, not the full report."""
+    return bool(
+        _named_cultivars(known_cultivar_names(), question)
+        and _LOOKUP_WORDS.search(question)
+        and not _JUDGMENT_WORDS.search(question)
+    )
+
+
+def lookup_answer(result: dict, question: str) -> str | None:
+    """Plain-sentence answer for is_lookup_question() questions, built only
+    from handler()'s real figures -- no model involved. None if the question
+    names no cultivar in the loaded reports."""
+    lines = []
+    sources = []
+    for report in result.get("reports", []):
+        cultivars = report.get("cultivar_summary") or {}
+        for name in _named_cultivars(cultivars, question):
+            row = cultivars[name]
+            line = (
+                f"{name}: {row.get('units', 0)} units, {row.get('sold', 0)} sold "
+                f"({_pct(row.get('sell_through_rate'))} sell-through), {row.get('lost', 0)} lost. "
+                f"Revenue {_money(row.get('revenue'))}"
+            )
+            if row.get("sold"):
+                line += (
+                    f", profit {_money(row.get('realized_profit_on_known_costs'))}, "
+                    f"{_pct(row.get('realized_gross_margin_on_known_costs'))} margin"
+                )
+            lines.append(line + ".")
+            sources.append(report.get("source", {}).get("name", "unknown file"))
+    if not lines:
+        return None
+    lines.append(f"From {', '.join(sorted(set(sources)))} (imported BloomBoss data only).")
+    return "\n".join(lines)
 
 
 def handler(arguments: dict) -> dict:

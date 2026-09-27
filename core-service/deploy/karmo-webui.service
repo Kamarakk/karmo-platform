@@ -1,0 +1,17 @@
+[Unit]
+Description=KARMO Web UI (tailnet HTTPS)
+After=network-online.target tailscaled.service docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/karmo/core-service
+ExecStart=/usr/bin/python3 -m core_service webui tailscale-https
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

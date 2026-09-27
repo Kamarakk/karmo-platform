@@ -21,8 +21,13 @@ class FakeOperator:
         self.transcribe_result = {"text": "hello there"}
         self.speak_result = {"audio_base64": "ZmFrZS1hdWRpbw=="}
 
-    def handle(self, text):
+    def handle(self, text, on_token=None):
         self.calls.append(text)
+        if on_token is not None:
+            on_token("draft")
+            on_token(None)
+            on_token("echo: ")
+            on_token(text)
         return {"kind": "chat", "message": f"echo: {text}", "memory_status": "ACTIVE"}
 
     def dispatch_vision(self, *, question, image_base64):
@@ -86,6 +91,57 @@ def test_chat_post_routes_through_operator_handle(running_server):
     assert body["message"] == "echo: hello karmo"
     assert body["memory_status"] == "ACTIVE"
     assert fake.calls == ["hello karmo"]
+
+
+def test_chat_stream_sends_words_then_the_final_answer(running_server):
+    server, fake = running_server
+    request = urllib.request.Request(
+        _url(server, "/chat/stream"), data=json.dumps({"text": "hello"}).encode(), method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        assert response.headers["Content-Type"] == "application/x-ndjson"
+        events = [json.loads(line) for line in response.read().decode().splitlines() if line.strip()]
+
+    assert events[:4] == [{"t": "draft"}, {"reset": True}, {"t": "echo: "}, {"t": "hello"}]
+    assert events[-1] == {"kind": "chat", "message": "echo: hello", "memory_status": "ACTIVE", "done": True}
+    assert fake.calls == ["hello"]
+
+
+def test_chat_stream_rejects_malformed_body(running_server):
+    server, _ = running_server
+    request = urllib.request.Request(_url(server, "/chat/stream"), data=b"not json", method="POST")
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=5)
+    assert excinfo.value.code == 400
+
+
+def test_server_answers_the_page_while_a_chat_turn_is_running():
+    """A slow turn must not queue every other request behind it."""
+    started, release = threading.Event(), threading.Event()
+
+    class SlowOperator(FakeOperator):
+        def handle(self, text, on_token=None):
+            started.set()
+            release.wait(5)
+            return super().handle(text)
+
+    webui._Handler.operator = SlowOperator()
+    server = webui.ThreadingHTTPServer(("127.0.0.1", 0), webui._Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        chat = threading.Thread(target=lambda: urllib.request.urlopen(urllib.request.Request(
+            _url(server, "/chat"), data=json.dumps({"text": "slow"}).encode(), method="POST"), timeout=10).read())
+        chat.start()
+        assert started.wait(5)
+        with urllib.request.urlopen(_url(server, "/"), timeout=2) as response:
+            assert response.status == 200
+        release.set()
+        chat.join(timeout=5)
+    finally:
+        release.set()
+        server.shutdown()
+        thread.join(timeout=5)
 
 
 def test_chat_post_rejects_malformed_body(running_server):

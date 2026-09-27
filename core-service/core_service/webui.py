@@ -39,7 +39,8 @@ import json
 import os
 import ssl
 import subprocess
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .operator import KarmoOperator
 from .speech_synthesize_capability import MAX_TEXT_CHARS as _SPEAK_MAX_TEXT_CHARS
@@ -99,6 +100,34 @@ function line(cls, text) {
   d.textContent = text;
   log.appendChild(d);
   window.scrollTo(0, document.body.scrollHeight);
+  return d;
+}
+// Reads /chat/stream's one-JSON-object-per-line events: {t} adds text,
+// {reset} clears it (a later model round replaces it), {done} is the final
+// answer and always wins over whatever was streamed.
+async function streamChat(text, div) {
+  const res = await fetch('/chat/stream', {method: 'POST', body: JSON.stringify({text})});
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '', shown = '', final = null;
+  while (true) {
+    const {value, done} = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, {stream: true});
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const raw = buf.slice(0, i);
+      buf = buf.slice(i + 1);
+      if (!raw.trim()) continue;
+      const ev = JSON.parse(raw);
+      if (ev.reset) shown = '';
+      else if (ev.t) shown += ev.t;
+      else if (ev.done) final = ev;
+      div.textContent = 'KARMO> ' + (final ? final.message : shown);
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+  }
+  return final || {message: shown};
 }
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -119,9 +148,8 @@ box.addEventListener('keydown', async (e) => {
   const text = box.value;
   box.value = '';
   line('you', 'you> ' + text);
-  const res = await fetch('/chat', {method: 'POST', body: JSON.stringify({text})});
-  const data = await res.json();
-  line('karmo', 'KARMO> ' + data.message);
+  const div = line('karmo', 'KARMO> ...');
+  const data = await streamChat(text, div);
   if (data.memory_status) line('status', 'memory=' + data.memory_status);
   if (document.getElementById('speak').checked) speak(data.message);
 });
@@ -199,6 +227,12 @@ document.getElementById('imgbtn').addEventListener('click', async () => {
 """.encode("utf-8")
 
 
+# One KARMO turn at a time (the operator and its model are not built for
+# concurrent turns), while the server itself answers other requests -- the
+# page, a second tab -- instead of queueing them behind a minute-long reply.
+_OPERATOR_LOCK = threading.Lock()
+
+
 class _Handler(BaseHTTPRequestHandler):
     operator: KarmoOperator
 
@@ -244,12 +278,49 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _stream_chat(self, text: str):
+        """Same turn as /chat, but the answer's words are sent as they are
+        written, one JSON object per line, ending with the full /chat result
+        plus "done". The body ends when the connection closes (HTTP/1.0)."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.close_connection = True
+        client_gone = False
+
+        def send(event: dict):
+            nonlocal client_gone
+            if client_gone:
+                return
+            try:
+                self.wfile.write(json.dumps(event).encode("utf-8") + b"\n")
+                self.wfile.flush()
+            except OSError:
+                client_gone = True  # the turn still finishes and is remembered
+
+        def on_token(piece):
+            send({"reset": True} if piece is None else {"t": piece})
+
+        with _OPERATOR_LOCK:
+            result = self.operator.handle(text, on_token=on_token)
+        send({**result, "done": True})
+
     def do_POST(self):  # noqa: N802 - stdlib method name
         if self.path == "/chat":
             payload = self._read_json_body(MAX_BODY_BYTES, {"text": str})
             if payload is None:
                 return
-            self._send_json(200, self.operator.handle(payload["text"]))
+            with _OPERATOR_LOCK:
+                result = self.operator.handle(payload["text"])
+            self._send_json(200, result)
+            return
+
+        if self.path == "/chat/stream":
+            payload = self._read_json_body(MAX_BODY_BYTES, {"text": str})
+            if payload is None:
+                return
+            self._stream_chat(payload["text"])
             return
 
         if self.path == "/vision":
@@ -258,9 +329,10 @@ class _Handler(BaseHTTPRequestHandler):
             )
             if payload is None:
                 return
-            result = self.operator.dispatch_vision(
-                question=payload["question"], image_base64=payload["image_base64"],
-            )
+            with _OPERATOR_LOCK:
+                result = self.operator.dispatch_vision(
+                    question=payload["question"], image_base64=payload["image_base64"],
+                )
             self._send_json(400 if "error" in result else 200, result)
             return
 
@@ -268,7 +340,8 @@ class _Handler(BaseHTTPRequestHandler):
             payload = self._read_json_body(MAX_MEDIA_BODY_BYTES, {"audio_base64": str})
             if payload is None:
                 return
-            result = self.operator.dispatch_transcribe(audio_base64=payload["audio_base64"])
+            with _OPERATOR_LOCK:
+                result = self.operator.dispatch_transcribe(audio_base64=payload["audio_base64"])
             self._send_json(400 if "error" in result else 200, result)
             return
 
@@ -276,7 +349,8 @@ class _Handler(BaseHTTPRequestHandler):
             payload = self._read_json_body(MAX_SPEAK_BODY_BYTES, {"text": str})
             if payload is None:
                 return
-            result = self.operator.dispatch_speak(text=payload["text"])
+            with _OPERATOR_LOCK:
+                result = self.operator.dispatch_speak(text=payload["text"])
             self._send_json(400 if "error" in result else 200, result)
             return
 
@@ -365,7 +439,7 @@ def serve(
             f"unsupported webui bind mode: {mode!r} (use 'loopback', 'tailscale', or 'tailscale-https')"
         )
     _Handler.operator = KarmoOperator()
-    server = HTTPServer((bind, port), _Handler)
+    server = ThreadingHTTPServer((bind, port), _Handler)
     scheme = "http"
     if tls_files is not None:
         cert_path, key_path = tls_files

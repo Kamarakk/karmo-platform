@@ -2073,3 +2073,24 @@ never reconfirmed after this session's Core-side changes); does not
 activate the `tailscale-https` webui mode (a separate production step,
 its own cert directory). See `PROJECT_TODO_LIST.md` for the current
 next actions.
+
+## 2026-09-27 -- Chat speed: PR #134 and Stage 1 live, Stage 2 in review
+
+**VERIFIED live on karmo-ai01 (Ollama timing logs).** A BloomBoss question took
+3m55s: ~80% reading a ~3,500-token prompt at ~19 tok/s, the rest writing at
+2.3 tok/s on a 4-vCPU, 8 GB VM that was swapping.
+
+- **PR #134 (merged, deployed 16:27 UTC):** the pre-run BloomBoss report goes to
+  the model as a short digest, the tool isn't re-offered, answer cap 96 -> 300.
+  Replies 235s -> 70-100s. Backup: `/opt/karmo/backups/pr134-deploy-20260927T162723Z`.
+- **Stage 1 (live 16:46 UTC, Kamara's approval):** VM 100 on KVE02 raised to
+  8 cores / 11 GB (was 4 / 8192; old config in `/root/vm100-config-before-stage1-*.txt`);
+  `karmo-ollama` compose env `OLLAMA_KEEP_ALIVE=24h`, `OLLAMA_FLASH_ATTENTION=1`,
+  `OLLAMA_KV_CACHE_TYPE=q8_0` (backup `~/karmo-backups/compose.yaml.stage1-20260927T164513Z`).
+  Prompt reading 21 -> ~28 tok/s, writing 3.1 -> 3.3 tok/s (memory-bandwidth bound), no swap.
+  Warm BloomBoss reply 70s -> 60s.
+- **Stage 2 (PR open):** direct answers for plain plant lookups (no model), streamed
+  replies in the web UI (`/chat/stream`), threaded web UI server, and a
+  `karmo-webui.service` unit. The web UI is still started by hand and does not
+  survive a reboot until that unit is installed.
+- Full plan and evidence: KARMO Speed Plan artifact (2026-09-27).

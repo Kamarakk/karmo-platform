@@ -217,7 +217,7 @@ def test_a_bloomboss_question_offers_no_tools_once_the_report_is_prerun():
         "what's my profit margin looking like?",
         "how is my business doing?",
         "how much inventory do I have in stock?",
-        "how are the Ninja Albos doing?",
+        "tell me about the Ninja Albos",
     ],
 )
 def test_bloomboss_report_is_prerun_whatever_the_wording(text):

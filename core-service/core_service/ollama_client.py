@@ -7,6 +7,7 @@ endpoint: only loopback Ollama is permitted.
 from __future__ import annotations
 
 import json
+import time
 from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -65,13 +66,14 @@ class OllamaChatClient:
         self._opener = build_opener(_RefuseRedirect)
 
     def _request_message(self, *, model: str, messages: list[dict], temperature: float,
-                         tools: list[dict] | None, timeout: float | None = None) -> dict:
+                         tools: list[dict] | None, timeout: float | None = None,
+                         on_token=None) -> dict:
         if not model or any(ch in model for ch in "\r\n\x00"):
             raise OllamaClientError("invalid model identifier")
         body = {
             "model": model,
             "messages": messages,
-            "stream": False,
+            "stream": on_token is not None,
             "think": False,
             "options": {"temperature": temperature, "num_predict": self.num_predict},
         }
@@ -93,6 +95,8 @@ class OllamaChatClient:
         # default; every existing caller that never passes one keeps
         # today's exact behavior unchanged.
         effective_timeout = timeout if timeout is not None else self.timeout
+        if on_token is not None:
+            return self._stream_message(request, effective_timeout, on_token)
         try:
             with self._opener.open(request, timeout=effective_timeout) as response:
                 raw = response.read(1024 * 1024 + 1)
@@ -109,13 +113,48 @@ class OllamaChatClient:
             raise OllamaClientError("invalid Ollama message content")
         return message
 
+    def _stream_message(self, request: Request, timeout: float, on_token) -> dict:
+        """Streamed variant of the read above (2026-09-27): each content piece
+        goes to on_token as it arrives, so the web UI can show words while the
+        CPU model is still writing (~3.3 tokens/second on karmo-ai01). Same
+        1 MiB bound, and timeout is enforced as a total for the whole stream,
+        not per read, so it still honors the turn's single deadline."""
+        deadline = time.monotonic() + timeout
+        content, tool_calls, total = [], [], 0
+        try:
+            with self._opener.open(request, timeout=timeout) as response:
+                for line in response:
+                    total += len(line)
+                    if total > 1024 * 1024:
+                        raise OllamaClientError("local model response exceeded 1 MiB")
+                    if time.monotonic() > deadline:
+                        raise OllamaClientError("local model request failed: stream deadline exceeded")
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line.decode("utf-8"))
+                    message = chunk.get("message") or {}
+                    piece = message.get("content")
+                    if isinstance(piece, str) and piece:
+                        content.append(piece)
+                        on_token(piece)
+                    if message.get("tool_calls"):
+                        tool_calls.extend(message["tool_calls"])
+                    if chunk.get("done"):
+                        break
+        except OllamaClientError:
+            raise
+        except Exception as exc:
+            raise OllamaClientError(f"local model request failed: {type(exc).__name__}") from exc
+        return {"content": "".join(content), "tool_calls": tool_calls or None}
+
     def chat(self, *, model: str, messages: list[dict], temperature: float = 0.2,
              timeout: float | None = None) -> str:
         message = self._request_message(model=model, messages=messages, temperature=temperature, tools=None, timeout=timeout)
         return message["content"].strip()
 
     def chat_with_tools(self, *, model: str, messages: list[dict], tools: list[dict],
-                        temperature: float = 0.2, timeout: float | None = None) -> dict:
+                        temperature: float = 0.2, timeout: float | None = None,
+                        on_token=None) -> dict:
         """Like chat(), but returns the full response message (content plus any
         tool_calls the model requested) instead of only the answer text -- the
         caller needs to see a tool-call request to act on it, which a bare
@@ -125,8 +164,10 @@ class OllamaChatClient:
 
         timeout, when given, overrides this client's fixed construction-time
         default for this one call only (Section 3.5's single total per-turn
-        deadline -- see _request_message)."""
-        message = self._request_message(model=model, messages=messages, temperature=temperature, tools=tools, timeout=timeout)
+        deadline -- see _request_message). on_token, when given, streams the
+        answer's text pieces to it as they arrive (see _stream_message)."""
+        message = self._request_message(model=model, messages=messages, temperature=temperature, tools=tools,
+                                        timeout=timeout, on_token=on_token)
         tool_calls = message.get("tool_calls")
         if tool_calls is not None and not isinstance(tool_calls, list):
             raise OllamaClientError("invalid Ollama tool_calls field")
