@@ -276,6 +276,62 @@ Constraints/verification needed: not yet run in production -- creating
   related, currently-pending production step).
 ```
 
+## System-Fit and Invariant Impact Review — large job arguments in pieces (2026-09-27)
+
+First live phone test (2026-09-27, after `tailscale-https` went live)
+showed every `/transcribe` call failing with `remote job arguments exceed
+transport bound`: the worker link carries one JSON frame of at most 64 KiB
+each way (`worker_stdio_gateway.MAX_FRAME_BYTES`, worker
+`ssh_stdio_transport._MAX_FRAME_BYTES`), and `attach_job_arguments`
+refused anything over 48 KiB. Any real voice note or photo is larger.
+Kamara chose fetching in pieces over raising the frame limit.
+
+```text
+SYSTEM-FIT REVIEW
+Goal served: make the already-built mic and image features (Phases
+  V2/V3) work from the phone; they could not carry real media at all.
+Existing capability reused: the existing SSH/stdio gateway, its
+  authentication, lease binding (same predicate record_ticket and
+  consume_ticket use), karmo_worker_job_payloads storage, and the
+  worker's existing digest check. No new table, migration, grant,
+  service or dependency.
+New software/services added: none. One new allowlisted read-only
+  gateway operation, fetch_arguments.
+Important current-system facts: frames stay <= 64 KiB both ways; poll
+  still returns small arguments inline with the unchanged three-key
+  envelope, so old workers keep working for every job that works today.
+Main risks/lifecycle burden: each piece is one SSH round trip, so large
+  jobs are slow; mitigated by shrinking photos (max 1280px JPEG) and
+  recording voice at 32 kbps in the browser. Results (speak audio) still
+  travel in one frame and are NOT covered here.
+Simpler alternative considered: raising the frame limit to ~16 MB
+  (rejected by Kamara -- loosens a deliberate bound on the worker link).
+Decision: PROCEED.
+Constraints/verification needed: deploy Core (karmo-ai01) before
+  workers; live-verify one voice note and one photo from the phone.
+```
+
+```text
+Phase: large job arguments in pieces
+
+I-01 Inheritance/compatibility: AFFECTED -- old workers get the new
+  envelope only for large jobs (which fail today anyway); small jobs
+  unchanged.
+I-02 Production parity: NOT AFFECTED
+I-03 Data authority/transactions: NOT AFFECTED -- read-only query.
+I-04 Idempotency/retry: NOT AFFECTED -- fetch is a pure read by offset.
+I-05 Resources/scale: AFFECTED -- arguments cap 48 KiB -> 16 MiB in
+  Postgres; every frame still bounded; worker bounds piece count.
+I-06 Migration/rollback: NOT AFFECTED -- no schema change; rollback is
+  redeploying the previous tree.
+I-07 Observability: NOT AFFECTED
+I-08 Validation scope: targeted gateway, backend, client tests.
+I-09 Authority/permissions: AFFECTED -- fetch_arguments requires worker
+  credential + current key + the job's live lease (same worker, lease
+  token, unexpired, digest match); no execution happens before
+  authorize_execution, and the worker re-checks the digest.
+```
+
 ## What a fresh session should do first
 
 1. Read this document in full, including the standing constraint —

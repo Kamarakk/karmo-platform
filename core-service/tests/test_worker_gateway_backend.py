@@ -248,3 +248,105 @@ def test_submit_result_rejects_cross_worker_lease_before_coordinator_call():
         )
     assert coordinator.accepted == []
     assert store.finalized == []
+
+
+BIG_ARGS = {"model": "moondream", "question": 'what is "this"?', "image_base64": "A" * 200_000}
+BIG_DIGEST = arguments_digest("karmolab.host_health", "1", BIG_ARGS)
+
+
+class BigCursor(Cursor):
+    """Poll returns BIG_ARGS; fetch_arguments' live-lease query returns
+    them only while `live` is True."""
+
+    def __init__(self, caps):
+        super().__init__(caps, ["job-1"])
+        self.live = True
+
+    def fetchone(self):
+        if "p.arguments" in self.last_query and "LEASED" in self.last_query:
+            return (dict(BIG_ARGS),) if self.live else None
+        return super().fetchone()
+
+    def fetchall(self):
+        return [("job-1", dict(BIG_ARGS))]
+
+
+def _big_backend():
+    store = Store()
+    store.lease_job = lambda *, job_id, worker_id: WorkerLease(
+        **{**_lease(worker_id=worker_id, job_id=job_id).__dict__, "arguments_digest": BIG_DIGEST}
+    )
+    cursor = BigCursor(["karmolab.host_health"])
+    backend = PostgresWorkerGatewayBackend(
+        store=store, coordinator=Coordinator(), connection_factory=lambda: Connection(cursor),
+    )
+    return backend, cursor
+
+
+def test_poll_leaves_large_arguments_out_of_the_frame():
+    backend, _ = _big_backend()
+    work = backend.poll(worker_id="karmo-worker01", credential_token="credential",
+                        capabilities=["karmolab.host_health"])
+    assert work["arguments"] is None
+    assert work["arguments_bytes"] > 32 * 1024
+    assert set(work) == {"lease", "arguments", "arguments_bytes", "execution_ticket"}
+
+
+def test_poll_keeps_small_arguments_inline_with_the_original_envelope():
+    backend, _, _, _ = _backend(caps=["karmolab.host_health"])
+    work = backend.poll(worker_id="karmo-worker01", credential_token="credential",
+                        capabilities=["karmolab.host_health"])
+    assert set(work) == {"lease", "arguments", "execution_ticket"}
+    assert work["arguments"] == TEST_ARGS
+
+
+def test_fetch_arguments_pieces_reassemble_to_digest_matching_arguments():
+    import json as _json
+    from core_service.worker_stdio_gateway import MAX_FRAME_BYTES
+
+    backend, cursor = _big_backend()
+    work = backend.poll(worker_id="karmo-worker01", credential_token="credential",
+                        capabilities=["karmolab.host_health"])
+    pieces, offset = [], 0
+    while offset < work["arguments_bytes"]:
+        piece = backend.fetch_arguments(worker_id="karmo-worker01", credential_token="credential",
+                                        lease=work["lease"], offset=offset)
+        assert len(_json.dumps({"result": piece}).encode()) < MAX_FRAME_BYTES
+        pieces.append(piece["chunk"])
+        offset += len(piece["chunk"])
+    assembled = _json.loads("".join(pieces))
+    assert arguments_digest("karmolab.host_health", "1", assembled) == work["lease"]["arguments_digest"]
+    assert "lease_token=%s::uuid" in cursor.last_query and "lease_expires_at>NOW()" in cursor.last_query
+
+
+def test_fetch_arguments_refuses_without_live_lease_or_with_bad_offset():
+    backend, cursor = _big_backend()
+    lease = lease_to_wire(_lease())
+    for bad in (-1, 10**9):
+        with pytest.raises(WorkerGatewayBackendError):
+            backend.fetch_arguments(worker_id="karmo-worker01", credential_token="credential",
+                                    lease=lease, offset=bad)
+    cursor.live = False
+    with pytest.raises(WorkerGatewayBackendError, match="no live lease"):
+        backend.fetch_arguments(worker_id="karmo-worker01", credential_token="credential",
+                                lease=lease, offset=0)
+
+
+def test_fetch_arguments_rejects_cross_worker_lease():
+    backend, _ = _big_backend()
+    with pytest.raises(WorkerGatewayBackendError, match="identity mismatch"):
+        backend.fetch_arguments(worker_id="karmo-worker01", credential_token="credential",
+                                lease=lease_to_wire(_lease(worker_id="karmo-worker02")), offset=0)
+
+
+def test_fetch_arguments_shrinks_escape_heavy_pieces_to_fit_one_frame():
+    import json as _json
+    from core_service.worker_stdio_gateway import MAX_FRAME_BYTES
+
+    backend, cursor = _big_backend()
+    quotes = {"question": '"\\' * 60_000}
+    cursor.fetchone = lambda: (dict(quotes),)
+    piece = backend.fetch_arguments(worker_id="karmo-worker01", credential_token="credential",
+                                    lease=lease_to_wire(_lease()), offset=0)
+    assert 0 < len(piece["chunk"]) < 32 * 1024
+    assert len(_json.dumps({"result": piece}).encode()) < MAX_FRAME_BYTES

@@ -315,3 +315,50 @@ def test_submit_result_keeps_ticket_envelope_and_terminal_state_structured():
     assert backend.calls[0][0] == "submit_result"
     assert backend.calls[0][1]["execution_ticket"] == "ticket"
     assert backend.calls[0][1]["success"] is True
+
+
+def test_gateway_fetch_arguments_dispatches_bound_identity_and_offset():
+    class FetchBackend(Backend):
+        def fetch_arguments(self, **kwargs):
+            self.calls.append(("fetch_arguments", kwargs))
+            return {"offset": kwargs["offset"], "total_bytes": 10, "chunk": "x"}
+
+    backend = FetchBackend()
+    stdout = io.BytesIO()
+    code = serve_one(
+        backend=backend,
+        expected_worker_id="karmo-worker01",
+        stdin=io.BytesIO(_frame("fetch_arguments", {
+            "worker_id": "karmo-worker01",
+            "credential_token": "credential",
+            "lease": {"job_id": "job"},
+            "offset": 4,
+        })),
+        stdout=stdout,
+    )
+    assert code == 0
+    assert json.loads(stdout.getvalue())["result"]["offset"] == 4
+    assert backend.calls == [("fetch_arguments", {
+        "worker_id": "karmo-worker01",
+        "credential_token": "credential",
+        "lease": {"job_id": "job"},
+        "offset": 4,
+    })]
+
+
+def test_gateway_fetch_arguments_rejects_bad_offset_without_backend_call():
+    for bad in (-1, "0", True, 1.5):
+        backend = Backend()
+        request = GatewayRequest(request_id="req-1", operation="fetch_arguments", payload={
+            "worker_id": "karmo-worker01",
+            "credential_token": "credential",
+            "lease": {"job_id": "job"},
+            "offset": bad,
+        })
+        try:
+            dispatch_request(request, backend=backend, expected_worker_id="karmo-worker01")
+        except WorkerStdioGatewayError as exc:
+            assert str(exc) == "invalid_offset"
+        else:
+            raise AssertionError(f"offset {bad!r} was accepted")
+        assert backend.calls == []

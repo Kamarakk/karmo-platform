@@ -32,6 +32,12 @@ class RemoteWorkerClientError(RuntimeError):
 SUBMIT_RESULT_MAX_ATTEMPTS = 3
 SUBMIT_RESULT_RETRY_DELAY_SECONDS = 2
 
+# Large job arguments (a photo or voice note) arrive in pieces via
+# fetch_arguments instead of inline in the poll response. Matches Core's
+# own cap in worker_gateway_backend._MAX_ARGUMENT_BYTES.
+MAX_REMOTE_ARGUMENT_BYTES = 16 * 1024 * 1024
+_MIN_ARGUMENT_CHUNK_CHARS = 1024
+
 
 @dataclass(frozen=True)
 class RemoteWorkerConfig:
@@ -100,6 +106,58 @@ class SshRemoteWorkerClient:
             ollama_snapshot=ollama_snapshot,
         )
 
+    def _fetch_large_arguments(self, work):
+        """Assemble arguments Core left out of the poll response because they
+        exceed one frame. Returns the ordinary three-key work envelope, so
+        _validate_work's digest check applies to the assembled arguments
+        exactly as it does to inline ones."""
+        if not isinstance(work, dict) or "arguments_bytes" not in work:
+            return work
+        if set(work) != {"lease", "arguments", "arguments_bytes", "execution_ticket"}:
+            raise RemoteWorkerClientError("invalid work envelope")
+        total = work["arguments_bytes"]
+        lease = work["lease"]
+        if (
+            work["arguments"] is not None
+            or not isinstance(total, int) or isinstance(total, bool)
+            or not (1 <= total <= MAX_REMOTE_ARGUMENT_BYTES)
+            or not isinstance(lease, dict)
+        ):
+            raise RemoteWorkerClientError("invalid large work envelope")
+        if lease.get("worker_id") != self.config.worker_id:
+            raise RemoteWorkerClientError("work is bound to a different worker")
+        pieces = []
+        offset = 0
+        max_requests = total // _MIN_ARGUMENT_CHUNK_CHARS + 2
+        for _ in range(max_requests):
+            if offset >= total:
+                break
+            piece = self.transport.fetch_arguments(
+                worker_id=self.config.worker_id,
+                credential_token=self._credential(),
+                lease=lease,
+                offset=offset,
+            )
+            if (
+                not isinstance(piece, dict)
+                or set(piece) != {"offset", "total_bytes", "chunk"}
+                or piece["offset"] != offset
+                or piece["total_bytes"] != total
+                or not isinstance(piece["chunk"], str)
+                or not piece["chunk"]
+                or offset + len(piece["chunk"]) > total
+            ):
+                raise RemoteWorkerClientError("invalid arguments piece")
+            pieces.append(piece["chunk"])
+            offset += len(piece["chunk"])
+        if offset != total:
+            raise RemoteWorkerClientError("incomplete job arguments")
+        try:
+            arguments = json.loads("".join(pieces))
+        except json.JSONDecodeError as exc:
+            raise RemoteWorkerClientError("invalid assembled job arguments") from exc
+        return {"lease": lease, "arguments": arguments, "execution_ticket": work["execution_ticket"]}
+
     def _validate_work(self, work: dict):
         if not isinstance(work, dict) or set(work) != {"lease", "arguments", "execution_ticket"}:
             raise RemoteWorkerClientError("invalid work envelope")
@@ -130,7 +188,7 @@ class SshRemoteWorkerClient:
         )
         if work is None:
             return None
-        lease, arguments, ticket = self._validate_work(work)
+        lease, arguments, ticket = self._validate_work(self._fetch_large_arguments(work))
 
         # Critical ordering invariant: no capability code runs until Core has
         # verified and consumed the exact ticket against the still-live lease.

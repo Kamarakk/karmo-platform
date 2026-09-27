@@ -41,6 +41,29 @@ Grouped for review-as-you-go, in the order that unlocks real use fastest.
    (creates `/etc/karmo/core/tailscale-tls/`, runs `tailscale cert`,
    restarts the webui in the new mode) before a phone can actually use
    it.
+   **LIVE, 2026-09-27.** Kamara enabled HTTPS certificates in the
+   tailnet and the webui runs as `webui tailscale-https` on karmo-ai01
+   (https://karmo-ai01.tail2d74d7.ts.net:8787; plain-HTTP address no
+   longer served; no Serve/Funnel). Still a manual process, not
+   systemd -- does not survive a reboot. Phone test then showed voice
+   notes rejected by the 48 KiB worker-link argument bound; fix
+   (fetch large arguments in pieces, shrink photos/voice in the
+   browser) is on branch `claude/project-thread-lm83cs`.
+   **DEPLOYED + live-verified 2026-09-27**: karmo-ai01 (backup
+   `/opt/karmo/backups/chunks-deploy-20260927T023436Z`) and Worker01
+   (backup `chunks-deploy-20260927T023244Z`). Also found and fixed:
+   Worker01 was never registered for `vision_describe`/
+   `transcribe_audio`/`synthesize_speech` (added to
+   `/etc/karmo/worker01.json`, backup `worker01.json.before-media-*`,
+   plus `store.update_capabilities`, after `recover_expired_leases()`
+   parked 4 dead LEASED chat jobs as RECOVERY_REQUIRED); and the
+   service's hardening blocked the tools, fixed with drop-in
+   `/etc/systemd/system/karmo-worker01.service.d/10-read-home.conf`
+   (`ProtectHome=read-only`, `MemoryDenyWriteExecute=false`, both
+   approved by Kamara). Proven: 124 KB voice note transcribed, 280 KB
+   photo described, over HTTPS. **Still open**: speak replies longer
+   than ~1 second fail (result frame > 64 KiB, same problem in the
+   result direction); Worker02 not updated; branch not yet merged.
    **DONE, 2026-09-24, fully live-verified.** `karmo_core_dispatch`
    role + `/etc/karmo/core/worker-dispatch.dsn` provisioned; `core-service`
    redeployed to `karmo-ai01` (was up to 4 days stale, missing

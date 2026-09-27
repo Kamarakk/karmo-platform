@@ -137,6 +137,26 @@ function blobToBase64(blob) {
     reader.readAsDataURL(blob);
   });
 }
+// Phone photos are several MB; the vision model works at a few hundred
+// pixels anyway. Shrinking here keeps the job to a handful of worker
+// round trips (see worker_gateway_backend.fetch_arguments).
+function shrinkImage(file, maxSide = 1280) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('could not read image')), 'image/jpeg', 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('could not read image')); };
+    img.src = url;
+  });
+}
 async function speak(text) {
   const res = await fetch('/speak', {method: 'POST', body: JSON.stringify({text})});
   const data = await res.json();
@@ -187,7 +207,8 @@ document.getElementById('mic').addEventListener('click', async (e) => {
     return;
   }
   chunks = [];
-  mediaRecorder = new MediaRecorder(stream);
+  // Speech needs little bandwidth; a low bitrate keeps voice notes small.
+  mediaRecorder = new MediaRecorder(stream, {audioBitsPerSecond: 32000});
   mediaRecorder.ondataavailable = (ev) => chunks.push(ev.data);
   mediaRecorder.onstop = async () => {
     stream.getTracks().forEach((t) => t.stop());
@@ -214,7 +235,13 @@ document.getElementById('imgbtn').addEventListener('click', async () => {
     return;
   }
   line('you', 'you> [image] ' + question);
-  const image_base64 = await blobToBase64(fileInput.files[0]);
+  let image_base64;
+  try {
+    image_base64 = await blobToBase64(await shrinkImage(fileInput.files[0]));
+  } catch (err) {
+    line('status', 'vision error: ' + err.message);
+    return;
+  }
   line('status', 'describing image...');
   const res = await fetch('/vision', {method: 'POST', body: JSON.stringify({question, image_base64})});
   const data = await res.json();

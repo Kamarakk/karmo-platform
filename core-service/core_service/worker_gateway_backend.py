@@ -24,7 +24,21 @@ _LEASE_FIELDS = {
     "tool_version", "arguments_digest", "approval_id", "attempt_count",
     "lease_expires_at",
 }
-_MAX_ARGUMENT_BYTES = 48 * 1024
+# Arguments are stored in Postgres, not sent in one frame, so this cap is
+# about sane job size (a phone photo or voice note), not the 64 KiB SSH
+# frame. Anything above _INLINE_ARGUMENT_BYTES is left out of the poll
+# response and fetched by the worker in bounded pieces (fetch_arguments),
+# so every frame stays within worker_stdio_gateway.MAX_FRAME_BYTES.
+_MAX_ARGUMENT_BYTES = 16 * 1024 * 1024
+_INLINE_ARGUMENT_BYTES = 32 * 1024
+_ARGUMENT_CHUNK_CHARS = 32 * 1024
+_ARGUMENT_CHUNK_ENCODED_BYTES = 48 * 1024
+
+
+def _serialize_arguments(arguments: dict) -> str:
+    """Canonical ASCII-only form (json.dumps' default ensure_ascii), so one
+    character is always one byte and offsets are stable across calls."""
+    return json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def lease_to_wire(lease: WorkerLease) -> dict:
@@ -98,7 +112,7 @@ def attach_job_arguments(connection_factory, *, job_id: str, tool_id: str, tool_
     executed with missing, guessed, or mismatched arguments."""
     if not isinstance(arguments, dict):
         raise WorkerGatewayBackendError("remote job arguments must be an object")
-    serialized = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
+    serialized = _serialize_arguments(arguments)
     if len(serialized.encode("utf-8")) > _MAX_ARGUMENT_BYTES:
         raise WorkerGatewayBackendError("remote job arguments exceed transport bound")
     computed = arguments_digest(tool_id, tool_version, arguments)
@@ -238,11 +252,67 @@ class PostgresWorkerGatewayBackend:
         ticket = self.coordinator.issue_execution_ticket(
             credential_token=credential_token, lease=lease
         )
+        arguments_bytes = len(_serialize_arguments(arguments))
+        if arguments_bytes > _INLINE_ARGUMENT_BYTES:
+            # Too big for one frame: the worker fetches it with
+            # fetch_arguments under this same live lease, then checks the
+            # assembled arguments against lease.arguments_digest as usual.
+            return {
+                "lease": lease_to_wire(lease),
+                "arguments": None,
+                "arguments_bytes": arguments_bytes,
+                "execution_ticket": ticket,
+            }
         return {
             "lease": lease_to_wire(lease),
             "arguments": arguments,
             "execution_ticket": ticket,
         }
+
+    def fetch_arguments(self, *, worker_id: str, credential_token: str, lease: dict, offset: int):
+        """One bounded piece of a leased job's canonical arguments.
+
+        Only the worker holding the job's live lease (same worker, same
+        lease token, not expired, digest unchanged) can read it -- the same
+        binding record_ticket()/consume_ticket() require. Read-only: no job,
+        ticket, or approval state changes here."""
+        self._authenticate(worker_id=worker_id, credential_token=credential_token)
+        durable_lease = lease_from_wire(lease, expected_worker_id=worker_id)
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            raise WorkerGatewayBackendError("invalid arguments offset")
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT p.arguments
+                FROM public.karmo_worker_jobs AS j
+                JOIN public.karmo_worker_job_payloads AS p ON p.job_id=j.job_id
+                WHERE j.job_id=%s::uuid
+                  AND j.state='LEASED'
+                  AND j.worker_id=%s
+                  AND j.lease_token=%s::uuid
+                  AND j.lease_expires_at>NOW()
+                  AND j.arguments_digest=%s
+                  AND p.arguments_digest=j.arguments_digest
+                """,
+                (
+                    durable_lease.job_id, worker_id, durable_lease.lease_token,
+                    durable_lease.arguments_digest,
+                ),
+            )
+            row = cur.fetchone()
+        if row is None or not isinstance(row[0], dict):
+            raise WorkerGatewayBackendError("no live lease for these job arguments")
+        serialized = _serialize_arguments(row[0])
+        if offset >= len(serialized):
+            raise WorkerGatewayBackendError("invalid arguments offset")
+        size = _ARGUMENT_CHUNK_CHARS
+        chunk = serialized[offset:offset + size]
+        # JSON escaping can grow a piece (e.g. quotes in a question); shrink
+        # until it safely fits one response frame.
+        while len(json.dumps(chunk)) > _ARGUMENT_CHUNK_ENCODED_BYTES:
+            size //= 2
+            chunk = serialized[offset:offset + size]
+        return {"offset": offset, "total_bytes": len(serialized), "chunk": chunk}
 
     def authorize_execution(self, *, worker_id: str, credential_token: str,
                             lease: dict, execution_ticket: str):
