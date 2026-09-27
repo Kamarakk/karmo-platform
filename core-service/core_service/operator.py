@@ -43,6 +43,8 @@ from .speech_synthesize_capability import manifest as synthesize_speech_manifest
 from .bloomboss_capability import BLOOMBOSS_REPORT_TOOL
 from .bloomboss_capability import TOOL_VERSION as BLOOMBOSS_TOOL_VERSION
 from .bloomboss_capability import chat_digest as bloomboss_chat_digest
+from .bloomboss_capability import is_lookup_question as bloomboss_is_lookup_question
+from .bloomboss_capability import lookup_answer as bloomboss_lookup_answer
 from .bloomboss_capability import handler as bloomboss_report_handler
 from .bloomboss_capability import known_cultivar_names
 from .bloomboss_capability import manifest as bloomboss_manifest
@@ -986,10 +988,55 @@ class KarmoOperator:
         remaining-budget as this one call's timeout instead of the
         client's fixed construction-time default (Section 3.5)."""
         def ask(messages, tools, timeout):
+            on_token = getattr(self, "_on_token", None)
+            if on_token is None:
+                return self.model_client.chat_with_tools(
+                    model=model_id, messages=messages, tools=tools, timeout=timeout,
+                )
+            # Streaming (2026-09-27): a later round (after a tool call, or a
+            # fallback candidate) replaces what an earlier round streamed, so
+            # tell the listener to clear before this round's text arrives.
+            if getattr(self, "_streamed_any", False):
+                on_token(None)
+
+            def emit(piece):
+                self._streamed_any = True
+                on_token(piece)
+
             return self.model_client.chat_with_tools(
-                model=model_id, messages=messages, tools=tools, timeout=timeout,
+                model=model_id, messages=messages, tools=tools, timeout=timeout, on_token=emit,
             )
         return ask
+
+    def _direct_bloomboss_answer(self, text: str) -> dict | None:
+        """A plain status lookup that names a plant ("how are the Ninja Albos
+        doing?") is answered straight from bloomboss_report's real figures, with
+        no model call (2026-09-27: the model took 60-100s on karmo-ai01 to
+        restate the same numbers, and once misread one). Judgment questions
+        ("should I restock...") still go to the model. Runs through the same
+        dispatcher as every other tool call."""
+        if not bloomboss_is_lookup_question(text):
+            return None
+        answers = []
+        call = {"function": {"name": "bloomboss_report", "arguments": {}}}
+
+        def render(result):
+            answers.append(bloomboss_lookup_answer(result, text))
+            return ""
+
+        self._execute_exposed_tool(call, render=render)
+        answer = answers[0] if answers else None
+        if answer is None:
+            return None
+        write_failure = None
+        try:
+            self.memory_backend.remember_exchange(text, answer)
+        except Exception as exc:
+            write_failure = f"DEGRADED_WRITE_FAILED:{type(exc).__name__}"
+        return self._with_memory_status(
+            {"kind": "chat", "message": answer, "model": None},
+            self._combine_memory_status(None, write_failure),
+        )
 
     def _ask_worker(self, worker_id: str, model_id: str):
         """ask_fn for _run_tool_loop's Phase D2 worker path -- every round
@@ -1436,7 +1483,17 @@ class KarmoOperator:
             return write_failure
         return self.memory_status
 
-    def handle(self, text: str) -> dict:
+    def handle(self, text: str, on_token=None) -> dict:
+        """on_token, when given, receives the model's answer text piece by
+        piece as it is written (None means: clear what was sent so far). The
+        returned dict is still the authoritative final answer."""
+        self._on_token, self._streamed_any = on_token, False
+        try:
+            return self._handle(text)
+        finally:
+            self._on_token = None
+
+    def _handle(self, text: str) -> dict:
         text = text.strip()
         if not text:
             return {"kind": "system", "message": "Ask KARMO a question or request KarmoLab status."}
@@ -1453,4 +1510,7 @@ class KarmoOperator:
             }
         if _STATUS_WORDS.search(text):
             return self._read_status()
+        direct = self._direct_bloomboss_answer(text)
+        if direct is not None:
+            return direct
         return self._chat(text)

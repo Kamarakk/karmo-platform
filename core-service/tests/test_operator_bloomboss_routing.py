@@ -35,7 +35,7 @@ def test_imported_cultivar_names_are_known():
 @pytest.mark.parametrize(
     "text",
     [
-        "how are the Ninja Albos doing?",
+        "tell me about the Ninja Albos",
         "how many plants did we sell?",
         "what's my profit so far?",
         "what does bloomboss say about suppliers?",
@@ -83,11 +83,11 @@ def test_prerun_report_is_a_short_digest_of_the_named_cultivar():
     """Live measurement (2026-09-27): the 6000-char report took 2.5-3 minutes
     of prompt reading on karmo-ai01's CPU. The model now gets a few lines."""
     client = ScriptedClient("answer")
-    KarmoOperator(model_client=client).handle("how are the Ninja Albos doing?")
+    KarmoOperator(model_client=client).handle("should I restock the Ninja Albos?")
 
     digest = _tool_results(client.requests[0])[0]
     assert len(digest) < 1000
-    assert "- Ninja Albo: 10 units, 1 sold, 0 lost, revenue $350, profit $250.91, margin 72%" in digest
+    assert "- Ninja Albo: 10 units, 1 sold (10% sell-through), 0 lost, revenue $350, profit $250.91, margin 72%" in digest
     assert "Melo Albo" not in digest
 
 
@@ -97,5 +97,34 @@ def test_digest_lists_every_cultivar_when_none_is_named():
 
     digest = _tool_results(client.requests[0])[0]
     assert "Totals: 75 units, 5 sold, revenue $1090" in digest
-    assert "- Melo Albo: 5 units, 0 sold" in digest
+    assert "- Melo Albo: 5 units, 0 sold (0% sell-through)" in digest
     assert len(digest) < 2000
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["how are the Ninja Albos doing?", "Ninja Albo numbers", "how did the ninja albo sell?"],
+)
+def test_plain_plant_lookup_is_answered_from_the_data_without_the_model(text):
+    """Live (2026-09-27): qwen3:8b took 60-100s to restate these figures on
+    karmo-ai01 and once gave the business-wide sell-through as the plant's."""
+    client = ScriptedClient("should not be used")
+    response = KarmoOperator(model_client=client).handle(text)
+
+    assert client.requests == []
+    assert response["message"].startswith(
+        "Ninja Albo: 10 units, 1 sold (10% sell-through), 0 lost. Revenue $350, profit $250.91, 72% margin."
+    )
+    assert "emgarden_invoice_2026040040.csv" in response["message"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["should I restock the Ninja Albos?", "why are the Ninja Albos doing badly?", "tell me about the Ninja Albos"],
+)
+def test_judgment_or_open_question_about_a_plant_still_goes_to_the_model(text):
+    client = ScriptedClient("model answer")
+    response = KarmoOperator(model_client=client).handle(text)
+
+    assert len(client.requests) == 1
+    assert response["message"] == "model answer"
