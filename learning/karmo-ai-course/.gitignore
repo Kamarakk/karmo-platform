@@ -1,0 +1,8 @@
+__pycache__/
+.venv/
+out/
+reports/
+index.json
+invoices.db
+my-notes/
+labs/13-general-agent-risks/workspace/summary.txt

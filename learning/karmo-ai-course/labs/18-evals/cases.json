@@ -1,0 +1,17 @@
+[
+  {"id": "stock-landed-cost", "target": "tools_agent",
+   "question": "What is the landed cost per unit of Pink Black Velvet?",
+   "cultivar": "Pink Black Velvet", "must_contain_fields": ["landed_cost_per_unit"]},
+  {"id": "stock-units-sold", "target": "tools_agent",
+   "question": "How many Pink Black Velvet units have been sold?",
+   "cultivar": "Pink Black Velvet", "must_contain_fields": ["units_sold"]},
+  {"id": "stock-total-units", "target": "tools_agent",
+   "question": "How many Ninja Albo units do I have in total?",
+   "cultivar": "Ninja Albo", "must_contain_fields": ["units"]},
+  {"id": "rag-heat-pack", "target": "rag",
+   "question": "When do you add heat packs?", "must_contain_any": ["50"]},
+  {"id": "rag-doa-shipping", "target": "rag",
+   "question": "Is shipping refunded on a dead-on-arrival claim?", "must_contain_any": ["not refunded", "not", "no"]},
+  {"id": "rag-unknown", "target": "rag",
+   "question": "What is the capital of France?", "must_contain_any": ["don't know", "do not know"]}
+]

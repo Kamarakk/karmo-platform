@@ -1,0 +1,5 @@
+{
+  "A-1001": {"customer": "M. Reyes", "plant": "Alocasia Frydek Variegata", "paid": 38.00, "refunded": false},
+  "A-1002": {"customer": "J. Park", "plant": "Alocasia Pink Black Velvet", "paid": 235.00, "refunded": false},
+  "A-1003": {"customer": "S. Ito", "plant": "Alocasia Dragon Scale Mint", "paid": 42.50, "refunded": true}
+}
