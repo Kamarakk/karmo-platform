@@ -144,14 +144,23 @@ def chat_digest(result: dict, question: str) -> str:
 
 
 # A plain status lookup ("how are the Ninja Albos doing?", "Melo Albo
-# numbers") versus a question that needs judgment ("should I restock...").
+# numbers", "how many Ninja Albos do I have?") versus a question that needs
+# judgment or care advice ("should I restock...", "how do I water...").
+# Covers every figure the lookup answer carries: units, sold, lost, revenue,
+# profit, margin, sell-through. ['’] because phone keyboards send curly quotes.
 _LOOKUP_WORDS = re.compile(
-    r"\b(how(?:'s| is| are| did| have)|doing|performing|performance|stats|numbers|figures|sold)\b",
+    r"\b(how(?:['’]s| is| are| did| have| has| many| much| well)"
+    r"|doing|perform\w*|stats|statistics|numbers|figures|metrics|data|summary|status|report"
+    r"|sold|sell|sells|selling|sales?|sell[- ]through"
+    r"|count|units?|qty|quantity|inventory|stock|in[- ]stock|on[- ]hand|left|remaining|have|own|got"
+    r"|revenue|profits?|margins?|made|earned|earnings|income|money"
+    r"|lose|lost|losses|died|dead)\b",
     re.IGNORECASE,
 )
 _JUDGMENT_WORDS = re.compile(
     r"\b(should|restock|reorder|recommend\w*|advice|advise|why|compare|compared|versus|vs|better|worse"
-    r"|best|worst|predict\w*|forecast\w*|plan|strategy|price|pricing|worth)\b",
+    r"|best|worst|predict\w*|forecast\w*|plan|strategy|price|pricing|worth"
+    r"|care|caring|water\w*|light|soil|fertiliz\w*|repot\w*|propagat\w*|humidity|pests?|tips|explain)\b",
     re.IGNORECASE,
 )
 
