@@ -127,6 +127,12 @@ MAX_MEMORY_CONTEXT_CHARS = 12_000
 #    here). Still not a benchmarked p95 value.
 TOTAL_CHAT_DEADLINE_SECONDS = 300.0
 
+# Stage 3 (2026-09-29): a phrasing-only turn (the data was already fetched
+# and no tool is left to choose) is answered by the small "phrase" model
+# first. This caps that attempt so a stuck small model still leaves the
+# turn's budget for qwen3:8b.
+PHRASING_ATTEMPT_SECONDS = 60.0
+
 # Real, live-diagnosed bound (2026-09-19): bloomboss_report's full result
 # serialized to 63,035 bytes for a single small CSV import -- feeding that
 # entire blob back to a CPU-only model as tool-result context took over
@@ -562,6 +568,20 @@ def default_model_resources() -> list[ModelResource]:
             trust_tier=30,
             local=True,
             metadata={"role": "verifier"},
+        ),
+        # Stage 3 (2026-09-29): phrases answers from figures already fetched,
+        # never chooses tools -- in the KARMO Speed Plan sandbox it invented a
+        # tool call for "capital of France", so it is deliberately not tagged
+        # "chat" or "tool_calling" and never enters the tool-calling candidate
+        # set. ~2.5x qwen3:8b's speed on the same CPU. If it isn't pulled, the
+        # attempt fails fast and qwen3:8b answers as before.
+        ModelResource(
+            model_id="llama3.2:3b",
+            provider="ollama-local",
+            capabilities=frozenset({"phrase"}),
+            trust_tier=20,
+            local=True,
+            metadata={"role": "phrasing"},
         ),
     ]
 
@@ -1423,6 +1443,20 @@ class KarmoOperator:
                         self._combine_memory_status(read_failure, write_failure),
                     )
 
+        if prefetched and not tools:
+            phrased = self._phrase_answer(messages, deadline)
+            if phrased is not None:
+                answer, model_id = phrased
+                write_failure = None
+                try:
+                    self.memory_backend.remember_exchange(text, answer)
+                except Exception as exc:
+                    write_failure = f"DEGRADED_WRITE_FAILED:{type(exc).__name__}"
+                return self._with_memory_status(
+                    {"kind": "chat", "message": answer, "model": model_id},
+                    self._combine_memory_status(read_failure, write_failure),
+                )
+
         last_error = None
         for candidate in candidates:
             remaining = deadline - time.monotonic()
@@ -1473,6 +1507,26 @@ class KarmoOperator:
             },
             self._combine_memory_status(read_failure, None),
         )
+
+    def _phrase_answer(self, messages: list[dict], deadline: float) -> tuple[str, str] | None:
+        """Stage 3: asks the local "phrase" model to word an answer from data
+        already in messages, with no tools offered. Returns (answer, model_id),
+        or None on any failure or an empty answer, so the caller falls back to
+        the normal tool-calling candidates within the same turn deadline."""
+        for resource in self.router.ranked(required_capabilities={"phrase"}, require_local=True):
+            attempt_deadline = min(deadline, time.monotonic() + PHRASING_ATTEMPT_SECONDS)
+            try:
+                answer = self._run_tool_loop(self._ask_local(resource.model_id), messages, [],
+                                             deadline=attempt_deadline)
+            except (_TurnDeadlineExceeded, OllamaClientError) as exc:
+                print(
+                    f"KARMO phrasing model {resource.model_id!r} failed: {type(exc).__name__}: {exc}",
+                    file=sys.stderr, flush=True,
+                )
+                continue
+            if answer.strip():
+                return answer, resource.model_id
+        return None
 
     def _combine_memory_status(self, read_failure: str | None, write_failure: str | None) -> str:
         if read_failure and write_failure:
