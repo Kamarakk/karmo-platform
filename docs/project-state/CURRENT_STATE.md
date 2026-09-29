@@ -2074,6 +2074,23 @@ activate the `tailscale-https` webui mode (a separate production step,
 its own cert directory). See `PROJECT_TODO_LIST.md` for the current
 next actions.
 
+## 2026-09-29 -- Chat speed Stage 3: small model phrases fetched-data answers (PR open, not deployed)
+
+- **Approach chosen:** `llama3.2:3b` (~2.5x qwen3:8b on this CPU, Speed Plan
+  sandbox) answers only turns where BloomBoss figures were fetched up front and
+  no other tool is offered. qwen3:8b keeps every turn with a tool decision
+  (the 3b invented a tool call in the sandbox). If the 3b fails, times out
+  (60s cap) or returns nothing, qwen3:8b answers in the same turn.
+- **Workers rejected for speed:** Worker01/02 run on identical KVE hosts (no
+  GPU), so qwen3:8b there is no faster; D2 routing also stays held.
+- **Deploy needs Kamara's go:** `ollama pull llama3.2:3b` on AI01 (~2 GB; it
+  was removed 2026-09-17) plus core-service deploy. Resident RAM with both
+  models ~8.5 of 11 GB; NEEDS_VERIFICATION live. Rollback: redeploy prior
+  operator.py (or just remove the model; the code falls back to qwen3:8b).
+- **Not faster yet:** general chat (no BloomBoss data fetched) still runs on
+  qwen3:8b. Next candidate: trim the recent-conversation memory re-read each
+  turn, after measuring its real size on AI01.
+
 ## 2026-09-27 -- Chat speed: PR #134 and Stage 1 live, Stage 2 in review
 
 **VERIFIED live on karmo-ai01 (Ollama timing logs).** A BloomBoss question took

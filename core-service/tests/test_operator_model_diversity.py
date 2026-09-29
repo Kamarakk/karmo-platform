@@ -13,7 +13,9 @@ def test_default_activation_models_use_local_open_two_model_stack():
     assert set(resources) == {
         "qwen3:8b",
         "mistral:7b",
+        "llama3.2:3b",  # 2026-09-29 Stage 3: phrasing only, never chat/tool_calling
     }
+    assert resources["llama3.2:3b"].capabilities == frozenset({"phrase"})
     assert resources["qwen3:8b"].capabilities == frozenset({"chat", "summarize", "reason", "tool_calling"})
     assert resources["mistral:7b"].capabilities == frozenset({"verify"})
     assert all(resource.local for resource in resources.values())
@@ -44,4 +46,6 @@ def test_default_roles_are_explicit_and_cloud_free():
     resources = {resource.model_id: resource for resource in default_model_resources()}
     assert resources["qwen3:8b"].metadata["role"] == "primary"
     assert resources["mistral:7b"].metadata["role"] == "verifier"
+    assert resources["llama3.2:3b"].metadata["role"] == "phrasing"
+    assert resources["llama3.2:3b"].metadata["role"] == "phrasing"
     assert {resource.provider for resource in resources.values()} == {"ollama-local"}

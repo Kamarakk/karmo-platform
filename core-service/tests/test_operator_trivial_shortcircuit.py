@@ -107,7 +107,9 @@ def test_ordinary_question_is_unaffected():
     response = operator.handle("what does bloomboss say about last month's sales?")
 
     assert response["kind"] == "chat"
-    assert client.calls == ["qwen3:8b"]
+    # 2026-09-29 Stage 3: BloomBoss figures are fetched up front, so the
+    # phrasing model answers (see test_operator_phrasing_model.py).
+    assert client.calls == ["llama3.2:3b"]
 
 
 def test_write_words_still_take_priority_check_order_is_safe():
