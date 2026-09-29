@@ -38,6 +38,16 @@ SUBMIT_RESULT_RETRY_DELAY_SECONDS = 2
 MAX_REMOTE_ARGUMENT_BYTES = 16 * 1024 * 1024
 _MIN_ARGUMENT_CHUNK_CHARS = 1024
 
+# Results work the same way in the other direction: one bigger than
+# _INLINE_RESULT_BYTES (a long spoken reply) is uploaded in pieces with
+# upload_result_piece, then submit_result sends only its size. Each piece
+# leaves room in the 64 KiB frame for the lease, credential and ticket.
+# MAX_REMOTE_RESULT_BYTES matches Core's worker_gateway_backend cap.
+MAX_REMOTE_RESULT_BYTES = 16 * 1024 * 1024
+_INLINE_RESULT_BYTES = 32 * 1024
+_RESULT_PIECE_CHARS = 40 * 1024
+_RESULT_PIECE_ENCODED_BYTES = 44 * 1024
+
 
 @dataclass(frozen=True)
 class RemoteWorkerConfig:
@@ -158,6 +168,42 @@ class SshRemoteWorkerClient:
             raise RemoteWorkerClientError("invalid assembled job arguments") from exc
         return {"lease": lease, "arguments": arguments, "execution_ticket": work["execution_ticket"]}
 
+    @staticmethod
+    def _result_pieces(serialized: str):
+        """Split a serialized result into pieces that each fit one frame.
+        JSON escaping can grow a piece, so shrink until it fits."""
+        pieces = []
+        offset = 0
+        while offset < len(serialized):
+            size = _RESULT_PIECE_CHARS
+            chunk = serialized[offset:offset + size]
+            while len(json.dumps(chunk)) > _RESULT_PIECE_ENCODED_BYTES:
+                size //= 2
+                chunk = serialized[offset:offset + size]
+            pieces.append((offset, chunk))
+            offset += len(chunk)
+        return pieces
+
+    def _upload_result(self, *, lease, ticket, pieces):
+        for offset, chunk in pieces:
+            self.transport.upload_result_piece(
+                worker_id=self.config.worker_id,
+                credential_token=self._credential(),
+                lease=lease,
+                execution_ticket=ticket,
+                offset=offset,
+                chunk=chunk,
+            )
+
+    def _renew_heartbeat(self):
+        # Best-effort: a failed renewal still falls through to
+        # submit_result's own bounded retry/error.
+        if self._heartbeat_lease_seconds is not None:
+            try:
+                self.heartbeat(lease_seconds=self._heartbeat_lease_seconds)
+            except Exception:  # noqa: BLE001 -- submit_result surfaces the real failure
+                pass
+
     def _validate_work(self, work: dict):
         if not isinstance(work, dict) or set(work) != {"lease", "arguments", "execution_ticket"}:
             raise RemoteWorkerClientError("invalid work envelope")
@@ -223,6 +269,17 @@ class SshRemoteWorkerClient:
             error = f"{type(exc).__name__}: {exc}"[:2000]
             result = {"error": error}
 
+        try:
+            serialized = json.dumps(result, sort_keys=True, separators=(",", ":"))
+            if len(serialized) > MAX_REMOTE_RESULT_BYTES:
+                raise ValueError(f"result exceeds {MAX_REMOTE_RESULT_BYTES} bytes")
+        except (TypeError, ValueError) as exc:
+            success = False
+            error = f"{type(exc).__name__}: {exc}"[:2000]
+            result = {"error": error}
+            serialized = json.dumps(result, sort_keys=True, separators=(",", ":"))
+        pieces = self._result_pieces(serialized) if len(serialized) > _INLINE_RESULT_BYTES else None
+
         envelope = self.result_authenticator.sign(
             worker_id=self.config.worker_id,
             key_id=self.config.key_id,
@@ -233,28 +290,41 @@ class SshRemoteWorkerClient:
         # The loop heartbeats only once per cycle, before poll. A capability
         # that ran longer than the heartbeat lease would otherwise have its
         # finished result refused by Core ("worker heartbeat lease expired"),
-        # deterministically, on every retry. Best-effort: a failed renewal
-        # still falls through to submit_result's own bounded retry/error.
-        if self._heartbeat_lease_seconds is not None:
-            try:
-                self.heartbeat(lease_seconds=self._heartbeat_lease_seconds)
-            except Exception:  # noqa: BLE001 -- submit_result surfaces the real failure
-                pass
+        # deterministically, on every retry. A large result is renewed again
+        # after its upload, which can itself take a while.
+        self._renew_heartbeat()
 
         final = None
         submit_error = None
         for attempt in range(SUBMIT_RESULT_MAX_ATTEMPTS):
             try:
-                final = self.transport.submit_result(
-                    worker_id=self.config.worker_id,
-                    credential_token=self._credential(),
-                    lease=lease,
-                    execution_ticket=ticket,
-                    result=result,
-                    envelope=envelope,
-                    success=success,
-                    error=error,
-                )
+                if pieces is None:
+                    final = self.transport.submit_result(
+                        worker_id=self.config.worker_id,
+                        credential_token=self._credential(),
+                        lease=lease,
+                        execution_ticket=ticket,
+                        result=result,
+                        envelope=envelope,
+                        success=success,
+                        error=error,
+                    )
+                else:
+                    # Re-uploading on retry is safe: Core ignores an
+                    # identical piece it already has.
+                    self._upload_result(lease=lease, ticket=ticket, pieces=pieces)
+                    self._renew_heartbeat()
+                    final = self.transport.submit_result(
+                        worker_id=self.config.worker_id,
+                        credential_token=self._credential(),
+                        lease=lease,
+                        execution_ticket=ticket,
+                        result=None,
+                        envelope=envelope,
+                        success=success,
+                        error=error,
+                        result_bytes=len(serialized),
+                    )
                 submit_error = None
                 break
             except Exception as exc:  # noqa: BLE001 -- bounded retry; never silently drop a finished result

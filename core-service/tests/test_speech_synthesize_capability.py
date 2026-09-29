@@ -104,3 +104,14 @@ def test_handler_returns_a_dispatcher_bindable_closure():
 
     assert result == {"audio_base64": "ZmFrZS1hdWRpbw=="}
     assert client.calls[0]["worker_id"] == "KARMO-WORKER01"
+
+
+def test_handler_gives_long_text_a_longer_deadline():
+    client = FakeWorkerDispatchClient(outcome=_succeeded())
+
+    handler(client)({"text": "short"})
+    handler(client)({"text": "x" * MAX_TEXT_CHARS})
+
+    short, long = (call["total_deadline_seconds"] for call in client.calls)
+    assert 30.0 <= short < 31.0
+    assert long == pytest.approx(30.0 + 0.15 * MAX_TEXT_CHARS)

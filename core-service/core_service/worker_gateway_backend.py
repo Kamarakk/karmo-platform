@@ -12,7 +12,7 @@ import json
 from datetime import datetime
 
 from .control import arguments_digest
-from .worker_coordination import WorkerLease
+from .worker_coordination import WorkerLease, _digest_token
 
 
 class WorkerGatewayBackendError(RuntimeError):
@@ -33,6 +33,10 @@ _MAX_ARGUMENT_BYTES = 16 * 1024 * 1024
 _INLINE_ARGUMENT_BYTES = 32 * 1024
 _ARGUMENT_CHUNK_CHARS = 32 * 1024
 _ARGUMENT_CHUNK_ENCODED_BYTES = 48 * 1024
+# Result direction of the same fix: a result too big for one frame (a long
+# spoken reply) is uploaded in pieces with upload_result_piece and assembled
+# by submit_result. Same overall cap as arguments.
+_MAX_RESULT_BYTES = 16 * 1024 * 1024
 
 
 def _serialize_arguments(arguments: dict) -> str:
@@ -321,11 +325,130 @@ class PostgresWorkerGatewayBackend:
         self.coordinator.authorize_execution(token=execution_ticket, lease=durable_lease)
         return {"authorized": True}
 
-    def submit_result(self, *, worker_id: str, credential_token: str, lease: dict,
-                      execution_ticket: str, result, envelope: dict,
-                      success: bool, error: str | None):
+    def upload_result_piece(self, *, worker_id: str, credential_token: str, lease: dict,
+                            execution_ticket: str, offset: int, chunk: str):
+        """Stage one piece of a result too big for one frame.
+
+        Only the worker holding the job's live lease, after Core consumed its
+        execution ticket, can stage pieces -- the same binding
+        submit_authenticated_result() requires. Pieces are untrusted until
+        submit_result assembles them and accept_result() checks them against
+        the worker's signed envelope. Re-sending an identical piece is a
+        no-op, so the worker can retry a whole upload."""
         self._authenticate(worker_id=worker_id, credential_token=credential_token)
         durable_lease = lease_from_wire(lease, expected_worker_id=worker_id)
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            raise WorkerGatewayBackendError("invalid result offset")
+        if not isinstance(chunk, str) or not chunk or offset + len(chunk) > _MAX_RESULT_BYTES:
+            raise WorkerGatewayBackendError("invalid result piece")
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO public.karmo_worker_job_result_pieces
+                    (job_id, lease_token, offset_chars, chunk)
+                SELECT j.job_id, j.lease_token, %s, %s
+                FROM public.karmo_worker_jobs AS j
+                WHERE j.job_id=%s::uuid
+                  AND j.state='LEASED'
+                  AND j.worker_id=%s
+                  AND j.lease_token=%s::uuid
+                  AND j.lease_expires_at>NOW()
+                  AND EXISTS (
+                      SELECT 1 FROM public.karmo_execution_tickets t
+                      WHERE t.ticket_digest=%s AND t.job_id=j.job_id
+                        AND t.worker_id=j.worker_id AND t.consumed_at IS NOT NULL
+                  )
+                ON CONFLICT (job_id, lease_token, offset_chars) DO NOTHING
+                RETURNING job_id
+                """,
+                (
+                    offset, chunk, durable_lease.job_id, worker_id,
+                    durable_lease.lease_token, _digest_token(execution_ticket),
+                ),
+            )
+            if cur.fetchone() is None:
+                # Either no live, authorized lease, or this piece is already
+                # staged. Only an identical retry is accepted.
+                cur.execute(
+                    """
+                    SELECT p.chunk
+                    FROM public.karmo_worker_job_result_pieces AS p
+                    JOIN public.karmo_worker_jobs AS j
+                      ON j.job_id=p.job_id AND j.lease_token=p.lease_token
+                    WHERE p.job_id=%s::uuid AND p.lease_token=%s::uuid
+                      AND p.offset_chars=%s
+                      AND j.state='LEASED' AND j.worker_id=%s
+                      AND j.lease_expires_at>NOW()
+                    """,
+                    (durable_lease.job_id, durable_lease.lease_token, offset, worker_id),
+                )
+                row = cur.fetchone()
+                if row is None or row[0] != chunk:
+                    raise WorkerGatewayBackendError("no live authorized lease for this result piece")
+        return {"offset": offset, "stored_chars": len(chunk)}
+
+    def _assemble_result(self, *, worker_id: str, lease: WorkerLease, result_bytes: int):
+        """Join the staged pieces for this exact lease. Must cover
+        [0, result_bytes) with no gap or overlap; otherwise refuse."""
+        if (
+            not isinstance(result_bytes, int) or isinstance(result_bytes, bool)
+            or not (1 <= result_bytes <= _MAX_RESULT_BYTES)
+        ):
+            raise WorkerGatewayBackendError("invalid result size")
+        with self._connection_factory() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT p.offset_chars, p.chunk
+                FROM public.karmo_worker_job_result_pieces AS p
+                JOIN public.karmo_worker_jobs AS j
+                  ON j.job_id=p.job_id AND j.lease_token=p.lease_token
+                WHERE p.job_id=%s::uuid AND p.lease_token=%s::uuid
+                  AND j.state='LEASED' AND j.worker_id=%s
+                ORDER BY p.offset_chars
+                """,
+                (lease.job_id, lease.lease_token, worker_id),
+            )
+            rows = cur.fetchall()
+        pieces = []
+        expected = 0
+        for offset, chunk in rows:
+            if offset != expected:
+                raise WorkerGatewayBackendError("result pieces are incomplete")
+            pieces.append(chunk)
+            expected += len(chunk)
+        if expected != result_bytes:
+            raise WorkerGatewayBackendError("result pieces are incomplete")
+        try:
+            return json.loads("".join(pieces))
+        except json.JSONDecodeError as exc:
+            raise WorkerGatewayBackendError("assembled result is not valid JSON") from exc
+
+    def _discard_result_pieces(self, job_id: str):
+        # Best-effort cleanup: the accepted result is already durable in
+        # karmo_worker_job_results, and the pieces cascade with the job.
+        try:
+            with self._connection_factory() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM public.karmo_worker_job_result_pieces WHERE job_id=%s::uuid",
+                    (job_id,),
+                )
+        except Exception:  # noqa: BLE001 -- never fail an accepted result over cleanup
+            pass
+
+    def submit_result(self, *, worker_id: str, credential_token: str, lease: dict,
+                      execution_ticket: str, result, envelope: dict,
+                      success: bool, error: str | None, result_bytes: int | None = None):
+        """result_bytes set (and result None) means the result was uploaded
+        with upload_result_piece; it is assembled here and then verified by
+        accept_result exactly like an inline result."""
+        self._authenticate(worker_id=worker_id, credential_token=credential_token)
+        durable_lease = lease_from_wire(lease, expected_worker_id=worker_id)
+        if result_bytes is not None:
+            if result is not None:
+                raise WorkerGatewayBackendError("result must be inline or in pieces, not both")
+            result = self._assemble_result(
+                worker_id=worker_id, lease=durable_lease, result_bytes=result_bytes
+            )
         digest = self.coordinator.accept_result(
             execution_ticket=execution_ticket,
             lease=durable_lease,
@@ -337,6 +460,8 @@ class PostgresWorkerGatewayBackend:
             success=success,
             error=error,
         )
+        if result_bytes is not None:
+            self._discard_result_pieces(durable_lease.job_id)
         return {
             "accepted": True,
             "state": "SUCCEEDED" if success else "FAILED",

@@ -20,7 +20,12 @@ from dataclasses import dataclass
 MAX_FRAME_BYTES = 64 * 1024
 PROTOCOL_VERSION = 1
 _ALLOWED_OPERATIONS = frozenset({
-    "heartbeat", "poll", "fetch_arguments", "authorize_execution", "submit_result",
+    "heartbeat", "poll", "fetch_arguments", "authorize_execution",
+    "upload_result_piece", "submit_result",
+})
+_SUBMIT_RESULT_FIELDS = frozenset({
+    "worker_id", "credential_token", "lease", "execution_ticket",
+    "result", "envelope", "success", "error",
 })
 
 
@@ -166,11 +171,42 @@ def dispatch_request(request: GatewayRequest, *, backend, expected_worker_id: st
             execution_ticket=payload["execution_ticket"],
         )
 
-    if request.operation == "submit_result":
+    if request.operation == "upload_result_piece":
         _require_exact(payload, {
-            "worker_id", "credential_token", "lease", "execution_ticket",
-            "result", "envelope", "success", "error",
+            "worker_id", "credential_token", "lease", "execution_ticket", "offset", "chunk",
         })
+        _require_token(payload["credential_token"], label="credential_token")
+        _require_token(payload["execution_ticket"], label="execution_ticket")
+        if not isinstance(payload["lease"], dict):
+            raise WorkerStdioGatewayError("invalid_lease")
+        offset = payload["offset"]
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            raise WorkerStdioGatewayError("invalid_offset")
+        if not isinstance(payload["chunk"], str) or not payload["chunk"]:
+            raise WorkerStdioGatewayError("invalid_chunk")
+        return backend.upload_result_piece(
+            worker_id=expected_worker_id,
+            credential_token=payload["credential_token"],
+            lease=payload["lease"],
+            execution_ticket=payload["execution_ticket"],
+            offset=offset,
+            chunk=payload["chunk"],
+        )
+
+    if request.operation == "submit_result":
+        # result_bytes (optional) means the result was sent earlier with
+        # upload_result_piece and "result" is null.
+        if set(payload) not in (_SUBMIT_RESULT_FIELDS, _SUBMIT_RESULT_FIELDS | {"result_bytes"}):
+            raise WorkerStdioGatewayError("invalid_payload_schema")
+        extra = {}
+        if "result_bytes" in payload:
+            result_bytes = payload["result_bytes"]
+            if (
+                not isinstance(result_bytes, int) or isinstance(result_bytes, bool)
+                or result_bytes < 1 or payload["result"] is not None
+            ):
+                raise WorkerStdioGatewayError("invalid_result_bytes")
+            extra["result_bytes"] = result_bytes
         _require_token(payload["credential_token"], label="credential_token")
         _require_token(payload["execution_ticket"], label="execution_ticket")
         if not isinstance(payload["lease"], dict) or not isinstance(payload["envelope"], dict):
@@ -190,6 +226,7 @@ def dispatch_request(request: GatewayRequest, *, backend, expected_worker_id: st
             envelope=payload["envelope"],
             success=payload["success"],
             error=payload["error"],
+            **extra,
         )
 
     raise WorkerStdioGatewayError("operation_not_allowed")
