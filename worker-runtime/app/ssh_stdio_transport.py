@@ -202,6 +202,15 @@ class SshStdioTransport:
             "capabilities": sorted(set(capabilities)),
         })
 
+    def fetch_arguments(self, *, worker_id: str, credential_token: str,
+                        lease: dict, offset: int):
+        return self.request("fetch_arguments", {
+            "worker_id": worker_id,
+            "credential_token": credential_token,
+            "lease": lease,
+            "offset": int(offset),
+        })
+
     def authorize_execution(self, *, worker_id: str, credential_token: str,
                             lease: dict, execution_ticket: str):
         return self.request("authorize_execution", {

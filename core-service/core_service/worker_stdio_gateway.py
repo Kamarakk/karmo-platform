@@ -19,7 +19,9 @@ from dataclasses import dataclass
 
 MAX_FRAME_BYTES = 64 * 1024
 PROTOCOL_VERSION = 1
-_ALLOWED_OPERATIONS = frozenset({"heartbeat", "poll", "authorize_execution", "submit_result"})
+_ALLOWED_OPERATIONS = frozenset({
+    "heartbeat", "poll", "fetch_arguments", "authorize_execution", "submit_result",
+})
 
 
 class WorkerStdioGatewayError(RuntimeError):
@@ -134,6 +136,21 @@ def dispatch_request(request: GatewayRequest, *, backend, expected_worker_id: st
             worker_id=expected_worker_id,
             credential_token=payload["credential_token"],
             capabilities=capabilities,
+        )
+
+    if request.operation == "fetch_arguments":
+        _require_exact(payload, {"worker_id", "credential_token", "lease", "offset"})
+        _require_token(payload["credential_token"], label="credential_token")
+        if not isinstance(payload["lease"], dict):
+            raise WorkerStdioGatewayError("invalid_lease")
+        offset = payload["offset"]
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+            raise WorkerStdioGatewayError("invalid_offset")
+        return backend.fetch_arguments(
+            worker_id=expected_worker_id,
+            credential_token=payload["credential_token"],
+            lease=payload["lease"],
+            offset=offset,
         )
 
     if request.operation == "authorize_execution":
