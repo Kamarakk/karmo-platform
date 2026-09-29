@@ -328,3 +328,85 @@ def test_remote_worker_refuses_malformed_arguments_piece():
     with pytest.raises(RemoteWorkerClientError, match="invalid arguments piece"):
         _client(BadPiece(events=events), Signer(), lambda *a, **kw: None).poll_once()
     assert "authorize" not in events
+
+
+class PieceUploadTransport(Transport):
+    """Stages uploaded result pieces like Core's upload_result_piece."""
+
+    def __init__(self, *, events=None, fail_uploads=0):
+        super().__init__(events=events)
+        self.pieces = {}
+        self.fail_uploads = fail_uploads
+
+    def upload_result_piece(self, *, offset, chunk, lease, execution_ticket, **kwargs):
+        if self.fail_uploads:
+            self.fail_uploads -= 1
+            self.events.append("upload_failed")
+            raise RuntimeError("transient gateway hiccup")
+        self.events.append("upload")
+        assert lease["worker_id"] == "karmo-worker01" and execution_ticket == "signed-ticket"
+        frame = json.dumps({"payload": {"chunk": chunk, "lease": lease}})
+        assert len(frame.encode()) < 48 * 1024
+        self.pieces.setdefault(offset, chunk)
+        assert self.pieces[offset] == chunk
+
+    def assembled(self):
+        return json.loads("".join(chunk for _, chunk in sorted(self.pieces.items())))
+
+
+def _speech_executor(*args, **kwargs):
+    return {"audio_base64": "UklGR" * 60_000}, "speech", 0.01, []
+
+
+def test_large_result_is_uploaded_in_pieces_then_submitted_by_size():
+    events = []
+    transport = PieceUploadTransport(events=events)
+    signer = Signer()
+    client = _client(transport, signer, _speech_executor)
+    client.heartbeat(lease_seconds=90)
+    result = client.poll_once()
+
+    assert result["success"] is True
+    assert transport.submitted["result"] is None
+    serialized_len = transport.submitted["result_bytes"]
+    assert sum(len(c) for c in transport.pieces.values()) == serialized_len
+    assert transport.assembled() == signer.calls[0]["result"]
+    uploads = events.count("upload")
+    assert uploads >= 7
+    assert events[-2:] == ["heartbeat", "submit"]
+    assert events.index("upload") > events.index("authorize")
+
+
+def test_large_result_upload_is_retried_whole_on_transient_failure(monkeypatch):
+    import ssh_worker_client as module
+
+    monkeypatch.setattr(module.time, "sleep", lambda s: None)
+    transport = PieceUploadTransport(fail_uploads=1)
+    result = _client(transport, Signer(), _speech_executor).poll_once()
+    assert result["success"] is True
+    assert "upload_failed" in transport.events
+    assert transport.submitted["result_bytes"] == sum(len(c) for c in transport.pieces.values())
+
+
+def test_small_result_stays_inline_without_uploads():
+    transport = PieceUploadTransport()
+    _client(transport, Signer(), lambda *a, **k: ({"ok": True}, "ok", 0.01, [])).poll_once()
+    assert "upload" not in transport.events
+    assert "result_bytes" not in transport.submitted
+    assert transport.submitted["result"]["output"] == {"ok": True}
+
+
+def test_escape_heavy_result_pieces_still_fit_one_frame():
+    transport = PieceUploadTransport()
+    executor = lambda *a, **k: ({"text": '"\\' * 50_000}, "ok", 0.01, [])  # noqa: E731
+    result = _client(transport, Signer(), executor).poll_once()
+    assert result["success"] is True
+    assert transport.assembled()["output"] == {"text": '"\\' * 50_000}
+
+
+def test_unserializable_result_is_reported_as_a_failure():
+    transport = Transport()
+    result = _client(transport, Signer(), lambda *a, **k: ({"x": object()}, "ok", 0.01, [])).poll_once()
+    assert result["success"] is False
+    assert transport.submitted["success"] is False
+    assert "TypeError" in transport.submitted["error"]

@@ -332,6 +332,61 @@ I-09 Authority/permissions: AFFECTED -- fetch_arguments requires worker
   authorize_execution, and the worker re-checks the digest.
 ```
 
+## System-Fit and Invariant Impact Review — large job results in pieces (2026-09-29)
+
+Result direction of the fix above. `synthesize_speech` returns base64 WAV
+(~59 KB per second of speech), so any spoken reply longer than about a
+second overflowed the 64 KiB `submit_result` frame. Same approach Kamara
+chose for arguments: pieces, not a bigger frame.
+
+```text
+SYSTEM-FIT REVIEW
+Goal served: spoken replies of any length (up to the 2000-char /speak
+  cap) reach the phone.
+Existing capability reused: SSH/stdio gateway, worker credential + key
+  check, the live-lease + consumed-ticket binding that
+  submit_authenticated_result uses, accept_result's signed-envelope check
+  (unchanged, now run on the assembled result).
+New software/services added: none. One new table
+  (migration 012, karmo_worker_job_result_pieces, grant INSERT/SELECT/
+  DELETE to karmo_gateway) and one allowlisted gateway operation,
+  upload_result_piece. submit_result gains an optional result_bytes.
+Important current-system facts: frames stay <= 64 KiB both ways. Results
+  <= 32 KiB still go inline in the unchanged 8-key submit_result.
+Main risks/lifecycle burden: one SSH round trip per ~40 KiB piece (~10
+  per 100 characters of text), so a long reply is slow; /speak's
+  deadline (and job lease) now scales 30 s + 0.15 s/char. Pieces are
+  deleted once the result is accepted and cascade with the job.
+Simpler alternative considered: raising the frame limit (rejected by
+  Kamara for arguments); compressing audio on the worker (needs an
+  encoder dependency on Worker01; possible later to cut round trips).
+Decision: PROCEED.
+Constraints/verification needed: apply migration 012 and deploy Core
+  (karmo-ai01) before workers; live-verify a multi-sentence spoken reply
+  from the phone.
+```
+
+```text
+Phase: large job results in pieces
+
+I-01 Inheritance/compatibility: AFFECTED -- old workers keep sending
+  inline results (still accepted); new workers need new Core.
+I-02 Production parity: NOT AFFECTED
+I-03 Data authority/transactions: AFFECTED -- staged pieces are
+  untrusted; only the signature-verified assembled result is stored.
+I-04 Idempotency/retry: AFFECTED -- identical piece re-upload is a no-op;
+  a conflicting piece is refused; pieces are keyed by lease token.
+I-05 Resources/scale: AFFECTED -- result cap 16 MiB; every frame bounded.
+I-06 Migration/rollback: AFFECTED -- additive table; rollback is the
+  previous tree (table can stay, unused).
+I-07 Observability: NOT AFFECTED
+I-08 Validation scope: targeted gateway, backend, transport, client,
+  speech tests.
+I-09 Authority/permissions: AFFECTED -- upload requires worker credential
+  + current key + live lease + consumed execution ticket; karmo_gateway
+  gets INSERT/SELECT/DELETE on the new table only.
+```
+
 ## What a fresh session should do first
 
 1. Read this document in full, including the standing constraint —

@@ -362,3 +362,87 @@ def test_gateway_fetch_arguments_rejects_bad_offset_without_backend_call():
         else:
             raise AssertionError(f"offset {bad!r} was accepted")
         assert backend.calls == []
+
+
+def _submit_payload(**overrides):
+    payload = {
+        "worker_id": "karmo-worker01",
+        "credential_token": "credential",
+        "lease": {"job_id": "job", "lease_token": "lease"},
+        "execution_ticket": "ticket",
+        "result": None,
+        "envelope": {"payload": {"key_id": "worker-key-v1"}, "signature": "sig"},
+        "success": True,
+        "error": None,
+        "result_bytes": 120_000,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_gateway_upload_result_piece_dispatches_bound_identity():
+    class PieceBackend(Backend):
+        def upload_result_piece(self, **kwargs):
+            self.calls.append(("upload_result_piece", kwargs))
+            return {"offset": kwargs["offset"], "stored_chars": len(kwargs["chunk"])}
+
+    backend = PieceBackend()
+    stdout = io.BytesIO()
+    code = serve_one(
+        backend=backend,
+        expected_worker_id="karmo-worker01",
+        stdin=io.BytesIO(_frame("upload_result_piece", {
+            "worker_id": "karmo-worker01",
+            "credential_token": "credential",
+            "lease": {"job_id": "job"},
+            "execution_ticket": "ticket",
+            "offset": 40,
+            "chunk": "abc",
+        })),
+        stdout=stdout,
+    )
+    assert code == 0
+    assert json.loads(stdout.getvalue())["result"] == {"offset": 40, "stored_chars": 3}
+    assert backend.calls[0][1]["execution_ticket"] == "ticket"
+
+
+def test_gateway_upload_result_piece_rejects_bad_offset_or_chunk_without_backend_call():
+    base = {
+        "worker_id": "karmo-worker01", "credential_token": "credential",
+        "lease": {"job_id": "job"}, "execution_ticket": "ticket", "offset": 0, "chunk": "x",
+    }
+    for field, bad, error in (("offset", -1, "invalid_offset"), ("offset", True, "invalid_offset"),
+                              ("chunk", "", "invalid_chunk"), ("chunk", 5, "invalid_chunk")):
+        backend = Backend()
+        request = GatewayRequest(request_id="req-1", operation="upload_result_piece",
+                                 payload={**base, field: bad})
+        try:
+            dispatch_request(request, backend=backend, expected_worker_id="karmo-worker01")
+        except WorkerStdioGatewayError as exc:
+            assert str(exc) == error
+        else:
+            raise AssertionError(f"{field}={bad!r} was accepted")
+        assert backend.calls == []
+
+
+def test_submit_result_with_result_bytes_passes_size_and_no_inline_result():
+    backend = Backend()
+    request = GatewayRequest(request_id="req-1", operation="submit_result", payload=_submit_payload())
+    dispatch_request(request, backend=backend, expected_worker_id="karmo-worker01")
+    assert backend.calls[0][1]["result_bytes"] == 120_000
+    assert backend.calls[0][1]["result"] is None
+
+
+def test_submit_result_rejects_result_bytes_alongside_inline_result_or_bad_size():
+    for overrides in ({"result": {"x": 1}}, {"result_bytes": 0}, {"result_bytes": True},
+                      {"result_bytes": "10"}):
+        backend = Backend()
+        request = GatewayRequest(request_id="req-1", operation="submit_result",
+                                 payload=_submit_payload(**overrides))
+        try:
+            dispatch_request(request, backend=backend, expected_worker_id="karmo-worker01")
+        except WorkerStdioGatewayError as exc:
+            assert str(exc) == "invalid_result_bytes"
+        else:
+            raise AssertionError(f"{overrides!r} was accepted")
+        assert backend.calls == []

@@ -64,6 +64,11 @@ Grouped for review-as-you-go, in the order that unlocks real use fastest.
    photo described, over HTTPS. **Still open**: speak replies longer
    than ~1 second fail (result frame > 64 KiB, same problem in the
    result direction); Worker02 not updated; branch not yet merged.
+   **Fix built 2026-09-29, not deployed** (branch
+   `claude/project-thread-3jzfd7`): large results uploaded in pieces
+   (`upload_result_piece`, migration 012); /speak deadline scales with
+   text length. Deploy: migration 012 + Core on karmo-ai01, then
+   Worker01; live-verify a multi-sentence spoken reply.
    **DONE, 2026-09-24, fully live-verified.** `karmo_core_dispatch`
    role + `/etc/karmo/core/worker-dispatch.dsn` provisioned; `core-service`
    redeployed to `karmo-ai01` (was up to 4 days stale, missing

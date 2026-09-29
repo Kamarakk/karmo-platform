@@ -23,6 +23,17 @@ _DEFAULT_WORKER_ID = "KARMO-WORKER01"
 
 MAX_TEXT_CHARS = 2000
 
+# Audio for a long reply comes back from the worker in ~40 KiB pieces (about
+# ten per 100 characters of text), one SSH round trip each, so the wait --
+# and with it the job lease -- grows with the text.
+_BASE_DEADLINE_SECONDS = 30.0
+_DEADLINE_SECONDS_PER_CHAR = 0.15
+
+
+def deadline_for_text(text: str) -> float:
+    chars = len(text) if isinstance(text, str) else 0
+    return _BASE_DEADLINE_SECONDS + _DEADLINE_SECONDS_PER_CHAR * chars
+
 
 class SpeechSynthesizeCapabilityError(RuntimeError):
     pass
@@ -115,6 +126,7 @@ def handler(worker_dispatch_client, *, worker_id: str = _DEFAULT_WORKER_ID):
             worker_id=worker_id,
             text=arguments.get("text"),
             voice=arguments.get("voice", "en_US-amy-medium"),
+            total_deadline_seconds=deadline_for_text(arguments.get("text")),
         )
         return {"audio_base64": audio_base64}
     return _handler

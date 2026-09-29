@@ -350,3 +350,119 @@ def test_fetch_arguments_shrinks_escape_heavy_pieces_to_fit_one_frame():
                                     lease=lease_to_wire(_lease()), offset=0)
     assert 0 < len(piece["chunk"]) < 32 * 1024
     assert len(_json.dumps({"result": piece}).encode()) < MAX_FRAME_BYTES
+
+
+class PieceCursor(Cursor):
+    """Fake karmo_worker_job_result_pieces for one live, authorized lease."""
+
+    def __init__(self):
+        super().__init__(["karmolab.host_health"], ["job-1"])
+        self.pieces = {}
+        self.live = True
+        self.queries = []
+
+    def execute(self, query, params):
+        super().execute(query, params)
+        self.queries.append(query)
+        self._row = None
+        self._rows = []
+        if "INSERT INTO public.karmo_worker_job_result_pieces" in query:
+            offset, chunk = params[0], params[1]
+            if self.live and offset not in self.pieces:
+                self.pieces[offset] = chunk
+                self._row = ("job-1",)
+        elif "SELECT p.chunk" in query:
+            offset = params[2]
+            if self.live and offset in self.pieces:
+                self._row = (self.pieces[offset],)
+        elif "SELECT p.offset_chars, p.chunk" in query:
+            self._rows = sorted(self.pieces.items()) if self.live else []
+        elif "DELETE FROM public.karmo_worker_job_result_pieces" in query:
+            self.pieces.clear()
+
+    def fetchone(self):
+        return self._row
+
+    def fetchall(self):
+        return self._rows
+
+
+def _piece_backend():
+    cursor = PieceCursor()
+    store = Store()
+    coordinator = Coordinator()
+    backend = PostgresWorkerGatewayBackend(
+        store=store, coordinator=coordinator, connection_factory=lambda: Connection(cursor),
+    )
+    return backend, store, coordinator, cursor
+
+
+BIG_RESULT = {"output": {"audio_base64": "UklGR" * 40_000}, "stdout_summary": "ok"}
+
+
+def _upload(backend, serialized, size=40_000):
+    for offset in range(0, len(serialized), size):
+        backend.upload_result_piece(
+            worker_id="karmo-worker01", credential_token="credential",
+            lease=lease_to_wire(_lease()), execution_ticket="signed-ticket",
+            offset=offset, chunk=serialized[offset:offset + size],
+        )
+
+
+def test_large_result_pieces_are_assembled_then_verified_and_cleaned_up():
+    import json as _json
+
+    backend, store, coordinator, cursor = _piece_backend()
+    serialized = _json.dumps(BIG_RESULT, sort_keys=True, separators=(",", ":"))
+    _upload(backend, serialized)
+    _upload(backend, serialized)  # an identical retry is accepted
+    response = backend.submit_result(
+        worker_id="karmo-worker01", credential_token="credential",
+        lease=lease_to_wire(_lease()), execution_ticket="signed-ticket",
+        result=None, envelope={"payload": {}, "signature": "sig"},
+        success=True, error=None, result_bytes=len(serialized),
+    )
+    assert response["accepted"] is True
+    assert coordinator.accepted[0][2] == BIG_RESULT
+    assert store.finalized == [("job-1", True, None)]
+    assert cursor.pieces == {}
+    insert = next(q for q in cursor.queries if "INSERT INTO" in q)
+    assert "consumed_at IS NOT NULL" in insert and "lease_expires_at>NOW()" in insert
+
+
+def test_result_piece_refused_without_live_lease_or_when_conflicting():
+    backend, _store, _coordinator, cursor = _piece_backend()
+    lease = lease_to_wire(_lease())
+    backend.upload_result_piece(worker_id="karmo-worker01", credential_token="credential",
+                                lease=lease, execution_ticket="signed-ticket",
+                                offset=0, chunk="abc")
+    with pytest.raises(WorkerGatewayBackendError, match="no live authorized lease"):
+        backend.upload_result_piece(worker_id="karmo-worker01", credential_token="credential",
+                                    lease=lease, execution_ticket="signed-ticket",
+                                    offset=0, chunk="xyz")
+    cursor.live = False
+    with pytest.raises(WorkerGatewayBackendError, match="no live authorized lease"):
+        backend.upload_result_piece(worker_id="karmo-worker01", credential_token="credential",
+                                    lease=lease, execution_ticket="signed-ticket",
+                                    offset=3, chunk="def")
+    with pytest.raises(WorkerGatewayBackendError, match="identity mismatch"):
+        backend.upload_result_piece(worker_id="karmo-worker01", credential_token="credential",
+                                    lease=lease_to_wire(_lease(worker_id="karmo-worker02")),
+                                    execution_ticket="signed-ticket", offset=0, chunk="abc")
+
+
+def test_incomplete_or_mixed_result_is_refused_before_acceptance():
+    import json as _json
+
+    backend, store, coordinator, cursor = _piece_backend()
+    serialized = _json.dumps(BIG_RESULT, sort_keys=True, separators=(",", ":"))
+    _upload(backend, serialized)
+    del cursor.pieces[40_000]
+    kwargs = dict(worker_id="karmo-worker01", credential_token="credential",
+                  lease=lease_to_wire(_lease()), execution_ticket="signed-ticket",
+                  envelope={"payload": {}, "signature": "sig"}, success=True, error=None)
+    with pytest.raises(WorkerGatewayBackendError, match="incomplete"):
+        backend.submit_result(result=None, result_bytes=len(serialized), **kwargs)
+    with pytest.raises(WorkerGatewayBackendError, match="not both"):
+        backend.submit_result(result={"x": 1}, result_bytes=len(serialized), **kwargs)
+    assert coordinator.accepted == [] and store.finalized == []

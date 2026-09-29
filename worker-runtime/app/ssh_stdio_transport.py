@@ -220,10 +220,22 @@ class SshStdioTransport:
             "execution_ticket": execution_ticket,
         })
 
+    def upload_result_piece(self, *, worker_id: str, credential_token: str, lease: dict,
+                            execution_ticket: str, offset: int, chunk: str):
+        return self.request("upload_result_piece", {
+            "worker_id": worker_id,
+            "credential_token": credential_token,
+            "lease": lease,
+            "execution_ticket": execution_ticket,
+            "offset": int(offset),
+            "chunk": chunk,
+        })
+
     def submit_result(self, *, worker_id: str, credential_token: str, lease: dict,
                       execution_ticket: str, result, envelope: dict,
-                      success: bool, error: str | None = None):
-        return self.request("submit_result", {
+                      success: bool, error: str | None = None,
+                      result_bytes: int | None = None):
+        payload = {
             "worker_id": worker_id,
             "credential_token": credential_token,
             "lease": lease,
@@ -232,4 +244,7 @@ class SshStdioTransport:
             "envelope": envelope,
             "success": bool(success),
             "error": error,
-        })
+        }
+        if result_bytes is not None:
+            payload["result_bytes"] = int(result_bytes)
+        return self.request("submit_result", payload)

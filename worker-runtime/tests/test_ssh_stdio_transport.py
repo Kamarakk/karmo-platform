@@ -246,3 +246,26 @@ def test_transport_timeout_fails_closed():
         SshStdioTransport(_config(), runner=runner).heartbeat(
             worker_id="karmo-worker01", credential_token="credential"
         )
+
+
+def test_submit_result_sends_result_bytes_only_for_uploaded_results():
+    kwargs = dict(worker_id="karmo-worker01", credential_token="credential", lease={},
+                  execution_ticket="ticket", envelope={}, success=True)
+    seen = {}
+    transport = SshStdioTransport(_config(), runner=_success_runner(seen, {"accepted": True}))
+    transport.submit_result(result={"ok": True}, **kwargs)
+    assert "result_bytes" not in json.loads(seen["input"].decode())["payload"]
+    transport.submit_result(result=None, result_bytes=90_000, **kwargs)
+    assert json.loads(seen["input"].decode())["payload"]["result_bytes"] == 90_000
+
+
+def test_upload_result_piece_frame():
+    seen = {}
+    transport = SshStdioTransport(_config(), runner=_success_runner(seen, {"offset": 0}))
+    transport.upload_result_piece(worker_id="karmo-worker01", credential_token="credential",
+                                  lease={"job_id": "job"}, execution_ticket="ticket",
+                                  offset=0, chunk="abc")
+    sent = json.loads(seen["input"].decode())
+    assert sent["operation"] == "upload_result_piece"
+    assert set(sent["payload"]) == {"worker_id", "credential_token", "lease",
+                                    "execution_ticket", "offset", "chunk"}
