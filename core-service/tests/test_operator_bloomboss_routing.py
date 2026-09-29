@@ -103,7 +103,19 @@ def test_digest_lists_every_cultivar_when_none_is_named():
 
 @pytest.mark.parametrize(
     "text",
-    ["how are the Ninja Albos doing?", "Ninja Albo numbers", "how did the ninja albo sell?"],
+    [
+        "how are the Ninja Albos doing?",
+        "Ninja Albo numbers",
+        "how did the ninja albo sell?",
+        "How many Ninja Albos do I have?",
+        "how many ninja albos are left?",
+        "Ninja Albo inventory",
+        "what's the revenue on the Ninja Albos?",
+        "how much profit did the Ninja Albo make?",
+        "how’s the Ninja Albo?",
+        "did I lose any Ninja Albos?",
+        "Ninja Albo sell-through",
+    ],
 )
 def test_plain_plant_lookup_is_answered_from_the_data_without_the_model(text):
     """Live (2026-09-27): qwen3:8b took 60-100s to restate these figures on
@@ -120,7 +132,15 @@ def test_plain_plant_lookup_is_answered_from_the_data_without_the_model(text):
 
 @pytest.mark.parametrize(
     "text",
-    ["should I restock the Ninja Albos?", "why are the Ninja Albos doing badly?", "tell me about the Ninja Albos"],
+    [
+        "should I restock the Ninja Albos?",
+        "why are the Ninja Albos doing badly?",
+        "tell me about the Ninja Albos",
+        "Tell me about the Ninja Albos and how I should care for them.",
+        "how much water do the Ninja Albos need?",
+        "how much light do I have for the Ninja Albos?",
+        "what price should the Ninja Albos sell at?",
+    ],
 )
 def test_judgment_or_open_question_about_a_plant_still_goes_to_the_model(text):
     client = ScriptedClient("model answer")
