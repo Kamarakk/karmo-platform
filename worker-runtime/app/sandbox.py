@@ -26,6 +26,13 @@ from pathlib import Path
 
 MAX_OUTPUT_BYTES = 64 * 1024  # 64KB cap on stdout_summary (free text -- truncated, not refused)
 MAX_RESULT_BYTES = 64 * 1024  # 64KB cap on the serialized `output` dict -- structured, so refused, not truncated
+# Capabilities whose whole point is a large result. Their results travel
+# back to Core in pieces (ssh_worker_client upload_result_piece), so the
+# cap matches ssh_worker_client.MAX_REMOTE_RESULT_BYTES instead of one
+# 64 KiB frame. A spoken reply is ~59 KB of base64 WAV per second.
+RESULT_BYTES_BY_CAPABILITY = {
+    "synthesize_speech": 16 * 1024 * 1024,
+}
 MAX_EVIDENCE_FILES = 20  # cap on the number of evidence file references a handler may return
 
 _TERMINATE_GRACE_SECONDS = 2  # time given to a terminated child before escalating to kill()
@@ -209,10 +216,11 @@ def run_capability(capability_id, payload, *, timeout_seconds, allowed_root=None
         # below, which is free text and safe to truncate.
         serialized = json.dumps(output, sort_keys=True, separators=(",", ":"), default=str)
         serialized_bytes = len(serialized.encode("utf-8"))
-        if serialized_bytes > MAX_RESULT_BYTES:
+        result_cap = RESULT_BYTES_BY_CAPABILITY.get(capability_id, MAX_RESULT_BYTES)
+        if serialized_bytes > result_cap:
             raise SandboxError(
                 f"capability {capability_id!r} returned an oversized result "
-                f"({serialized_bytes} bytes > {MAX_RESULT_BYTES} cap) -- refused"
+                f"({serialized_bytes} bytes > {result_cap} cap) -- refused"
             )
 
         if len(evidence_files) > MAX_EVIDENCE_FILES:
