@@ -1742,3 +1742,17 @@ def test_resource_discovery_full_report_runs_without_error():
         status = report["acceleration"][f"{tool}_status"]
         assert isinstance(installed, bool)
         assert status == ("VERIFIED" if installed else "NOT_INSTALLED")
+
+
+def _speech_sized_output_probe_handler(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    return {"audio_base64": "U" * (MAX_RESULT_BYTES * 4)}, "speech", []
+
+
+def test_synthesize_speech_may_return_more_than_the_default_result_cap(monkeypatch):
+    """A spoken reply is far bigger than 64 KiB; its result goes back to
+    Core in pieces, so only this capability gets the larger cap."""
+    monkeypatch.setitem(_HANDLERS, "synthesize_speech", _speech_sized_output_probe_handler)
+    output, _summary, _duration, _evidence = run_capability("synthesize_speech", {}, timeout_seconds=5)
+    assert len(output["audio_base64"]) == MAX_RESULT_BYTES * 4
+    with pytest.raises(SandboxError, match="oversized result"):
+        run_capability("test_oversized_output_probe", {}, timeout_seconds=5)
