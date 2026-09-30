@@ -71,6 +71,13 @@ def test_root_serves_html_page(running_server):
         assert b"<html" in resp.read()
 
 
+def test_page_script_keeps_escaped_newline():
+    # A bare '\n' in the Python source becomes a real line break inside a
+    # JS string literal, a syntax error that kills the whole script (text
+    # box and mic stop responding).
+    assert b"indexOf('\\n')" in webui._PAGE
+
+
 def test_unknown_get_path_is_404(running_server):
     server, _ = running_server
     with pytest.raises(urllib.error.HTTPError) as exc:

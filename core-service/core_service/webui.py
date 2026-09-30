@@ -115,7 +115,7 @@ async function streamChat(text, div) {
     if (done) break;
     buf += decoder.decode(value, {stream: true});
     let i;
-    while ((i = buf.indexOf('\n')) >= 0) {
+    while ((i = buf.indexOf('\\n')) >= 0) {
       const raw = buf.slice(0, i);
       buf = buf.slice(i + 1);
       if (!raw.trim()) continue;
