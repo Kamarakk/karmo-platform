@@ -45,7 +45,7 @@ def test_successful_dispatch_returns_the_text():
         "tool_id": "transcribe_audio",
         "tool_version": "1.0.0",
         "arguments": {"model": "small", "audio_base64": "ZmFrZQ=="},
-        "total_deadline_seconds": 30.0,
+        "total_deadline_seconds": 76.0,
     }]
 
 
@@ -104,3 +104,10 @@ def test_handler_returns_a_dispatcher_bindable_closure():
 
     assert result == {"text": "hello there"}
     assert client.calls[0]["worker_id"] == "KARMO-WORKER01"
+
+
+def test_wait_covers_the_workers_own_limit_and_grows_with_the_clip():
+    from core_service.audio_transcribe_capability import deadline_for_audio
+
+    assert deadline_for_audio("ZmFrZQ==") > 60  # the worker gives faster-whisper up to 60s
+    assert deadline_for_audio("A" * (32 * 1024 * 10)) == deadline_for_audio("ZmFrZQ==") + 9
