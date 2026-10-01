@@ -105,7 +105,7 @@ function line(cls, text) {
 // Reads /chat/stream's one-JSON-object-per-line events: {t} adds text,
 // {reset} clears it (a later model round replaces it), {done} is the final
 // answer and always wins over whatever was streamed.
-async function streamChat(text, div) {
+async function streamChat(text, div, speaker) {
   const res = await fetch('/chat/stream', {method: 'POST', body: JSON.stringify({text})});
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -124,6 +124,7 @@ async function streamChat(text, div) {
       else if (ev.t) shown += ev.t;
       else if (ev.done) final = ev;
       div.textContent = 'KARMO> ' + (final ? final.message : shown);
+      if (speaker && !final) speaker.feed(shown);
       window.scrollTo(0, document.body.scrollHeight);
     }
   }
@@ -168,23 +169,65 @@ function unlockAudio() {
   player.src = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
   player.play().catch(() => { audioUnlocked = false; });
 }
-async function speak(text) {
+async function fetchSpeech(text) {
   const res = await fetch('/speak', {method: 'POST', body: JSON.stringify({text})});
   const data = await res.json();
-  if (data.error) { line('status', 'speak error: ' + data.error); return; }
-  player.src = 'data:audio/wav;base64,' + data.audio_base64;
-  player.play().catch(() => {
-    const d = line('status', 'audio blocked by the browser -- tap here to hear the reply');
-    d.style.cursor = 'pointer';
-    d.onclick = () => player.play();
+  if (data.error) { line('status', 'speak error: ' + data.error); return null; }
+  return data.audio_base64;
+}
+function playAudio(b64) {
+  return new Promise((resolve) => {
+    player.onended = player.onerror = () => resolve();
+    player.src = 'data:audio/wav;base64,' + b64;
+    player.play().catch(() => {
+      const d = line('status', 'audio blocked by the browser -- tap here to hear the reply');
+      d.style.cursor = 'pointer';
+      d.onclick = () => player.play();
+      resolve();
+    });
   });
+}
+// Speaks a reply sentence by sentence while it is still streaming in, so
+// the first words play long before the whole answer (and its audio) is
+// ready. Speech is fetched one piece at a time (the worker runs one job at
+// a time) and played in order; a {reset} drops whatever is still queued.
+function makeSpeaker() {
+  let said = '', gen = 0;
+  let fetching = Promise.resolve(), playing = Promise.resolve();
+  function queue(piece) {
+    piece = piece.trim();
+    if (!piece) return;
+    const g = gen;
+    const audio = fetching = fetching.then(() => (g === gen ? fetchSpeech(piece) : null));
+    playing = playing.then(async () => {
+      const b64 = await audio;
+      if (b64 && g === gen) await playAudio(b64);
+    });
+  }
+  return {
+    feed(shown) {
+      if (!shown.startsWith(said)) { gen++; said = ''; }
+      const rest = shown.slice(said.length);
+      let cut = -1;
+      for (const m of rest.matchAll(/[.!?]["')]?\\s/g)) cut = m.index + m[0].length;
+      if (cut < 0 || (said && cut < 80)) return;
+      queue(rest.slice(0, cut));
+      said += rest.slice(0, cut);
+    },
+    finish(message) {
+      if (!message.startsWith(said)) { gen++; said = ''; }
+      queue(message.slice(said.length));
+      said = message;
+    },
+  };
 }
 async function send(text) {
   line('you', 'you> ' + text);
   const div = line('karmo', 'KARMO> ...');
-  const data = await streamChat(text, div);
+  const speaker = document.getElementById('speak').checked ? makeSpeaker() : null;
+  const data = await streamChat(text, div, speaker);
   if (data.memory_status) line('status', 'memory=' + data.memory_status);
-  if (document.getElementById('speak').checked) speak(data.message);
+  if (speaker) speaker.finish(data.message || '');
 }
 box.addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter' || !box.value.trim()) return;

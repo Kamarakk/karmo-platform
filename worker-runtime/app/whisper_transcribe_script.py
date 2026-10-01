@@ -27,7 +27,9 @@ def main() -> None:
     from faster_whisper import WhisperModel
 
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
-    segments, _info = model.transcribe(audio_path)
+    # Voice notes are short and in English: skipping language detection and
+    # using greedy decoding cuts CPU time with little accuracy cost.
+    segments, _info = model.transcribe(audio_path, language="en", beam_size=1)
     text = " ".join(segment.text for segment in segments).strip()
     print(json.dumps({"text": text}))
 
