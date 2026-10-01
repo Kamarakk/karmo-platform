@@ -411,3 +411,10 @@ def test_mic_sends_the_transcript_to_karmo_without_waiting_for_enter():
     page = webui._PAGE.decode()
     assert "await send(data.text)" in page
     assert "box.value = data.text" not in page
+
+
+def test_spoken_reply_reuses_a_player_unlocked_during_the_tap():
+    page = webui._PAGE.decode()
+    assert page.count("unlockAudio();") == 2  # Enter and mic tap
+    assert "player.play().catch(" in page
+    assert "new Audio('data:audio/wav" not in page

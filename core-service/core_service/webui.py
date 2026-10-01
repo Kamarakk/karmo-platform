@@ -157,11 +157,27 @@ function shrinkImage(file, maxSide = 1280) {
     img.src = url;
   });
 }
+// iPhone Safari only lets audio play from a tap, and the spoken reply
+// arrives many seconds later. So one player is "unlocked" with a silent
+// clip during the tap (Enter or mic), then reused for the reply.
+const player = new Audio();
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  player.src = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+  player.play().catch(() => { audioUnlocked = false; });
+}
 async function speak(text) {
   const res = await fetch('/speak', {method: 'POST', body: JSON.stringify({text})});
   const data = await res.json();
   if (data.error) { line('status', 'speak error: ' + data.error); return; }
-  new Audio('data:audio/wav;base64,' + data.audio_base64).play();
+  player.src = 'data:audio/wav;base64,' + data.audio_base64;
+  player.play().catch(() => {
+    const d = line('status', 'audio blocked by the browser -- tap here to hear the reply');
+    d.style.cursor = 'pointer';
+    d.onclick = () => player.play();
+  });
 }
 async function send(text) {
   line('you', 'you> ' + text);
@@ -172,6 +188,7 @@ async function send(text) {
 }
 box.addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter' || !box.value.trim()) return;
+  unlockAudio();
   const text = box.value;
   box.value = '';
   await send(text);
@@ -198,6 +215,7 @@ let mediaRecorder = null;
 let chunks = [];
 document.getElementById('mic').addEventListener('click', async (e) => {
   const btn = e.currentTarget;
+  unlockAudio();
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
     return;
