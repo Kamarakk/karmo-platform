@@ -405,3 +405,9 @@ def test_serve_tailscale_https_mode_fails_clean_when_tailscale_unavailable(monke
     monkeypatch.setattr(webui.subprocess, "run", fake_run)
     with pytest.raises(FileNotFoundError):
         webui.serve(mode="tailscale-https")
+
+
+def test_mic_sends_the_transcript_to_karmo_without_waiting_for_enter():
+    page = webui._PAGE.decode()
+    assert "await send(data.text)" in page
+    assert "box.value = data.text" not in page

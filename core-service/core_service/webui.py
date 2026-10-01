@@ -163,20 +163,23 @@ async function speak(text) {
   if (data.error) { line('status', 'speak error: ' + data.error); return; }
   new Audio('data:audio/wav;base64,' + data.audio_base64).play();
 }
-box.addEventListener('keydown', async (e) => {
-  if (e.key !== 'Enter' || !box.value.trim()) return;
-  const text = box.value;
-  box.value = '';
+async function send(text) {
   line('you', 'you> ' + text);
   const div = line('karmo', 'KARMO> ...');
   const data = await streamChat(text, div);
   if (data.memory_status) line('status', 'memory=' + data.memory_status);
   if (document.getElementById('speak').checked) speak(data.message);
+}
+box.addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter' || !box.value.trim()) return;
+  const text = box.value;
+  box.value = '';
+  await send(text);
 });
 
-// Mic: click to start, click again to stop -- fills the text box with
-// the transcript for review before sending (never auto-sends), so a
-// bad transcription never silently becomes a real KARMO request.
+// Mic: click to start, click again to stop -- the transcript is sent to
+// KARMO straight away (shown as a "you>" line), so voice is hands-free.
+// Chat holds no write authority, so a misheard question costs one answer.
 //
 // NEEDS VERIFICATION (flagged by review, 2026-09-24, not yet tested
 // live): sends whatever container MediaRecorder produces (WebM/Opus in
@@ -219,8 +222,8 @@ document.getElementById('mic').addEventListener('click', async (e) => {
     const res = await fetch('/transcribe', {method: 'POST', body: JSON.stringify({audio_base64})});
     const data = await res.json();
     if (data.error) { line('status', 'transcribe error: ' + data.error); return; }
-    box.value = data.text;
-    box.focus();
+    if (!data.text.trim()) { line('status', 'heard nothing -- try again'); return; }
+    await send(data.text);
   };
   mediaRecorder.start();
   btn.textContent = '⏹';
