@@ -51,7 +51,7 @@ from .bloomboss_capability import manifest as bloomboss_manifest
 from .control import ApprovalEngine, CapabilityClass, CoreControlError
 from .dispatcher import CapabilityDispatcher, DispatchError
 from .durable_memory import NullMemoryBackend, build_default_memory_backend
-from .identity import KARMO_IDENTITY
+from .identity import KARMO_IDENTITY, current_date_line
 from .karmolab import read_status
 from .model_router import ModelResource, ModelRouter, ModelRoutingError
 from .ollama_client import OllamaChatClient, OllamaClientError
@@ -1374,6 +1374,7 @@ class KarmoOperator:
                     ),
                 }
             )
+        messages.append({"role": "system", "content": current_date_line()})
         messages.append({"role": "user", "content": text})
         tools = self._exposed_tool_schemas(text)
         prefetched = self._prefetched_tool_messages(text, tools)

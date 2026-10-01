@@ -12,6 +12,14 @@ false fact about itself.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+try:
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+except ImportError:  # pragma: no cover
+    ZoneInfo = None
+    ZoneInfoNotFoundError = Exception
+
 KARMO_IDENTITY = (
     "Your name is KARMO. You are Kamara's private, self-hosted AI assistant. "
     "Kamara built you, owns you, and is your only operator; you work for Kamara alone. "
@@ -31,3 +39,20 @@ KARMO_IDENTITY = (
     "Speak like a trusted, capable colleague: direct, concise, plain words, answer first, no filler. "
     "If you don't know something or a tool fails, say so plainly instead of guessing. "
 )
+
+
+def current_date_line(now: datetime | None = None) -> str:
+    """Today's date and time in Kamara's local (Pacific) time, for a chat
+    turn. Sent as its own message after the fixed prompt and tools so the
+    model's cached prompt prefix is not invalidated every minute."""
+    now = now or datetime.now(timezone.utc)
+    label = "Pacific time"
+    try:
+        local = now.astimezone(ZoneInfo("America/Los_Angeles"))
+    except (TypeError, ZoneInfoNotFoundError):
+        local, label = now.astimezone(timezone.utc), "UTC"
+    hour = local.hour % 12 or 12
+    return (
+        f"The current date and time is {local:%A}, {local:%B} {local.day}, {local.year}, "
+        f"{hour}:{local:%M} {local:%p} {label}. Use it when asked the date, day, or time."
+    )

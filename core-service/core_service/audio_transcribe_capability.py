@@ -27,6 +27,21 @@ _DEFAULT_WORKER_ID = "KARMO-WORKER01"
 
 MAX_AUDIO_BYTES_BASE64 = 14_000_000  # ~10MB decoded, matching the worker's own cap, plus base64 overhead
 
+# The worker gives faster-whisper up to 60s (model load ~9s on every call,
+# since each job is a fresh subprocess), and the audio reaches it in ~32 KiB
+# pieces, one SSH round trip each. A 30s wait gave up on jobs the worker was
+# still running, and those abandoned jobs then held the worker while the next
+# clips sat queued behind them.
+_BASE_DEADLINE_SECONDS = 75.0
+_DEADLINE_SECONDS_PER_ARGUMENT_PIECE = 1.0
+_ARGUMENT_PIECE_CHARS = 32 * 1024
+
+
+def deadline_for_audio(audio_base64: str) -> float:
+    chars = len(audio_base64) if isinstance(audio_base64, str) else 0
+    pieces = -(-chars // _ARGUMENT_PIECE_CHARS)
+    return _BASE_DEADLINE_SECONDS + _DEADLINE_SECONDS_PER_ARGUMENT_PIECE * pieces
+
 
 class AudioTranscribeCapabilityError(RuntimeError):
     pass
@@ -61,7 +76,7 @@ def manifest() -> dict:
         "network_requirements": "none from Core's perspective -- LAN dispatch to an already-authenticated worker",
         "secret_requirements": "none beyond the existing worker-dispatch DSN, when provisioned",
         "invocation_identity": "karmo-chat-model",
-        "timeout_seconds": 30,
+        "timeout_seconds": 75,
         "retry_policy": "none",
         "idempotent": False,
         "idempotency_mechanism": "not idempotent; each call is a live model invocation on a worker",
@@ -80,7 +95,7 @@ def dispatch_transcribe_audio(
     worker_id: str,
     audio_base64: str,
     model: str = "small",
-    total_deadline_seconds: float = 30.0,
+    total_deadline_seconds: float | None = None,
 ) -> str:
     """Dispatches one transcribe_audio job to worker_id and returns the
     transcribed text, or raises AudioTranscribeCapabilityError with a
@@ -99,7 +114,9 @@ def dispatch_transcribe_audio(
         tool_id=TRANSCRIBE_AUDIO_TOOL_ID,
         tool_version=TRANSCRIBE_AUDIO_TOOL_VERSION,
         arguments={"model": model, "audio_base64": audio_base64},
-        total_deadline_seconds=total_deadline_seconds,
+        total_deadline_seconds=(
+            deadline_for_audio(audio_base64) if total_deadline_seconds is None else total_deadline_seconds
+        ),
     )
     if outcome.outcome != "SUCCEEDED" or not isinstance(outcome.result, dict):
         raise AudioTranscribeCapabilityError(f"{outcome.outcome}: {outcome.error}")
