@@ -418,3 +418,10 @@ def test_spoken_reply_reuses_a_player_unlocked_during_the_tap():
     assert page.count("unlockAudio();") == 2  # Enter and mic tap
     assert "player.play().catch(" in page
     assert "new Audio('data:audio/wav" not in page
+
+
+def test_reply_is_spoken_sentence_by_sentence_while_it_streams():
+    page = webui._PAGE.decode()
+    assert "speaker.feed(shown)" in page
+    assert "speaker.finish(" in page
+    assert "[.!?][\"')]?\\s/g" in page  # rendered JS regex keeps its backslash
