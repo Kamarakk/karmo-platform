@@ -28,6 +28,7 @@ from .ask_gpt_capability import TOOL_VERSION as ASK_GPT_TOOL_VERSION
 from .ask_gpt_capability import handler as ask_gpt_handler
 from .ask_gpt_capability import manifest as ask_gpt_manifest
 from .code_assist_capability import ASK_LOCAL_CODER_TOOL
+from .handoff import HANDOFF_ENABLED_FILE, handoff_enabled, is_heavy_task, tagged
 from .web_search_capability import SEARCH_WORDS as _WEB_SEARCH_WORDS
 from .web_search_capability import WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION
 from .web_search_capability import handler as web_search_handler
@@ -710,6 +711,7 @@ class KarmoOperator:
         catalog_reader=None,
         catalog_writer=None,
         upload_root=None,
+        handoff_enabled_file=HANDOFF_ENABLED_FILE,
     ):
         self.model_client = model_client or OllamaChatClient()
         if catalog_reader is not None:
@@ -727,6 +729,7 @@ class KarmoOperator:
             except Exception:
                 self.catalog_writer = None
         self.upload_root = upload_root
+        self.handoff_enabled_file = handoff_enabled_file
         self.router = ModelRouter(resources or default_model_resources())
         self.status_reader = status_reader or read_status
         if memory_backend is not None:
@@ -1918,4 +1921,46 @@ class KarmoOperator:
             direct = self._direct_bloomboss_answer(text)
             if direct is not None:
                 return direct
-        return self._chat(text)
+        # Hand-off (approved item 2): heavy writing/reasoning goes straight to
+        # Claude; anything the local model fails to answer gets a second try
+        # there. Never for his own BloomBoss data or a web search question.
+        can_hand_off = (handoff_enabled(self.handoff_enabled_file)
+                        and not _is_bloomboss_question(text) and not is_search_question(text))
+        if can_hand_off and is_heavy_task(text):
+            handed = self._hand_off(text)
+            if handed is not None:
+                return handed
+        result = self._chat(text)
+        if can_hand_off and isinstance(result, dict) and result.get("error"):
+            handed = self._hand_off(text)
+            if handed is not None:
+                return handed
+        return result
+
+    def _hand_off(self, text: str) -> dict | None:
+        """Asks Claude, then GPT, through the existing ask_claude/ask_gpt
+        capabilities (subscription CLIs). Only the question is sent. Returns
+        None when both fail, so the caller keeps the local answer path."""
+        for name, who in (("ask_claude", "Claude"), ("ask_gpt", "GPT")):
+            entry = _CHAT_EXPOSED_TOOLS[name]
+            try:
+                decision = self.dispatcher.dispatch(
+                    requester="karmo-chat-model",
+                    tool_id=entry["tool_id"],
+                    version=entry["version"],
+                    arguments={"question": text},
+                    executor_identity="karmo-chat-model",
+                )
+                answer = decision.result.get("answer") if decision.executed and isinstance(decision.result, dict) else None
+            except Exception as exc:  # noqa: BLE001 -- a failed hand-off falls back, never crashes the turn
+                print(f"KARMO hand-off to {who} failed: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+                continue
+            if not isinstance(answer, str) or not answer.strip():
+                continue
+            message = tagged(answer, who)
+            try:
+                self.memory_backend.remember_exchange(text, message)
+            except Exception:  # noqa: BLE001 -- memory is best effort here, as in _chat
+                pass
+            return {"kind": "chat", "message": message, "model": f"{who.lower()} (subscription)"}
+        return None

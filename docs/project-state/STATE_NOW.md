@@ -45,7 +45,12 @@ The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. There's a poss
   - Worker02's loopback SearXNG (127.0.0.1:8888) does the search; the answer ends with a "Sources:" line.
   - Code: `core_service/web_search_capability.py` and the worker `web_search` capability.
   - Setup files: `worker-runtime/deploy/searxng/`.
-  - Next approved items: 2 KARMO hands off to Claude/GPT on its own, 3 sales import, 4 pricing, 5 code sandbox.
+- **Automatic hand-off** (approved item 2, `core_service/handoff.py`):
+  - Heavy writing or reasoning (draft an email, a plan, compare, step by step, long messages) goes to Claude.
+  - So does any question the local model fails to answer.
+  - It uses the existing ask_claude/ask_gpt subscription CLIs; GPT is asked if Claude fails. Only the question is sent, and answers end "(asked Claude)".
+  - On only while `/etc/karmo/core/handoff.enabled` exists. Never used for BloomBoss data or web-search questions.
+  - Next approved items: 3 sales import, 4 pricing, 5 code sandbox.
 - **Hands-free voice** (speak, auto-send, spoken answer) is waiting on the owner to merge and deploy.
 - **Model Router D2** (sending chat to workers) is merged but switched off. It needs the file `/etc/karmo/core/d2-chat-routing.enabled` to run.
 
