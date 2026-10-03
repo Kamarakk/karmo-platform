@@ -102,9 +102,11 @@ def _money(value) -> str:
 def _cultivar_line(name: str, row: dict) -> str:
     line = (
         f"- {name}: {row.get('units', 0)} units, {row.get('sold', 0)} sold "
-        f"({_pct(row.get('sell_through_rate'))} sell-through), {row.get('lost', 0)} lost, "
-        f"revenue {_money(row.get('revenue'))}"
+        f"({_pct(row.get('sell_through_rate'))} sell-through)"
     )
+    if not row.get("sold") and not row.get("lost"):
+        return line
+    line += f", {row.get('lost', 0)} lost, revenue {_money(row.get('revenue'))}"
     if row.get("sold"):
         line += (
             f", profit {_money(row.get('realized_profit_on_known_costs'))}"
@@ -120,6 +122,11 @@ def chat_digest(result: dict, question: str) -> str:
     on karmo-ai01's CPU. Only real figures from the report; cultivars the
     question names get their line, otherwise every cultivar gets one."""
     lowered = question.lower()
+    any_named = any(
+        name.lower() in lowered
+        for report in result.get("reports", [])
+        for name in report.get("cultivar_summary") or {}
+    )
     lines = []
     for report in result.get("reports", []):
         summary = report.get("business_summary") or {}
@@ -135,7 +142,7 @@ def chat_digest(result: dict, question: str) -> str:
         )
         cultivars = report.get("cultivar_summary") or {}
         named = {name: row for name, row in cultivars.items() if name.lower() in lowered}
-        for name, row in (named or cultivars).items():
+        for name, row in (named if any_named else cultivars).items():
             lines.append(_cultivar_line(name, row))
     for error in result.get("errors", []):
         lines.append(f"Could not load {error.get('file')}.")

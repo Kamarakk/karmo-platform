@@ -1,0 +1,13 @@
+batch_id,unit_id,cultivar,status,supplier,purchase_date,batch_quantity,batch_item_cost_total,batch_shipping_total,batch_duties_fees_total,allocated_landed_cost,acquired_date,sale_id,sale_price,sale_channel,sale_date,selling_fees,outbound_shipping_cost,external_order_id,external_line_item_id
+BATCH-THA-ORD0023-01,BATCH-THA-ORD0023-01-U01,Regal Shield Lava,growing,Arisa (Thailand),2026-09-10,1,145,,,145.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-02,BATCH-THA-ORD0023-02-U01,Reginae Pink,growing,Arisa (Thailand),2026-09-10,1,460,,,460.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-03,BATCH-THA-ORD0023-03-U01,Regal Shield Albo,growing,Arisa (Thailand),2026-09-10,1,137,,,137.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-04,BATCH-THA-ORD0023-04-U01,Longiloba Lava,growing,Arisa (Thailand),2026-09-10,1,130,,,130.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-05,BATCH-THA-ORD0023-05-U01,Nebula Pink Albo,growing,Arisa (Thailand),2026-09-10,1,490,,,490.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-06,BATCH-THA-ORD0023-06-U01,Longiloba Lava,growing,Arisa (Thailand),2026-09-10,1,0,,,0.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-07,BATCH-THA-ORD0023-07-U01,Black Satun Pink,growing,Arisa (Thailand),2026-09-10,1,975,,,975.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-08,BATCH-THA-ORD0023-08-U01,Scap Pink Albo,growing,Arisa (Thailand),2026-09-10,1,350,,,350.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-09,BATCH-THA-ORD0023-09-U01,Begonia Shizuka,growing,Arisa (Thailand),2026-09-10,2,176,,,88.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-09,BATCH-THA-ORD0023-09-U02,Begonia Shizuka,growing,Arisa (Thailand),2026-09-10,2,176,,,88.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-10,BATCH-THA-ORD0023-10-U01,Begonia Shizuka,growing,Arisa (Thailand),2026-09-10,2,176,,,88.0,,,,,,,,ORD-0023,
+BATCH-THA-ORD0023-10,BATCH-THA-ORD0023-10-U02,Begonia Shizuka,growing,Arisa (Thailand),2026-09-10,2,176,,,88.0,,,,,,,,ORD-0023,
