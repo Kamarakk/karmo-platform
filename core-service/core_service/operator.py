@@ -28,6 +28,7 @@ from .ask_gpt_capability import TOOL_VERSION as ASK_GPT_TOOL_VERSION
 from .ask_gpt_capability import handler as ask_gpt_handler
 from .ask_gpt_capability import manifest as ask_gpt_manifest
 from .code_assist_capability import ASK_LOCAL_CODER_TOOL
+from .pricing import format_suggestion, is_pricing_question, market_prices, own_sales, plant_name, suggest
 from .code_sandbox_capability import CODE_RUN_TOOL_ID, CODE_RUN_TOOL_VERSION, FIX_PROMPT, MAX_ATTEMPTS, WRITE_PROMPT
 from .code_sandbox_capability import code_in, format_run, is_run_request, run_failed
 from .code_sandbox_capability import handler as code_run_handler
@@ -1926,6 +1927,10 @@ class KarmoOperator:
             return self._read_status()
         if is_run_request(text):
             return self._code_task(text)
+        if is_pricing_question(text):
+            priced = self._price_suggestion(text)
+            if priced is not None:
+                return priced
         # "...online" / "search for..." means Kamara wants the web, even
         # when the question names a plant from his own sales.
         if not (wants_the_web(text) and is_search_question(text)):
@@ -1977,6 +1982,30 @@ class KarmoOperator:
             if code:
                 return code, author
         return None, why
+
+    def _price_suggestion(self, text: str) -> dict | None:
+        """Item 4: his own sales of the plant plus current web prices, one
+        suggested price, no model. None (normal chat) if no plant is named."""
+        name = plant_name(text, known_cultivar_names())
+        if not name:
+            return None
+        try:
+            report = self._run_capability(BLOOMBOSS_REPORT_TOOL, BLOOMBOSS_TOOL_VERSION, {})
+        except Exception:  # noqa: BLE001 -- price from the web alone
+            report = None
+        try:
+            search = self._run_capability(WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION, {"query": f"{name} plant price"})
+        except Exception:  # noqa: BLE001 -- price from his own sales alone
+            search = None
+        message = format_suggestion(name, suggest(own_sales(report, name) if report else None,
+                                                  market_prices(search)), sources_line(search))
+        if search is None:
+            message += "\n(I couldn't search the web just now, so this uses your own sales only.)"
+        try:
+            self.memory_backend.remember_exchange(text, message)
+        except Exception:  # noqa: BLE001 -- memory is best effort here
+            pass
+        return {"kind": "chat", "message": message, "model": None}
 
     def _code_task(self, text: str) -> dict:
         """Item 5: run a pasted program, or have one written, in the Worker02

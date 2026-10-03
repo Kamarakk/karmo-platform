@@ -55,7 +55,10 @@ The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. There's a poss
   - The code is written by Claude when hand-off is on, otherwise by the local coder. Failed runs go back for a fix, up to 3 runs.
   - Worker side: `code_run` plus the `karmo-sandbox-runner` service (`worker-runtime/app/code_sandbox.py`). The worker never gets Docker.
   - Setup files: `worker-runtime/deploy/sandbox/`.
-  - Next approved items: 3 sales import (waiting on Kamara's Palmstreet export), 4 pricing.
+- **Price suggestions** (approved item 4, `core_service/pricing.py`):
+  - "What should I price the Ninja Albo at?" combines his own sales (average price, unit cost) with the $ amounts in web results.
+  - It suggests the market middle, kept at ≥1.5x his cost, with no model call.
+  - Next approved item: 3, sales import (waiting on Kamara's Palmstreet export).
 - **Hands-free voice** (speak, auto-send, spoken answer) is waiting on the owner to merge and deploy.
 - **Model Router D2** (sending chat to workers) is merged but switched off. It needs the file `/etc/karmo/core/d2-chat-routing.enabled` to run.
 
