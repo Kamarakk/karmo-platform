@@ -91,6 +91,10 @@ label{font-size:0.85em;color:#aaa;white-space:nowrap}
   <input id="imgq" type="text" placeholder="Ask about the image...">
   <button id="imgbtn">Describe image</button>
 </div>
+<div class="row">
+  <label for="doc">📎 Add a file to KARMO's library:</label>
+  <input id="doc" type="file">
+</div>
 <script>
 const log = document.getElementById('log');
 const box = document.getElementById('in');
@@ -313,6 +317,44 @@ document.getElementById('imgbtn').addEventListener('click', async () => {
   line('karmo', 'KARMO> ' + data.answer);
   qBox.value = '';
 });
+
+// Upload: KARMO detects the file's type and label and files it; one tap
+// on another label moves it there.
+const LABELS = ['Personal', 'BloomBoss', 'Lab', 'Photos', 'Media', 'Archive', 'Unsorted'];
+function showSaved(data) {
+  const d = line('karmo', 'KARMO> Saved as ' + data.label + ': ' + data.name + ' (' + data.kind + '). Wrong? ');
+  for (const label of LABELS) {
+    if (label === data.label) continue;
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = async () => {
+      const res = await fetch('/upload/relabel', {method: 'POST', body: JSON.stringify({path: data.path, label})});
+      const moved = await res.json();
+      if (moved.error) { line('status', 'move error: ' + moved.error); return; }
+      d.remove();
+      showSaved({...data, label: moved.label, path: moved.path});
+    };
+    d.appendChild(b);
+  }
+}
+document.getElementById('doc').addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  line('you', 'you> [file] ' + file.name);
+  line('status', 'saving...');
+  let data_base64;
+  try {
+    data_base64 = await blobToBase64(file);
+  } catch (err) {
+    line('status', 'upload error: ' + err.message);
+    return;
+  }
+  const res = await fetch('/upload', {method: 'POST', body: JSON.stringify({name: file.name, data_base64})});
+  const data = await res.json();
+  event.target.value = '';
+  if (data.error) { line('status', 'upload error: ' + data.error); return; }
+  showSaved(data);
+});
 </script>
 </body></html>
 """.encode("utf-8")
@@ -442,6 +484,22 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             with _OPERATOR_LOCK:
                 result = self.operator.dispatch_speak(text=payload["text"])
+            self._send_json(400 if "error" in result else 200, result)
+            return
+
+        if self.path == "/upload":
+            payload = self._read_json_body(MAX_MEDIA_BODY_BYTES, {"name": str, "data_base64": str})
+            if payload is None:
+                return
+            result = self.operator.store_upload(name=payload["name"], data_base64=payload["data_base64"])
+            self._send_json(400 if "error" in result else 200, result)
+            return
+
+        if self.path == "/upload/relabel":
+            payload = self._read_json_body(MAX_BODY_BYTES, {"path": str, "label": str})
+            if payload is None:
+                return
+            result = self.operator.relabel_upload(path=payload["path"], label=payload["label"])
             self._send_json(400 if "error" in result else 200, result)
             return
 

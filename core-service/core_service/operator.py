@@ -53,6 +53,15 @@ from .dispatcher import CapabilityDispatcher, DispatchError
 from .durable_memory import NullMemoryBackend, build_default_memory_backend
 from .identity import KARMO_IDENTITY, current_date_line, load_owner_profile, local_now
 from .morning_brief import build_morning_brief, is_morning_brief_request
+from .data_map import (
+    DataMapError,
+    build_default_catalog_reader,
+    build_default_catalog_writer,
+    format_find,
+    format_summary,
+    relabel_upload,
+    store_upload,
+)
 from .repo_intake_capability import REPO_INTAKE_TOOL_ID, REPO_INTAKE_TOOL_VERSION, format_report, repo_scan_url
 from .repo_intake_capability import handler as repo_intake_handler
 from .repo_intake_capability import manifest as repo_intake_manifest
@@ -448,6 +457,17 @@ _LIST_FACTS_COMMAND = re.compile(
     r"|what\s+have\s+i\s+(?:told|asked)\s+you\s+to\s+remember)[?.!]*$",
     re.IGNORECASE,
 )
+_DATA_MAP_FIND = re.compile(
+    r"(?:(?:hey\s+)?(?:karmo|jarvis)[,\s]+)?(?:where\s+(?:is|are|did\s+i\s+(?:put|save))\s+(?:my|the)|"
+    r"find\s+(?:me\s+)?(?:my|the)|search\s+(?:my\s+)?(?:files|nas|drive|storage)\s+for|"
+    r"which\s+files\s+(?:have|mention))\s+(?P<query>[^?]{2,200}?)[\s?.!]*",
+    re.IGNORECASE,
+)
+_DATA_MAP_SUMMARY = re.compile(
+    r"(?:(?:hey\s+)?(?:karmo|jarvis)[,\s]+)?(?:what(?:'s|\s+is)\s+on\s+my\s+(?:nas|storage|drives?)|"
+    r"(?:show\s+(?:me\s+)?)?(?:my\s+)?data\s+map)[\s?.!]*",
+    re.IGNORECASE,
+)
 
 # Selective tool-offering (2026-09-19): a real, measured bottleneck, not a
 # guess -- offering all 4 of _CHAT_EXPOSED_TOOLS on every single turn
@@ -659,8 +679,26 @@ class KarmoOperator:
         router_decision_recorder=None,
         worker_dispatch_client=None,
         circuit_breaker=None,
+        catalog_reader=None,
+        catalog_writer=None,
+        upload_root=None,
     ):
         self.model_client = model_client or OllamaChatClient()
+        if catalog_reader is not None:
+            self.catalog_reader = catalog_reader
+        else:
+            try:
+                self.catalog_reader = build_default_catalog_reader()
+            except Exception:
+                self.catalog_reader = None
+        if catalog_writer is not None:
+            self.catalog_writer = catalog_writer
+        else:
+            try:
+                self.catalog_writer = build_default_catalog_writer()
+            except Exception:
+                self.catalog_writer = None
+        self.upload_root = upload_root
         self.router = ModelRouter(resources or default_model_resources())
         self.status_reader = status_reader or read_status
         if memory_backend is not None:
@@ -852,6 +890,54 @@ class KarmoOperator:
             reason = result.get("error") if isinstance(result, dict) else "no result"
             return {"kind": "chat", "message": f"I couldn't check {url}: {reason}", "model": None, "error": "repo_scan_failed"}
         return {"kind": "chat", "message": format_report(result), "model": None}
+
+    def _data_map_answer(self, text: str) -> dict | None:
+        """"where are my 2024 invoices", "find my router configs", "what's on
+        my NAS" -- answered from the file catalog without a model. Returns
+        None (so the question goes to chat) when nothing in the catalog
+        matches or the catalog is unavailable."""
+        if self.catalog_reader is None:
+            return None
+        try:
+            if _DATA_MAP_SUMMARY.fullmatch(text):
+                return {"kind": "chat", "message": format_summary(self.catalog_reader.summary()), "model": None}
+            match = _DATA_MAP_FIND.fullmatch(text)
+            if not match:
+                return None
+            query = match.group("query").strip()
+            total, rows = self.catalog_reader.find(query)
+        except Exception:  # noqa: BLE001 -- an unavailable catalog falls back to chat
+            return None
+        if not rows:
+            return None
+        return {"kind": "chat", "message": format_find(query, total, rows), "model": None}
+
+    def store_upload(self, *, name: str, data_base64: str) -> dict:
+        """The web UI's upload button: saves the file under its detected
+        label and adds it to the data map. Never raises."""
+        import base64
+        import binascii
+
+        try:
+            data = base64.b64decode(data_base64, validate=True)
+        except (binascii.Error, ValueError):
+            return {"error": "the file did not arrive intact"}
+        kwargs = {"upload_root": self.upload_root} if self.upload_root else {}
+        try:
+            return store_upload(name, data, store=self.catalog_writer, **kwargs)
+        except DataMapError as exc:
+            return {"error": str(exc)}
+        except Exception as exc:  # noqa: BLE001 -- report to the caller, never crash the request
+            return {"error": f"{type(exc).__name__}: {exc}"}
+
+    def relabel_upload(self, *, path: str, label: str) -> dict:
+        kwargs = {"upload_root": self.upload_root} if self.upload_root else {}
+        try:
+            return relabel_upload(path, label, store=self.catalog_writer, **kwargs)
+        except DataMapError as exc:
+            return {"error": str(exc)}
+        except Exception as exc:  # noqa: BLE001 -- report to the caller, never crash the request
+            return {"error": f"{type(exc).__name__}: {exc}"}
 
     def _require_orchestration(self):
         if self.task_store is None:
@@ -1746,6 +1832,9 @@ class KarmoOperator:
         command = self._owner_memory_command(text)
         if command is not None:
             return command
+        located = self._data_map_answer(text)
+        if located is not None:
+            return located
         repo_url = repo_scan_url(text)
         if repo_url is not None:
             return self._repo_scan(repo_url)

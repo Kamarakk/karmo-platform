@@ -36,12 +36,16 @@ The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. There's a poss
   - fixes for keyword hijacks (refusal, status, BloomBoss)
   - "good morning" brief
   - answer-scoring script in `core-service/evals/`
-  - Deploy steps are in the project files: `deploy/know-karmo-deploy.md`.
+  - repo check: "check github.com/owner/repo" scans on Worker02 and never runs the repo's code (`worker-runtime/app/repo_intake.py`)
+  - data map (`core_service/data_map.py`, migration 014): a catalog of file names, sizes and dates for the NAS and uploads. "Where are my …" is answered from the map; contents are opened only when needed.
+  - web UI upload button: type is detected from the file signature, a label is chosen, and one tap moves the file to another label
+  - Deploy steps are in the project files: `deploy/know-karmo-deploy.md` and `deploy/repo-intake-worker02.md`.
 - **Hands-free voice** (speak, auto-send, spoken answer) is waiting on the owner to merge and deploy.
 - **Model Router D2** (sending chat to workers) is merged but switched off. It needs the file `/etc/karmo/core/d2-chat-routing.enabled` to run.
 
 ## Known gaps
 - **BloomBoss data is thin.** Only one EMgarden invoice (75 units) has been imported. The ~446 Palmstreet orders were never imported; the owner must export them.
+- **NAS not attached yet.** The owner plans 10 TB+ over the years. The design is catalog-first (know where things are, open on demand); never bulk-ingest it.
 - **Document search is nearly empty.** At the last count it held 8 chunks, and none of Kamara's own notes are loaded.
 - **Hardware caps speed.** The 8B model runs on CPU only.
 

@@ -42,6 +42,13 @@ class FakeOperator:
         self.speak_calls.append(text)
         return self.speak_result
 
+    def store_upload(self, *, name, data_base64):
+        self.upload_calls = getattr(self, "upload_calls", []) + [(name, data_base64)]
+        return {"id": 1, "path": "Personal/2026-10/a.pdf", "name": "a.pdf", "kind": "document", "label": "Personal"}
+
+    def relabel_upload(self, *, path, label):
+        return {"error": "no such uploaded file"} if path == "missing" else {"path": f"{label}/2026-10/a.pdf", "label": label}
+
 
 @pytest.fixture
 def running_server():
@@ -425,3 +432,27 @@ def test_reply_is_spoken_sentence_by_sentence_while_it_streams():
     assert "speaker.feed(shown)" in page
     assert "speaker.finish(" in page
     assert "[.!?][\"')]?\\s/g" in page  # rendered JS regex keeps its backslash
+
+
+def _post(server, path, payload):
+    req = urllib.request.Request(_url(server, path), data=json.dumps(payload).encode("utf-8"), method="POST")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read() or b"{}")
+
+
+def test_upload_and_relabel_route_through_the_operator(running_server):
+    server, fake = running_server
+    assert _post(server, "/upload", {"name": "a.pdf", "data_base64": "JVBERi0="})[1]["label"] == "Personal"
+    assert fake.upload_calls == [("a.pdf", "JVBERi0=")]
+    assert _post(server, "/upload/relabel", {"path": "Personal/2026-10/a.pdf", "label": "Lab"}) == (
+        200, {"path": "Lab/2026-10/a.pdf", "label": "Lab"})
+    assert _post(server, "/upload/relabel", {"path": "missing", "label": "Lab"})[0] == 400
+    assert _post(server, "/upload", {"name": "a.pdf"})[0] == 400
+
+
+def test_page_has_the_upload_control():
+    page = webui._PAGE.decode("utf-8")
+    assert 'id="doc" type="file"' in page and "'/upload'" in page and "'/upload/relabel'" in page
