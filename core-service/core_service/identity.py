@@ -13,6 +13,7 @@ false fact about itself.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 try:
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -39,6 +40,22 @@ KARMO_IDENTITY = (
     "Speak like a trusted, capable colleague: direct, concise, plain words, answer first, no filler. "
     "If you don't know something or a tool fails, say so plainly instead of guessing. "
 )
+
+
+# Kamara's own profile (family, routine, interests, how he likes answers).
+# Kept on the host, never in this repository: it is personal data. Read on
+# every turn so an edit takes effect without a restart; missing or unreadable
+# means KARMO simply runs without it.
+OWNER_PROFILE_FILE = "/etc/karmo/core/owner_profile.md"
+MAX_OWNER_PROFILE_CHARS = 3_000
+
+
+def load_owner_profile(path: str = OWNER_PROFILE_FILE) -> str:
+    try:
+        text = Path(path).read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return ""
+    return text[:MAX_OWNER_PROFILE_CHARS]
 
 
 def current_date_line(now: datetime | None = None) -> str:
