@@ -40,6 +40,12 @@ The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. There's a poss
   - data map (`core_service/data_map.py`, migration 014): a catalog of file names, sizes and dates for the NAS and uploads. "Where are my …" is answered from the map; contents are opened only when needed.
   - web UI upload button: type is detected from the file signature, a label is chosen, and one tap moves the file to another label
   - Deploy steps are in the project files: `deploy/know-karmo-deploy.md` and `deploy/repo-intake-worker02.md`.
+- **Web search** (2026-10-03, Kamara's written approval of items 1–5):
+  - A question with web words ("search", "online", "latest", "news", "price of", …) runs `web_search` on Worker02 first.
+  - Worker02's loopback SearXNG (127.0.0.1:8888) does the search; the answer ends with a "Sources:" line.
+  - Code: `core_service/web_search_capability.py` and the worker `web_search` capability.
+  - Setup files: `worker-runtime/deploy/searxng/`.
+  - Next approved items: 2 KARMO hands off to Claude/GPT on its own, 3 sales import, 4 pricing, 5 code sandbox.
 - **Hands-free voice** (speak, auto-send, spoken answer) is waiting on the owner to merge and deploy.
 - **Model Router D2** (sending chat to workers) is merged but switched off. It needs the file `/etc/karmo/core/d2-chat-routing.enabled` to run.
 

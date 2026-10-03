@@ -8,7 +8,8 @@
   "known_hosts_file": "/etc/karmo/worker02/known_hosts",
   "worker_key_file": "/etc/karmo/worker02/worker.key",
   "capabilities": {
-    "local_model_probe": "1.0.0"
+    "local_model_probe": "1.0.0",
+    "web_search": "1.0.0"
   },
   "timeout_seconds": 30,
   "poll_interval_seconds": 5,

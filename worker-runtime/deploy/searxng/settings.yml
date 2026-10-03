@@ -1,0 +1,15 @@
+# KARMO's SearXNG on Worker02. Install copies this to /etc/karmo/searxng/
+# and replaces __SECRET_KEY__ with a random value on the host.
+use_default_settings: true
+general:
+  instance_name: "KARMO search"
+server:
+  secret_key: "__SECRET_KEY__"
+  limiter: false
+  image_proxy: false
+  public_instance: false
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json

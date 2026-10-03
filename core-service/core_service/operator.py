@@ -28,6 +28,12 @@ from .ask_gpt_capability import TOOL_VERSION as ASK_GPT_TOOL_VERSION
 from .ask_gpt_capability import handler as ask_gpt_handler
 from .ask_gpt_capability import manifest as ask_gpt_manifest
 from .code_assist_capability import ASK_LOCAL_CODER_TOOL
+from .web_search_capability import SEARCH_WORDS as _WEB_SEARCH_WORDS
+from .web_search_capability import WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION
+from .web_search_capability import handler as web_search_handler
+from .web_search_capability import is_search_question, search_query, sources_line, wants_the_web
+from .web_search_capability import manifest as web_search_manifest
+from .web_search_capability import web_results_digest
 from .code_assist_capability import ASK_LOCAL_CODER_TOOL_VERSION
 from .code_assist_capability import handler as code_assist_handler
 from .code_assist_capability import manifest as code_assist_manifest
@@ -306,6 +312,27 @@ _CHAT_EXPOSED_TOOLS = {
             },
         },
     },
+    "web_search": {
+        "tool_id": WEB_SEARCH_TOOL_ID,
+        "version": WEB_SEARCH_TOOL_VERSION,
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": (
+                    "Search the web for anything current -- prices, news, how-tos. Returns "
+                    "titles, links and snippets."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "What to search for."},
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+    },
     "ask_claude": {
         "tool_id": ASK_CLAUDE_TOOL,
         "version": ASK_CLAUDE_TOOL_VERSION,
@@ -496,6 +523,7 @@ _DATA_MAP_SUMMARY = re.compile(
 # turn, a few seconds at this host's ~22 tokens/second.
 _TOOL_TRIGGER_WORDS = {
     "list_tasks": re.compile(r"\b(task|tasks|to-do|todo|to do)\b", re.IGNORECASE),
+    "web_search": _WEB_SEARCH_WORDS,
     "ask_claude": re.compile(r"\b(claude|anthropic|second opinion)\b", re.IGNORECASE),
     "ask_gpt": re.compile(r"\b(gpt|chatgpt|openai)\b", re.IGNORECASE),
     "ask_local_coder": re.compile(
@@ -763,6 +791,7 @@ class KarmoOperator:
         self.registry.register(transcribe_audio_manifest())
         self.registry.register(synthesize_speech_manifest())
         self.registry.register(repo_intake_manifest())
+        self.registry.register(web_search_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
@@ -790,6 +819,10 @@ class KarmoOperator:
         self.dispatcher.bind(
             REPO_INTAKE_TOOL_ID, REPO_INTAKE_TOOL_VERSION,
             repo_intake_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION,
+            web_search_handler(self.worker_dispatch_client),
         )
 
         if task_store is not None:
@@ -1357,7 +1390,10 @@ class KarmoOperator:
         a short digest of the figures (bloomboss_chat_digest), not the full
         report -- see its docstring for the measured cost."""
         offered = {t["function"]["name"] for t in tools}
-        if "bloomboss_report" not in offered or not _is_bloomboss_question(text):
+        bloomboss = "bloomboss_report" in offered and _is_bloomboss_question(text)
+        if "web_search" in offered and is_search_question(text) and (wants_the_web(text) or not bloomboss):
+            return self._prefetched_web_search(text)
+        if not bloomboss:
             return []
         call = {"function": {"name": "bloomboss_report", "arguments": {}}}
         return [
@@ -1365,6 +1401,25 @@ class KarmoOperator:
             {"role": "tool", "content": self._execute_exposed_tool(
                 call, render=lambda result: bloomboss_chat_digest(result, text))},
             {"role": "system", "content": "Answer from the BloomBoss figures above in a few short sentences."},
+        ]
+
+    def _prefetched_web_search(self, text: str) -> list[dict]:
+        """Same shape as the BloomBoss prefetch: the search runs up front and
+        its results sit in the conversation before the model answers. The
+        sources line is kept for handle() to add under the answer."""
+        call = {"function": {"name": "web_search", "arguments": {"query": search_query(text)}}}
+
+        def render(result):
+            self._turn_sources = sources_line(result)
+            return web_results_digest(result)
+
+        return [
+            {"role": "assistant", "content": "", "tool_calls": [call]},
+            {"role": "tool", "content": self._execute_exposed_tool(call, render=render)},
+            {"role": "system", "content": (
+                "Answer from the web results above in a few short sentences. If they don't answer "
+                "the question, say so. Don't invent figures that aren't in them."
+            )},
         ]
 
     def _run_tool_loop(self, ask_fn, messages: list[dict], tools: list[dict], *, deadline: float) -> str:
@@ -1654,7 +1709,7 @@ class KarmoOperator:
             # Already run above; offering it again only adds its schema to a
             # prompt the CPU model reads at ~19 tokens/second.
             messages.extend(prefetched)
-            tools = [t for t in tools if t["function"]["name"] != "bloomboss_report"]
+            tools = [t for t in tools if t["function"]["name"] not in ("bloomboss_report", "web_search")]
 
         # Model Router Phase D2: try the chosen worker first, if one was
         # picked and there's realistically enough of the total budget
@@ -1815,8 +1870,12 @@ class KarmoOperator:
         piece as it is written (None means: clear what was sent so far). The
         returned dict is still the authoritative final answer."""
         self._on_token, self._streamed_any = on_token, False
+        self._turn_sources = ""
         try:
             result = self._handle(text)
+            if self._turn_sources and isinstance(result, dict) and result.get("kind") == "chat" \
+                    and str(result.get("message") or "").strip():
+                result["message"] = f"{result['message'].rstrip()}\n{self._turn_sources}"
             # A model turn can come back with no text at all (e.g. it spent
             # its whole budget thinking); never show Kamara a blank reply.
             if isinstance(result, dict) and not str(result.get("message") or "").strip():
@@ -1853,7 +1912,10 @@ class KarmoOperator:
             }
         if _is_status_request(text):
             return self._read_status()
-        direct = self._direct_bloomboss_answer(text)
-        if direct is not None:
-            return direct
+        # "...online" / "search for..." means Kamara wants the web, even
+        # when the question names a plant from his own sales.
+        if not (wants_the_web(text) and is_search_question(text)):
+            direct = self._direct_bloomboss_answer(text)
+            if direct is not None:
+                return direct
         return self._chat(text)
