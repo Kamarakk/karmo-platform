@@ -71,3 +71,11 @@ def test_identity_forbids_claiming_actions_chat_cannot_do():
     from core_service.identity import KARMO_IDENTITY
 
     assert "Never say you saved, stored, sent, or did something unless a tool result" in KARMO_IDENTITY
+
+
+def test_an_empty_model_answer_is_never_shown_blank(monkeypatch):
+    from core_service.operator import KarmoOperator
+
+    operator = KarmoOperator()
+    monkeypatch.setattr(operator, "_handle", lambda text: {"kind": "chat", "message": "  "})
+    assert operator.handle("save as begonia")["message"].startswith("I didn't come up with an answer")

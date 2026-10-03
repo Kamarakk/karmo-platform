@@ -456,3 +456,10 @@ def test_upload_and_relabel_route_through_the_operator(running_server):
 def test_page_has_the_upload_control():
     page = webui._PAGE.decode("utf-8")
     assert 'id="doc" type="file"' in page and "'/upload'" in page and "'/upload/relabel'" in page
+
+
+def test_upload_checks_size_before_sending_and_reports_refusals():
+    page = webui._PAGE.decode("utf-8")
+    assert "const MAX_UPLOAD_BYTES = 14000000;" in page
+    assert "file.size > MAX_UPLOAD_BYTES" in page
+    assert "the server refused it (HTTP " in page
