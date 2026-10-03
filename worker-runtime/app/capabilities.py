@@ -23,6 +23,7 @@ from pathlib import Path
 
 import resource_discovery
 from commander_readonly import bounded_text_read, directory_list, listener_snapshot, service_status, system_snapshot
+from repo_intake import RepoIntakeError, scan_repo
 from sandbox import SandboxError, register_handler, resolve_within_sandbox
 
 # Prefer the worker-runtime's own venv when it exists. GitHub-hosted CI does
@@ -622,6 +623,19 @@ def _embedding_benchmark_test(payload, *, sandbox_root, allowed_root, timeout_se
 
 
 register_handler("embedding_benchmark_test", _embedding_benchmark_test)
+
+# --- REPO INTAKE SCAN --------------------------------------------------------
+# Reads a public GitHub repository and returns a verdict; never runs its
+# code. See repo_intake.py for the full order of checks.
+def _repo_intake_scan(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    try:
+        report = scan_repo(payload.get("url"), Path(sandbox_root))
+    except RepoIntakeError as exc:
+        raise SandboxError(f"repo_intake_scan: {exc}") from exc
+    return report, f"repo_intake_scan: {report['repo']} -> {report['verdict']}", []
+
+
+register_handler("repo_intake_scan", _repo_intake_scan)
 
 # Commander READ Pack v1 -- fixed handlers only; no arbitrary command dispatch.
 register_handler("commander.system_snapshot", system_snapshot)

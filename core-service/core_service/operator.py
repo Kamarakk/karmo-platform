@@ -53,6 +53,9 @@ from .dispatcher import CapabilityDispatcher, DispatchError
 from .durable_memory import NullMemoryBackend, build_default_memory_backend
 from .identity import KARMO_IDENTITY, current_date_line, load_owner_profile, local_now
 from .morning_brief import build_morning_brief, is_morning_brief_request
+from .repo_intake_capability import REPO_INTAKE_TOOL_ID, REPO_INTAKE_TOOL_VERSION, format_report, repo_scan_url
+from .repo_intake_capability import handler as repo_intake_handler
+from .repo_intake_capability import manifest as repo_intake_manifest
 from .karmolab import read_status
 from .model_router import ModelResource, ModelRouter, ModelRoutingError
 from .ollama_client import OllamaChatClient, OllamaClientError
@@ -721,6 +724,7 @@ class KarmoOperator:
         self.registry.register(vision_manifest())
         self.registry.register(transcribe_audio_manifest())
         self.registry.register(synthesize_speech_manifest())
+        self.registry.register(repo_intake_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
@@ -744,6 +748,10 @@ class KarmoOperator:
         self.dispatcher.bind(
             SYNTHESIZE_SPEECH_TOOL_ID, SYNTHESIZE_SPEECH_TOOL_VERSION,
             synthesize_speech_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            REPO_INTAKE_TOOL_ID, REPO_INTAKE_TOOL_VERSION,
+            repo_intake_handler(self.worker_dispatch_client),
         )
 
         if task_store is not None:
@@ -833,6 +841,17 @@ class KarmoOperator:
             tool_id=SYNTHESIZE_SPEECH_TOOL_ID, version=SYNTHESIZE_SPEECH_TOOL_VERSION,
             arguments={"text": text},
         )
+
+    def _repo_scan(self, url: str) -> dict:
+        """"check github.com/owner/repo" -- a worker-side read-only scan,
+        answered from the scan report without a model."""
+        result = self._dispatch_local_media(
+            tool_id=REPO_INTAKE_TOOL_ID, version=REPO_INTAKE_TOOL_VERSION, arguments={"url": url},
+        )
+        if not isinstance(result, dict) or "error" in result:
+            reason = result.get("error") if isinstance(result, dict) else "no result"
+            return {"kind": "chat", "message": f"I couldn't check {url}: {reason}", "model": None, "error": "repo_scan_failed"}
+        return {"kind": "chat", "message": format_report(result), "model": None}
 
     def _require_orchestration(self):
         if self.task_store is None:
@@ -1727,6 +1746,9 @@ class KarmoOperator:
         command = self._owner_memory_command(text)
         if command is not None:
             return command
+        repo_url = repo_scan_url(text)
+        if repo_url is not None:
+            return self._repo_scan(repo_url)
         if _is_write_request(text):
             return {
                 "kind": "refusal",
