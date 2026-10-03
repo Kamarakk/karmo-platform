@@ -8,6 +8,7 @@ This is the single index for KARMO's persistent project-record set. Do not creat
 
 | File | Purpose |
 |---|---|
+| [STATE_NOW.md](STATE_NOW.md) | **Read first.** One-page current truth (hosts, what's live, what's pending, gaps); edited in place. |
 | [CURRENT_STATE.md](CURRENT_STATE.md) | Detailed historical/current state record. **Important 2026-09-11 note:** it still contains older pre-rollout deployment wording; use `PROJECT_SAVE_2026-09-11_ACCESS_CORE_WORKER_ROLLOUT.md`, the refreshed dashboard, and inventories for the latest rollout delta until that large file is fully reconciled. |
 | [KARMO_DASHBOARD.md](KARMO_DASHBOARD.md) | Human-facing Mission Control view of current stage, task, blocker, next gate, and near-term direction. |
 | [CHANGE_LOG.md](CHANGE_LOG.md) | Chronological record of merged work and production actions. |

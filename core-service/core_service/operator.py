@@ -51,7 +51,11 @@ from .bloomboss_capability import manifest as bloomboss_manifest
 from .control import ApprovalEngine, CapabilityClass, CoreControlError
 from .dispatcher import CapabilityDispatcher, DispatchError
 from .durable_memory import NullMemoryBackend, build_default_memory_backend
-from .identity import KARMO_IDENTITY, current_date_line
+from .identity import KARMO_IDENTITY, current_date_line, load_owner_profile, local_now
+from .morning_brief import build_morning_brief, is_morning_brief_request
+from .repo_intake_capability import REPO_INTAKE_TOOL_ID, REPO_INTAKE_TOOL_VERSION, format_report, repo_scan_url
+from .repo_intake_capability import handler as repo_intake_handler
+from .repo_intake_capability import manifest as repo_intake_manifest
 from .karmolab import read_status
 from .model_router import ModelResource, ModelRouter, ModelRoutingError
 from .ollama_client import OllamaChatClient, OllamaClientError
@@ -92,6 +96,9 @@ import time
 KARMOLAB_STATUS_TOOL = "karmolab.read_status"
 KARMOLAB_STATUS_VERSION = "1.0.0"
 MAX_MEMORY_CONTEXT_CHARS = 12_000
+# Each replayed recent turn is clipped so one long answer can't crowd out the
+# rest of the prompt on this CPU-only host.
+MAX_RECENT_TURN_CHARS = 1_500
 
 # Model Router Phase D2 (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
 # Section 3.5) -- one total deadline for the whole chat turn (health check
@@ -392,12 +399,53 @@ def _trivial_chat_response(text: str) -> dict | None:
     return None
 
 
-_WRITE_WORDS = re.compile(
+# A change verb alone is not a change request: "how do I kill weeds?",
+# "should I upgrade my iPhone?" and "merge these two lists" are ordinary
+# questions (2026-10-03 review: all three were refused). The refusal fires
+# only when the verb is aimed at KARMO's own infrastructure. Chat has no
+# write tools either way; this is only the up-front explanation.
+_WRITE_VERBS = re.compile(
     r"\b(restart|reboot|enable|disable|uninstall|modify|upgrade|kill|terminate|merge)\b",
     re.IGNORECASE,
 )
-_STATUS_WORDS = re.compile(
-    r"\b(status|health|karmolab|cpu|ram|services|docker|containers|online)\b",
+_INFRA_TARGETS = re.compile(
+    r"\b(karmo|karmolab|server|servers|service|services|container|containers|docker|worker\w*|ai01"
+    r"|host|hosts|vm|vms|ollama|qdrant|postgres\w*|database|firewall|systemd|daemon|deployment"
+    r"|repo|repository|branch|pull request|capability|capabilities|feature|features|package|packages"
+    r"|config\w*|model|models|stack|process|processes|job|jobs)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_write_request(text: str) -> bool:
+    return bool(_WRITE_VERBS.search(text) and _INFRA_TARGETS.search(text))
+
+
+# Same idea for status: "status of my Amazon order", "health tips" and "is
+# Palmstreet online?" are not KarmoLab status requests. Words that only ever
+# mean the lab count alone; the rest need a lab/system word beside them.
+_STATUS_STRONG = re.compile(r"\b(karmolab|docker|containers)\b", re.IGNORECASE)
+_STATUS_WEAK = re.compile(r"\b(status|health|online|services|cpu|ram)\b", re.IGNORECASE)
+_STATUS_CONTEXT = re.compile(
+    r"\b(karmo|system|server|servers|services|host|hosts|worker\w*|ai01|lab|load|usage|you)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_status_request(text: str) -> bool:
+    if _STATUS_STRONG.search(text):
+        return True
+    return bool(_STATUS_WEAK.search(text) and _STATUS_CONTEXT.search(text))
+
+
+# Kamara's own memory commands, handled without a model call so a fact is
+# stored exactly as he said it. A trailing "?" ("remember when we...?") is a
+# question for the model, not a command.
+_REMEMBER_COMMAND = re.compile(r"^(?:please\s+)?remember(?:\s+that|\s*:)?\s+(?P<fact>.+?)[.!]*$", re.IGNORECASE | re.DOTALL)
+_FORGET_COMMAND = re.compile(r"^(?:please\s+)?forget\s+(?:fact\s*)?#?(?P<id>\d+)[.!]*$", re.IGNORECASE)
+_LIST_FACTS_COMMAND = re.compile(
+    r"^(?:(?:list|show)(?:\s+me)?(?:\s+my)?\s+(?:facts|memories|remembered facts)"
+    r"|what\s+have\s+i\s+(?:told|asked)\s+you\s+to\s+remember)[?.!]*$",
     re.IGNORECASE,
 )
 
@@ -443,17 +491,29 @@ _TOOL_TRIGGER_WORDS = {
 # bloomboss_report run up front, through the
 # same dispatcher, and its real result placed in the conversation before the
 # model answers -- so the answer never depends on the model choosing to call.
-_BLOOMBOSS_QUESTION_WORDS = re.compile(
-    r"\b(bloom\s*b\w*oss|alocasias?|anthuriums?|philodendrons?|monsteras?|cultivars?|revenue"
-    r"|sell-through|suppliers?|plants?|nursery|emgarden|palm\s*street|sales|sold|sell|selling|sells"
-    r"|best[\s-]?sellers?|margins?|profits?|profitable|profitability|orders?|purchases?|inventory"
-    r"|stock|invoices?|my business)\b",
+#
+# Generic business words alone are not enough (2026-10-03 review: "how is
+# the stock market doing?", "what sold out at Costco?" and "how much profit
+# does Apple make?" were all answered from BloomBoss figures). They count
+# only when Kamara is talking about his own business ("my sales", "what did
+# I sell"); plant and BloomBoss words count on their own.
+_BLOOMBOSS_ANCHOR_WORDS = re.compile(
+    r"\b(bloom\s*b\w*oss|alocasias?|anthuriums?|philodendrons?|monsteras?|cultivars?|plants?"
+    r"|nursery|emgarden|palm\s*street|pretty\s+rare|my business|our business)\b",
     re.IGNORECASE,
 )
+_BLOOMBOSS_BUSINESS_WORDS = re.compile(
+    r"\b(revenue|sell-through|suppliers?|sales|sold|sell|selling|sells|best[\s-]?sellers?|margins?"
+    r"|profits?|profitable|profitability|orders?|purchases?|inventory|stock|invoices?)\b",
+    re.IGNORECASE,
+)
+_OWNER_WORDS = re.compile(r"\b(i|my|we|our)\b", re.IGNORECASE)
 
 
 def _is_bloomboss_question(text: str) -> bool:
-    if _BLOOMBOSS_QUESTION_WORDS.search(text):
+    if _BLOOMBOSS_ANCHOR_WORDS.search(text):
+        return True
+    if _BLOOMBOSS_BUSINESS_WORDS.search(text) and _OWNER_WORDS.search(text):
         return True
     lowered = text.lower()
     return any(name in lowered for name in known_cultivar_names())
@@ -664,6 +724,7 @@ class KarmoOperator:
         self.registry.register(vision_manifest())
         self.registry.register(transcribe_audio_manifest())
         self.registry.register(synthesize_speech_manifest())
+        self.registry.register(repo_intake_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
@@ -687,6 +748,10 @@ class KarmoOperator:
         self.dispatcher.bind(
             SYNTHESIZE_SPEECH_TOOL_ID, SYNTHESIZE_SPEECH_TOOL_VERSION,
             synthesize_speech_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            REPO_INTAKE_TOOL_ID, REPO_INTAKE_TOOL_VERSION,
+            repo_intake_handler(self.worker_dispatch_client),
         )
 
         if task_store is not None:
@@ -776,6 +841,17 @@ class KarmoOperator:
             tool_id=SYNTHESIZE_SPEECH_TOOL_ID, version=SYNTHESIZE_SPEECH_TOOL_VERSION,
             arguments={"text": text},
         )
+
+    def _repo_scan(self, url: str) -> dict:
+        """"check github.com/owner/repo" -- a worker-side read-only scan,
+        answered from the scan report without a model."""
+        result = self._dispatch_local_media(
+            tool_id=REPO_INTAKE_TOOL_ID, version=REPO_INTAKE_TOOL_VERSION, arguments={"url": url},
+        )
+        if not isinstance(result, dict) or "error" in result:
+            reason = result.get("error") if isinstance(result, dict) else "no result"
+            return {"kind": "chat", "message": f"I couldn't check {url}: {reason}", "model": None, "error": "repo_scan_failed"}
+        return {"kind": "chat", "message": format_report(result), "model": None}
 
     def _require_orchestration(self):
         if self.task_store is None:
@@ -909,12 +985,121 @@ class KarmoOperator:
             "evidence": evidence,
         }
 
-    def _memory_context(self, text: str) -> tuple[str, str | None]:
+    def _memory_context(self, text: str) -> tuple[list[dict], str, str | None]:
+        """Recent turns as real chat messages, plus retrieved long-term memory
+        and documents as one bounded reference block."""
         try:
-            context = self.memory_backend.build_context(text).render()
+            context = self.memory_backend.build_context(text)
         except Exception as exc:
-            return "", f"DEGRADED_READ_FAILED:{type(exc).__name__}"
-        return context[:MAX_MEMORY_CONTEXT_CHARS], None
+            return [], "", f"DEGRADED_READ_FAILED:{type(exc).__name__}"
+        turns = [
+            {"role": role, "content": content[:MAX_RECENT_TURN_CHARS]}
+            for role, content in context.recent
+            if role in ("user", "assistant") and content
+        ]
+        return turns, context.render_retrieved()[:MAX_MEMORY_CONTEXT_CHARS], None
+
+    def _owner_knowledge(self) -> str:
+        """Kamara's profile and the facts he told KARMO to remember, as system
+        prompt text. Both are written by Kamara himself, so they are trusted
+        context (unlike retrieved memory), but they grant no authority."""
+        parts = []
+        profile = load_owner_profile()
+        if profile:
+            parts.append("ABOUT KAMARA (written by Kamara):\n" + profile)
+        try:
+            facts = self.memory_backend.owner_facts()
+        except Exception:
+            facts = ()
+        if facts:
+            parts.append(
+                "FACTS KAMARA ASKED YOU TO REMEMBER:\n" + "\n".join(f"- {fact}" for _id, fact in facts)
+            )
+        parts.append(
+            "Use what you know about Kamara when it helps the answer. If he asks something personal "
+            "you don't know, say so and tell him he can teach you by saying \"remember that ...\"."
+        )
+        return "\n\n" + "\n\n".join(parts)
+
+    def _morning_brief(self) -> dict:
+        """"good morning" / "brief me": real readings only, no model call.
+        Every source goes through the same dispatcher as any other read, and
+        any one failing just drops its line."""
+        status = bloomboss = open_tasks = None
+        facts = ()
+        try:
+            status = self.dispatcher.dispatch(
+                requester="kamara",
+                tool_id=KARMOLAB_STATUS_TOOL,
+                version=KARMOLAB_STATUS_VERSION,
+                arguments={},
+                executor_identity="karmo-core-operator",
+                model_identity=None,
+            ).result
+        except Exception:
+            pass
+        reports = []
+
+        def keep(result):
+            reports.append(result)
+            return ""
+
+        try:
+            self._execute_exposed_tool({"function": {"name": "bloomboss_report", "arguments": {}}}, render=keep)
+            bloomboss = reports[0] if reports else None
+        except Exception:
+            pass
+        try:
+            if self.task_store is not None:
+                open_tasks = len(self.list_tasks(status="OPEN", limit=100))
+        except Exception:
+            pass
+        try:
+            facts = self.memory_backend.owner_facts()
+        except Exception:
+            pass
+        message = build_morning_brief(
+            local_now=local_now()[0], status=status, bloomboss=bloomboss, open_tasks=open_tasks, facts=facts,
+        )
+        return {"kind": "chat", "message": message, "model": None}
+
+    def _owner_memory_command(self, text: str) -> dict | None:
+        """"remember that ...", "forget fact 3", "list my facts" -- Kamara's own
+        memory edits, done without a model so nothing is paraphrased."""
+        normalized = text.strip()
+        try:
+            match = _FORGET_COMMAND.fullmatch(normalized)
+            if match:
+                fact_id = int(match.group("id"))
+                if self.memory_backend.forget_fact(fact_id):
+                    return {"kind": "chat", "message": f"Forgotten: fact #{fact_id}.", "model": None}
+                return {"kind": "chat", "message": f"I don't have a fact #{fact_id}.", "model": None}
+            if _LIST_FACTS_COMMAND.fullmatch(normalized):
+                facts = self.memory_backend.owner_facts()
+                if not facts:
+                    message = "You haven't asked me to remember anything yet. Say \"remember that ...\"."
+                else:
+                    message = "Here's what you've asked me to remember:\n" + "\n".join(
+                        f"#{fact_id}: {fact}" for fact_id, fact in facts
+                    )
+                return {"kind": "chat", "message": message, "model": None}
+            match = _REMEMBER_COMMAND.fullmatch(normalized)
+            if match and not normalized.endswith("?"):
+                fact = match.group("fact").strip()
+                fact_id = self.memory_backend.remember_fact(fact)
+                return {
+                    "kind": "chat",
+                    "message": f"Got it, I'll remember: {fact} (fact #{fact_id}; say \"forget fact {fact_id}\" to remove it).",
+                    "model": None,
+                }
+        except Exception as exc:  # noqa: BLE001 -- a memory failure is reported, never a crashed turn
+            return {
+                "kind": "chat",
+                "message": f"I couldn't update my memory ({type(exc).__name__}). Nothing was changed.",
+                "model": None,
+                "error": type(exc).__name__,
+            }
+        return None
 
     @staticmethod
     def _with_memory_status(response: dict, memory_status: str) -> dict:
@@ -1323,7 +1508,7 @@ class KarmoOperator:
                 "error": "ModelRoutingError",
             }
 
-        memory_context, read_failure = self._memory_context(text)
+        recent_turns, memory_context, read_failure = self._memory_context(text)
         system_content = (
             KARMO_IDENTITY
             + "You are KARMO, Kamara's local AI control-plane interface. "
@@ -1359,9 +1544,10 @@ class KarmoOperator:
             "For a coding question specifically, call ask_local_coder even though you could write the code "
             "yourself -- KARMO's local-first design routes coding work to its own dedicated coding model "
             "rather than answering directly, whenever ask_local_coder is offered as a tool."
-        )
+        ) + self._owner_knowledge()
 
         messages = [{"role": "system", "content": system_content}]
+        messages.extend(recent_turns)
         if memory_context:
             messages.append(
                 {
@@ -1552,10 +1738,18 @@ class KarmoOperator:
         text = text.strip()
         if not text:
             return {"kind": "system", "message": "Ask KARMO a question or request KarmoLab status."}
+        if is_morning_brief_request(text):
+            return self._morning_brief()
         trivial = _trivial_chat_response(text)
         if trivial is not None:
             return trivial
-        if _WRITE_WORDS.search(text):
+        command = self._owner_memory_command(text)
+        if command is not None:
+            return command
+        repo_url = repo_scan_url(text)
+        if repo_url is not None:
+            return self._repo_scan(repo_url)
+        if _is_write_request(text):
             return {
                 "kind": "refusal",
                 "message": (
@@ -1563,7 +1757,7 @@ class KarmoOperator:
                     "change services, files, software, network state, or infrastructure."
                 ),
             }
-        if _STATUS_WORDS.search(text):
+        if _is_status_request(text):
             return self._read_status()
         direct = self._direct_bloomboss_answer(text)
         if direct is not None:

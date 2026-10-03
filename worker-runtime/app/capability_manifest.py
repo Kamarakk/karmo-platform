@@ -333,8 +333,40 @@ SAFE_CAPABILITIES = {
         idempotent=False,
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
+    # Repo intake scan (2026-10-03, Kamara's written go-ahead in the KARMO
+    # project thread): reads a public GitHub repository -- metadata,
+    # Scorecard, a shallow clone into the job's own temp workspace, and
+    # installed scanners -- and returns a verdict. Never builds, installs or
+    # runs the repository's code. The only capability allowed network
+    # access, and only to the hosts in repo_intake.ALLOWED_HOSTS (see
+    # NETWORK_CAPABILITY_HOSTS below).
+    "repo_intake_scan": dict(
+        capability_id="repo_intake_scan",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.LOCAL_WRITE,
+        input_schema={
+            "type": "object",
+            "properties": {"url": {"type": "string", "maxLength": 300}},
+            "required": ["url"],
+        },
+        output_schema={"type": "object", "properties": {"verdict": {"type": "string"}}},
+        timeout_seconds=290,
+        resource_requirements={"cpu": "medium", "memory_mb": 1024},
+        network_required=True,
+        secrets_required=[],
+        idempotent=True,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
 }
 SAFE_CAPABILITIES.update(COMMANDER_READONLY_CAPABILITIES)
+
+# The only capabilities a remote worker may run with network access, each
+# pinned to the fixed hosts its handler enforces. Every other capability
+# stays network-free (remote_worker_runtime refuses it otherwise).
+NETWORK_CAPABILITY_HOSTS = {
+    "repo_intake_scan": ("api.github.com", "github.com", "api.securityscorecards.dev"),
+}
 
 # Explicitly, permanently excluded from this workload's capability set --
 # named here so their absence is a deliberate, visible design choice, not

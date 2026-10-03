@@ -97,7 +97,7 @@ def test_general_chat_uses_local_model_router_without_tool_execution():
 
     client = FakeModelClient()
     operator = KarmoOperator(model_client=client, status_reader=status_reader)
-    response = operator.handle("Good morning Karmo")
+    response = operator.handle("Good morning Karmo, what should I focus on today?")
 
     assert response == {
         "kind": "chat",
@@ -126,7 +126,7 @@ def test_general_chat_fails_closed_when_qwen_fails_no_fallback_exists():
     client = FakeModelClient(fail_models={"qwen3:8b"})
     operator = KarmoOperator(model_client=client, status_reader=fake_status)
 
-    response = operator.handle("Good morning Karmo")
+    response = operator.handle("Good morning Karmo, what should I focus on today?")
 
     assert response["kind"] == "chat"
     assert response["message"] == "Local chat models are unavailable. KARMO control plane remains fail-closed."

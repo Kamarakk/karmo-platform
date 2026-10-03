@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import ollama_health
-from capability_manifest import get_canonical_capability
+from capability_manifest import NETWORK_CAPABILITY_HOSTS, get_canonical_capability
 from crypto_boundary import KeyResolver, ResultAuthenticator, WorkerAuthenticator
 from ssh_stdio_transport import SshStdioConfig, SshStdioTransport
 from ssh_worker_client import RemoteWorkerConfig, SshRemoteWorkerClient
@@ -96,7 +96,9 @@ class WorkerRuntimeConfig:
                 raise RemoteWorkerRuntimeError("configured capability is not canonical") from exc
             if version != canonical["version"]:
                 raise RemoteWorkerRuntimeError("configured capability version mismatch")
-            if canonical["network_required"] or canonical["secrets_required"]:
+            if canonical["secrets_required"] or (
+                canonical["network_required"] and capability_id not in NETWORK_CAPABILITY_HOSTS
+            ):
                 raise RemoteWorkerRuntimeError("configured capability exceeds remote worker boundary")
         if not 1 <= int(self.timeout_seconds) <= 300:
             raise RemoteWorkerRuntimeError("execution timeout out of bounds")

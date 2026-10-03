@@ -13,6 +13,7 @@ false fact about itself.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 try:
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -41,16 +42,37 @@ KARMO_IDENTITY = (
 )
 
 
+# Kamara's own profile (family, routine, interests, how he likes answers).
+# Kept on the host, never in this repository: it is personal data. Read on
+# every turn so an edit takes effect without a restart; missing or unreadable
+# means KARMO simply runs without it.
+OWNER_PROFILE_FILE = "/etc/karmo/core/owner_profile.md"
+MAX_OWNER_PROFILE_CHARS = 3_000
+
+
+def load_owner_profile(path: str = OWNER_PROFILE_FILE) -> str:
+    try:
+        text = Path(path).read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return ""
+    return text[:MAX_OWNER_PROFILE_CHARS]
+
+
+def local_now(now: datetime | None = None) -> tuple[datetime, str]:
+    """Now in Kamara's local (Pacific) time, with its label; UTC if the
+    host has no time zone data."""
+    now = now or datetime.now(timezone.utc)
+    try:
+        return now.astimezone(ZoneInfo("America/Los_Angeles")), "Pacific time"
+    except (TypeError, ZoneInfoNotFoundError):
+        return now.astimezone(timezone.utc), "UTC"
+
+
 def current_date_line(now: datetime | None = None) -> str:
     """Today's date and time in Kamara's local (Pacific) time, for a chat
     turn. Sent as its own message after the fixed prompt and tools so the
     model's cached prompt prefix is not invalidated every minute."""
-    now = now or datetime.now(timezone.utc)
-    label = "Pacific time"
-    try:
-        local = now.astimezone(ZoneInfo("America/Los_Angeles"))
-    except (TypeError, ZoneInfoNotFoundError):
-        local, label = now.astimezone(timezone.utc), "UTC"
+    local, label = local_now(now)
     hour = local.hour % 12 or 12
     return (
         f"The current date and time is {local:%A}, {local:%B} {local.day}, {local.year}, "

@@ -36,6 +36,11 @@ DEFAULT_VECTOR_SIZE = 768
 DEFAULT_SEMANTIC_THRESHOLD = 0.45
 DEFAULT_DOCUMENT_THRESHOLD = 0.50
 DEFAULT_RECENT_LIMIT = 6
+# Older turns are a different conversation; they stay reachable through
+# semantic recall instead of being replayed as if just said.
+DEFAULT_RECENT_WINDOW_MINUTES = 120
+MAX_OWNER_FACT_CHARS = 500
+DEFAULT_OWNER_FACT_LIMIT = 50
 DEFAULT_RETRIEVAL_LIMIT = 3
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -58,6 +63,15 @@ class MemoryContext:
                 "RECENT CONVERSATION:\n"
                 + "\n".join(f"{role.upper()}: {content}" for role, content in self.recent)
             )
+        retrieved = self.render_retrieved()
+        if retrieved:
+            parts.append(retrieved)
+        return "\n\n".join(parts)
+
+    def render_retrieved(self) -> str:
+        """Semantic recall and document chunks only -- the recent turns are
+        given to the model as real conversation turns instead."""
+        parts: list[str] = []
         if self.semantic:
             parts.append(
                 "RELEVANT LONG-TERM MEMORY:\n"
@@ -84,6 +98,15 @@ class NullMemoryBackend:
 
     def remember_exchange(self, _prompt: str, _answer: str) -> None:
         return None
+
+    def owner_facts(self, limit: int = DEFAULT_OWNER_FACT_LIMIT) -> tuple[tuple[int, str], ...]:
+        return ()
+
+    def remember_fact(self, _fact: str) -> int:
+        raise MemoryConfigurationError("durable memory is not configured")
+
+    def forget_fact(self, _fact_id: int) -> bool:
+        raise MemoryConfigurationError("durable memory is not configured")
 
 
 class DurableMemoryBackend:
@@ -154,19 +177,26 @@ class DurableMemoryBackend:
             raise RuntimeError("embedding dimension mismatch")
         return vector
 
-    def recent_turns(self, limit: int = DEFAULT_RECENT_LIMIT) -> tuple[tuple[str, str], ...]:
+    def recent_turns(
+        self,
+        limit: int = DEFAULT_RECENT_LIMIT,
+        within_minutes: int = DEFAULT_RECENT_WINDOW_MINUTES,
+    ) -> tuple[tuple[str, str], ...]:
         if not 1 <= limit <= 50:
             raise ValueError("recent-turn limit must be between 1 and 50")
+        if not 1 <= within_minutes <= 7 * 24 * 60:
+            raise ValueError("recent-turn window must be between 1 minute and 7 days")
         with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
                     SELECT role, content
                     FROM public.conversation_memory
+                    WHERE created_at >= NOW() - make_interval(mins => %s)
                     ORDER BY id DESC
                     LIMIT %s
                     """,
-                    (limit,),
+                    (within_minutes, limit),
                 )
                 rows = cur.fetchall()
         rows.reverse()
@@ -288,6 +318,48 @@ class DurableMemoryBackend:
                         json.dumps(payload),
                     ),
                 )
+
+
+    def owner_facts(self, limit: int = DEFAULT_OWNER_FACT_LIMIT) -> tuple[tuple[int, str], ...]:
+        """Facts Kamara explicitly told KARMO to remember, oldest first."""
+        if not 1 <= limit <= 200:
+            raise ValueError("owner-fact limit must be between 1 and 200")
+        with self._connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, fact
+                    FROM public.karmo_owner_facts
+                    ORDER BY id DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cur.fetchall()
+        rows.reverse()
+        return tuple((int(fact_id), str(fact)) for fact_id, fact in rows)
+
+    def remember_fact(self, fact: str) -> int:
+        if not isinstance(fact, str) or not fact.strip():
+            raise ValueError("fact must be non-empty text")
+        fact = fact.strip()
+        if len(fact) > MAX_OWNER_FACT_CHARS:
+            raise ValueError(f"fact must be at most {MAX_OWNER_FACT_CHARS} characters")
+        with self._connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO public.karmo_owner_facts (fact) VALUES (%s) RETURNING id",
+                    (fact,),
+                )
+                return int(cur.fetchone()[0])
+
+    def forget_fact(self, fact_id: int) -> bool:
+        if not isinstance(fact_id, int) or isinstance(fact_id, bool) or fact_id <= 0:
+            raise ValueError("fact id must be a positive integer")
+        with self._connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM public.karmo_owner_facts WHERE id = %s", (fact_id,))
+                return cur.rowcount == 1
 
 
 def build_default_memory_backend(dsn_file: str = DEFAULT_DSN_FILE):

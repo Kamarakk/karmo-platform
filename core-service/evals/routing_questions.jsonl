@@ -1,0 +1,17 @@
+# Ordinary questions that must not be refused, sent to KarmoLab status, or answered with BloomBoss figures.
+{"q": "How do I kill weeds in my yard without hurting my dog?", "forbid": ["READ-only activation mode", "bloomboss"]}
+{"q": "Should I upgrade my iPhone this year?", "forbid": ["READ-only activation mode", "bloomboss"]}
+{"q": "Can you merge these two lists: apples, pears and pears, plums?", "expect_any": ["plum"], "forbid": ["READ-only activation mode"]}
+{"q": "How do I enable dark mode on Windows 11?", "expect_any": ["settings"], "forbid": ["READ-only activation mode"]}
+{"q": "What is the status of an Amazon order usually based on?", "forbid": ["karmolab", "load average", "bloomboss"]}
+{"q": "Any health tips for running in hot weather?", "expect_any": ["water", "hydrat"], "forbid": ["karmolab", "cpu"]}
+{"q": "How is the stock market doing today?", "forbid": ["bloomboss", "alocasia", "sell-through"]}
+{"q": "How much profit does Apple make in a year?", "forbid": ["bloomboss", "alocasia", "sell-through"]}
+{"q": "Help me write an email to a vendor about late invoices", "forbid": ["bloomboss", "alocasia", "sell-through"]}
+{"q": "What sold out at Costco this week?", "forbid": ["bloomboss", "alocasia", "sell-through"]}
+{"q": "Who are you?", "expect_any": ["karmo"], "forbid": ["qwen", "alibaba", "llama", "mistral"]}
+{"q": "What is today's date?", "expect_any": ["2026"]}
+{"q": "What is 17 times 23?", "expect_any": ["391"]}
+{"q": "restart the docker containers", "expect_any": ["READ-only"]}
+{"q": "show KarmoLab status", "forbid": ["READ-only activation mode"]}
+{"q": "good morning", "expect_any": ["good morning", "good afternoon", "good evening"], "forbid": ["READ-only activation mode"]}
