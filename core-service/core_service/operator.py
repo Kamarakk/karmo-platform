@@ -28,6 +28,10 @@ from .ask_gpt_capability import TOOL_VERSION as ASK_GPT_TOOL_VERSION
 from .ask_gpt_capability import handler as ask_gpt_handler
 from .ask_gpt_capability import manifest as ask_gpt_manifest
 from .code_assist_capability import ASK_LOCAL_CODER_TOOL
+from .code_sandbox_capability import CODE_RUN_TOOL_ID, CODE_RUN_TOOL_VERSION, FIX_PROMPT, MAX_ATTEMPTS, WRITE_PROMPT
+from .code_sandbox_capability import code_in, format_run, is_run_request, run_failed
+from .code_sandbox_capability import handler as code_run_handler
+from .code_sandbox_capability import manifest as code_run_manifest
 from .handoff import HANDOFF_ENABLED_FILE, handoff_enabled, is_heavy_task, tagged
 from .web_search_capability import SEARCH_WORDS as _WEB_SEARCH_WORDS
 from .web_search_capability import WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION
@@ -795,6 +799,7 @@ class KarmoOperator:
         self.registry.register(synthesize_speech_manifest())
         self.registry.register(repo_intake_manifest())
         self.registry.register(web_search_manifest())
+        self.registry.register(code_run_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
@@ -826,6 +831,10 @@ class KarmoOperator:
         self.dispatcher.bind(
             WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION,
             web_search_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            CODE_RUN_TOOL_ID, CODE_RUN_TOOL_VERSION,
+            code_run_handler(self.worker_dispatch_client),
         )
 
         if task_store is not None:
@@ -1915,6 +1924,8 @@ class KarmoOperator:
             }
         if _is_status_request(text):
             return self._read_status()
+        if is_run_request(text):
+            return self._code_task(text)
         # "...online" / "search for..." means Kamara wants the web, even
         # when the question names a plant from his own sales.
         if not (wants_the_web(text) and is_search_question(text)):
@@ -1936,6 +1947,67 @@ class KarmoOperator:
             if handed is not None:
                 return handed
         return result
+
+    def _run_capability(self, tool_id: str, version: str, arguments: dict) -> dict:
+        """One direct capability call through the dispatcher; raises on any
+        failure or a non-dict result."""
+        decision = self.dispatcher.dispatch(
+            requester="karmo-chat-model", tool_id=tool_id, version=version,
+            arguments=arguments, executor_identity="karmo-chat-model",
+        )
+        if not decision.executed or not isinstance(decision.result, dict):
+            raise DispatchError("capability did not run")
+        return decision.result
+
+    def _write_code(self, prompt: str) -> tuple[str | None, str]:
+        """Claude writes the program when hand-off is on; KARMO's local coder
+        otherwise, or if Claude fails. Returns (code, author) or (None, why)."""
+        writers = [("ask_local_coder", "KARMO's local coder")]
+        if handoff_enabled(self.handoff_enabled_file):
+            writers.insert(0, ("ask_claude", "Claude"))
+        why = "no code came back"
+        for name, author in writers:
+            entry = _CHAT_EXPOSED_TOOLS[name]
+            try:
+                answer = self._run_capability(entry["tool_id"], entry["version"], {"question": prompt}).get("answer")
+            except Exception as exc:  # noqa: BLE001 -- try the next writer
+                why = f"{type(exc).__name__}: {exc}"
+                continue
+            code = code_in(answer or "")
+            if code:
+                return code, author
+        return None, why
+
+    def _code_task(self, text: str) -> dict:
+        """Item 5: run a pasted program, or have one written, in the Worker02
+        sandbox; failed runs go back for a fix, at most MAX_ATTEMPTS runs."""
+        code, author = code_in(text), "you"
+        if code is None:
+            code, author = self._write_code(WRITE_PROMPT.format(task=text))
+            if code is None:
+                return {"kind": "chat", "model": None, "error": "code_write_failed",
+                        "message": f"I couldn't get a program written for that: {author}"}
+        attempts, result, error = 0, None, None
+        while True:
+            attempts += 1
+            try:
+                result = self._run_capability(CODE_RUN_TOOL_ID, CODE_RUN_TOOL_VERSION, {"code": code})
+            except Exception as exc:  # noqa: BLE001 -- reported in the answer
+                result, error = None, f"{type(exc).__name__}: {exc}"
+                break
+            failure = run_failed(result)
+            if not failure or author == "you" or attempts >= MAX_ATTEMPTS:
+                break
+            fixed, _ = self._write_code(FIX_PROMPT.format(task=text, code=code, error=failure))
+            if fixed is None:
+                break
+            code = fixed
+        message = format_run(code, result, attempts=attempts, author=author, error=error)
+        try:
+            self.memory_backend.remember_exchange(text, message)
+        except Exception:  # noqa: BLE001 -- memory is best effort here
+            pass
+        return {"kind": "chat", "message": message, "model": None}
 
     def _hand_off(self, text: str) -> dict | None:
         """Asks Claude, then GPT, through the existing ask_claude/ask_gpt

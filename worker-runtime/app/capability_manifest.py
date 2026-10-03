@@ -357,6 +357,32 @@ SAFE_CAPABILITIES = {
         idempotent=True,
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
+    # Code sandbox (2026-10-03, Kamara's written go-ahead in the KARMO project
+    # thread, item 5): runs one short Python program in a throwaway Docker
+    # container with no network, through the separate karmo-sandbox-runner
+    # service (code_sandbox.py). The worker itself only writes the job into
+    # the spool and reads the result back; it never gets Docker.
+    "code_run": dict(
+        capability_id="code_run",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.LOCAL_WRITE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "maxLength": 20000},
+                "files": {"type": "object"},
+            },
+            "required": ["code"],
+        },
+        output_schema={"type": "object", "properties": {"exit_code": {}, "stdout": {"type": "string"}}},
+        timeout_seconds=120,
+        resource_requirements={"cpu": "medium", "memory_mb": 512},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
     # Repo intake scan (2026-10-03, Kamara's written go-ahead in the KARMO
     # project thread): reads a public GitHub repository -- metadata,
     # Scorecard, a shallow clone into the job's own temp workspace, and

@@ -50,7 +50,12 @@ The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. There's a poss
   - So does any question the local model fails to answer.
   - It uses the existing ask_claude/ask_gpt subscription CLIs; GPT is asked if Claude fails. Only the question is sent, and answers end "(asked Claude)".
   - On only while `/etc/karmo/core/handoff.enabled` exists. Never used for BloomBoss data or web-search questions.
-  - Next approved items: 3 sales import, 4 pricing, 5 code sandbox.
+- **Code sandbox** (approved item 5):
+  - "write and run…", "use python to…" or a pasted ```python block runs on Worker02 in a throwaway container: no network, 512 MB, 60 s.
+  - The code is written by Claude when hand-off is on, otherwise by the local coder. Failed runs go back for a fix, up to 3 runs.
+  - Worker side: `code_run` plus the `karmo-sandbox-runner` service (`worker-runtime/app/code_sandbox.py`). The worker never gets Docker.
+  - Setup files: `worker-runtime/deploy/sandbox/`.
+  - Next approved items: 3 sales import (waiting on Kamara's Palmstreet export), 4 pricing.
 - **Hands-free voice** (speak, auto-send, spoken answer) is waiting on the owner to merge and deploy.
 - **Model Router D2** (sending chat to workers) is merged but switched off. It needs the file `/etc/karmo/core/d2-chat-routing.enabled` to run.
 

@@ -23,6 +23,7 @@ import urllib.request
 from pathlib import Path
 
 import resource_discovery
+from code_sandbox import CodeSandboxError, submit_and_wait
 from commander_readonly import bounded_text_read, directory_list, listener_snapshot, service_status, system_snapshot
 from repo_intake import RepoIntakeError, scan_repo
 from sandbox import SandboxError, register_handler, resolve_within_sandbox
@@ -677,6 +678,22 @@ def _web_search(payload, *, sandbox_root, allowed_root, timeout_seconds):
 
 
 register_handler("web_search", _web_search)
+
+# --- CODE SANDBOX -------------------------------------------------------------
+# Hands one program to karmo-sandbox-runner through the spool (code_sandbox.py)
+# and returns its exit code and output.
+def _code_run(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    try:
+        result = submit_and_wait(payload.get("code"), payload.get("files"),
+                                 wait_seconds=max(10, min(timeout_seconds - 5, 110)))
+    except CodeSandboxError as exc:
+        raise SandboxError(f"code_run: {exc}") from exc
+    except OSError as exc:
+        raise SandboxError(f"code_run: sandbox spool error: {type(exc).__name__}") from exc
+    return result, f"code_run: exit {result.get('exit_code')} in {result.get('seconds')}s", []
+
+
+register_handler("code_run", _code_run)
 
 # --- REPO INTAKE SCAN --------------------------------------------------------
 # Reads a public GitHub repository and returns a verdict; never runs its
