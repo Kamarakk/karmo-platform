@@ -94,6 +94,7 @@ label{font-size:0.85em;color:#aaa;white-space:nowrap}
 </div>
 <div class="row">
   <label for="doc">📎 Add a file to KARMO's library:</label>
+  <input id="docnote" type="text" placeholder="Note (optional), e.g. begonia for Palmstreet live">
   <input id="doc" type="file">
 </div>
 <script>
@@ -349,13 +350,16 @@ document.getElementById('doc').addEventListener('change', async (event) => {
     line('status', 'not saved: ' + file.name + ' is ' + mb + ' MB; the limit here is ' + (MAX_UPLOAD_BYTES / 1000000) + ' MB. Large videos go on the NAS.');
     return;
   }
+  const noteInput = document.getElementById('docnote');
+  const note = noteInput.value.trim();
   const status = line('status', 'saving ' + mb + ' MB...');
   try {
     const data_base64 = await blobToBase64(file);
-    const res = await fetch('/upload', {method: 'POST', body: JSON.stringify({name: file.name, data_base64})});
+    const res = await fetch('/upload', {method: 'POST', body: JSON.stringify({name: file.name, data_base64, note})});
     const data = await res.json().catch(() => ({error: 'the server refused it (HTTP ' + res.status + ')'}));
     status.remove();
     if (data.error) { line('status', 'not saved: ' + data.error); return; }
+    noteInput.value = '';
     showSaved(data);
   } catch (err) {
     status.textContent = 'not saved: ' + err.message;
@@ -497,7 +501,9 @@ class _Handler(BaseHTTPRequestHandler):
             payload = self._read_json_body(MAX_MEDIA_BODY_BYTES, {"name": str, "data_base64": str})
             if payload is None:
                 return
-            result = self.operator.store_upload(name=payload["name"], data_base64=payload["data_base64"])
+            note = payload.get("note")
+            result = self.operator.store_upload(name=payload["name"], data_base64=payload["data_base64"],
+                                                note=note if isinstance(note, str) else "")
             self._send_json(400 if "error" in result else 200, result)
             return
 

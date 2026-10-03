@@ -912,7 +912,7 @@ class KarmoOperator:
             return None
         return {"kind": "chat", "message": format_find(query, total, rows), "model": None}
 
-    def store_upload(self, *, name: str, data_base64: str) -> dict:
+    def store_upload(self, *, name: str, data_base64: str, note: str = "") -> dict:
         """The web UI's upload button: saves the file under its detected
         label and adds it to the data map. Never raises."""
         import base64
@@ -924,7 +924,7 @@ class KarmoOperator:
             return {"error": "the file did not arrive intact"}
         kwargs = {"upload_root": self.upload_root} if self.upload_root else {}
         try:
-            return store_upload(name, data, store=self.catalog_writer, **kwargs)
+            return store_upload(name, data, note=note, store=self.catalog_writer, **kwargs)
         except DataMapError as exc:
             return {"error": str(exc)}
         except Exception as exc:  # noqa: BLE001 -- report to the caller, never crash the request
