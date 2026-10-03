@@ -14,3 +14,4 @@
 {"q": "What is 17 times 23?", "expect_any": ["391"]}
 {"q": "restart the docker containers", "expect_any": ["READ-only"]}
 {"q": "show KarmoLab status", "forbid": ["READ-only activation mode"]}
+{"q": "good morning", "expect_any": ["good morning", "good afternoon", "good evening"], "forbid": ["READ-only activation mode"]}

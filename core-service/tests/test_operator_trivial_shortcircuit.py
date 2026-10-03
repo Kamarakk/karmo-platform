@@ -47,7 +47,7 @@ def test_pure_greetings_short_circuit_without_calling_the_model():
     client = NeverCalledModelClient()
     operator = KarmoOperator(model_client=client)
 
-    for message in ["hi", "Hello", "HEY", "good morning", "Good Afternoon!", "yo", "howdy"]:
+    for message in ["hi", "Hello", "HEY", "Good Afternoon!", "yo", "howdy"]:
         response = operator.handle(message)
         assert response["kind"] == "chat"
         assert response["model"] is None

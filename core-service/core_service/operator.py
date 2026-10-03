@@ -51,7 +51,8 @@ from .bloomboss_capability import manifest as bloomboss_manifest
 from .control import ApprovalEngine, CapabilityClass, CoreControlError
 from .dispatcher import CapabilityDispatcher, DispatchError
 from .durable_memory import NullMemoryBackend, build_default_memory_backend
-from .identity import KARMO_IDENTITY, current_date_line, load_owner_profile
+from .identity import KARMO_IDENTITY, current_date_line, load_owner_profile, local_now
+from .morning_brief import build_morning_brief, is_morning_brief_request
 from .karmolab import read_status
 from .model_router import ModelResource, ModelRouter, ModelRoutingError
 from .ollama_client import OllamaChatClient, OllamaClientError
@@ -1001,6 +1002,48 @@ class KarmoOperator:
         )
         return "\n\n" + "\n\n".join(parts)
 
+    def _morning_brief(self) -> dict:
+        """"good morning" / "brief me": real readings only, no model call.
+        Every source goes through the same dispatcher as any other read, and
+        any one failing just drops its line."""
+        status = bloomboss = open_tasks = None
+        facts = ()
+        try:
+            status = self.dispatcher.dispatch(
+                requester="kamara",
+                tool_id=KARMOLAB_STATUS_TOOL,
+                version=KARMOLAB_STATUS_VERSION,
+                arguments={},
+                executor_identity="karmo-core-operator",
+                model_identity=None,
+            ).result
+        except Exception:
+            pass
+        reports = []
+
+        def keep(result):
+            reports.append(result)
+            return ""
+
+        try:
+            self._execute_exposed_tool({"function": {"name": "bloomboss_report", "arguments": {}}}, render=keep)
+            bloomboss = reports[0] if reports else None
+        except Exception:
+            pass
+        try:
+            if self.task_store is not None:
+                open_tasks = len(self.list_tasks(status="OPEN", limit=100))
+        except Exception:
+            pass
+        try:
+            facts = self.memory_backend.owner_facts()
+        except Exception:
+            pass
+        message = build_morning_brief(
+            local_now=local_now()[0], status=status, bloomboss=bloomboss, open_tasks=open_tasks, facts=facts,
+        )
+        return {"kind": "chat", "message": message, "model": None}
+
     def _owner_memory_command(self, text: str) -> dict | None:
         """"remember that ...", "forget fact 3", "list my facts" -- Kamara's own
         memory edits, done without a model so nothing is paraphrased."""
@@ -1676,6 +1719,8 @@ class KarmoOperator:
         text = text.strip()
         if not text:
             return {"kind": "system", "message": "Ask KARMO a question or request KarmoLab status."}
+        if is_morning_brief_request(text):
+            return self._morning_brief()
         trivial = _trivial_chat_response(text)
         if trivial is not None:
             return trivial

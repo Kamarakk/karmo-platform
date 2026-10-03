@@ -15,7 +15,7 @@ Conversation history, model memory, summaries, and prior assistant recollections
 **Context loading is tiered by task** (exact tiers in `CLAUDE.md`):
 
 - **Tier 1 — small, scoped tasks** (edits/fixes/tests in known files, read-only checks): no mandatory reads beyond `CLAUDE.md` / `AGENTS.md`.
-- **Tier 2 — feature/phase work:** read `docs/project-state/CURRENT_STATE.md`, `docs/project-state/NEXT_STEPS.md`, and the relevant plan/spec located via `docs/project-state/MASTER_INDEX.md`.
+- **Tier 2 — feature/phase work:** read `docs/project-state/STATE_NOW.md` (one page), grep `docs/project-state/CURRENT_STATE.md` / `NEXT_STEPS.md` only for the topic at hand, and read the relevant plan/spec located via `docs/project-state/MASTER_INDEX.md`.
 - **Tier 3 — architecture, new service/tool/integration/datastore, migration, access/routing, deployment, or anything touching production:** the full bootstrap chain below.
 
 Full bootstrap chain (Tier 3):
