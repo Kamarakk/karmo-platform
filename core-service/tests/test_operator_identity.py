@@ -65,3 +65,17 @@ def test_chat_turn_tells_the_model_todays_date_right_before_the_question():
     assert messages[-2]["role"] == "system"
     assert "The current date and time is" in messages[-2]["content"]
     assert "current date" not in messages[0]["content"]  # fixed prompt stays cacheable
+
+
+def test_identity_forbids_claiming_actions_chat_cannot_do():
+    from core_service.identity import KARMO_IDENTITY
+
+    assert "Never say you saved, stored, sent, or did something unless a tool result" in KARMO_IDENTITY
+
+
+def test_an_empty_model_answer_is_never_shown_blank(monkeypatch):
+    from core_service.operator import KarmoOperator
+
+    operator = KarmoOperator()
+    monkeypatch.setattr(operator, "_handle", lambda text: {"kind": "chat", "message": "  "})
+    assert operator.handle("save as begonia")["message"].startswith("I didn't come up with an answer")

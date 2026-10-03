@@ -42,6 +42,7 @@ import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from .data_map import MAX_UPLOAD_BYTES as _MAX_UPLOAD_BYTES
 from .operator import KarmoOperator
 from .speech_synthesize_capability import MAX_TEXT_CHARS as _SPEAK_MAX_TEXT_CHARS
 
@@ -93,6 +94,7 @@ label{font-size:0.85em;color:#aaa;white-space:nowrap}
 </div>
 <div class="row">
   <label for="doc">📎 Add a file to KARMO's library:</label>
+  <input id="docnote" type="text" placeholder="Note (optional), e.g. begonia for Palmstreet live">
   <input id="doc" type="file">
 </div>
 <script>
@@ -320,6 +322,7 @@ document.getElementById('imgbtn').addEventListener('click', async () => {
 
 // Upload: KARMO detects the file's type and label and files it; one tap
 // on another label moves it there.
+const MAX_UPLOAD_BYTES = __MAX_UPLOAD_BYTES__;
 const LABELS = ['Personal', 'BloomBoss', 'Lab', 'Photos', 'Media', 'Archive', 'Unsorted'];
 function showSaved(data) {
   const d = line('karmo', 'KARMO> Saved as ' + data.label + ': ' + data.name + ' (' + data.kind + '). Wrong? ');
@@ -340,24 +343,31 @@ function showSaved(data) {
 document.getElementById('doc').addEventListener('change', async (event) => {
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = '';
   line('you', 'you> [file] ' + file.name);
-  line('status', 'saving...');
-  let data_base64;
-  try {
-    data_base64 = await blobToBase64(file);
-  } catch (err) {
-    line('status', 'upload error: ' + err.message);
+  const mb = (file.size / 1000000).toFixed(1);
+  if (file.size > MAX_UPLOAD_BYTES) {
+    line('status', 'not saved: ' + file.name + ' is ' + mb + ' MB; the limit here is ' + (MAX_UPLOAD_BYTES / 1000000) + ' MB. Large videos go on the NAS.');
     return;
   }
-  const res = await fetch('/upload', {method: 'POST', body: JSON.stringify({name: file.name, data_base64})});
-  const data = await res.json();
-  event.target.value = '';
-  if (data.error) { line('status', 'upload error: ' + data.error); return; }
-  showSaved(data);
+  const noteInput = document.getElementById('docnote');
+  const note = noteInput.value.trim();
+  const status = line('status', 'saving ' + mb + ' MB...');
+  try {
+    const data_base64 = await blobToBase64(file);
+    const res = await fetch('/upload', {method: 'POST', body: JSON.stringify({name: file.name, data_base64, note})});
+    const data = await res.json().catch(() => ({error: 'the server refused it (HTTP ' + res.status + ')'}));
+    status.remove();
+    if (data.error) { line('status', 'not saved: ' + data.error); return; }
+    noteInput.value = '';
+    showSaved(data);
+  } catch (err) {
+    status.textContent = 'not saved: ' + err.message;
+  }
 });
 </script>
 </body></html>
-""".encode("utf-8")
+""".replace("__MAX_UPLOAD_BYTES__", str(_MAX_UPLOAD_BYTES)).encode("utf-8")
 
 
 # One KARMO turn at a time (the operator and its model are not built for
@@ -491,7 +501,9 @@ class _Handler(BaseHTTPRequestHandler):
             payload = self._read_json_body(MAX_MEDIA_BODY_BYTES, {"name": str, "data_base64": str})
             if payload is None:
                 return
-            result = self.operator.store_upload(name=payload["name"], data_base64=payload["data_base64"])
+            note = payload.get("note")
+            result = self.operator.store_upload(name=payload["name"], data_base64=payload["data_base64"],
+                                                note=note if isinstance(note, str) else "")
             self._send_json(400 if "error" in result else 200, result)
             return
 

@@ -42,8 +42,8 @@ class FakeOperator:
         self.speak_calls.append(text)
         return self.speak_result
 
-    def store_upload(self, *, name, data_base64):
-        self.upload_calls = getattr(self, "upload_calls", []) + [(name, data_base64)]
+    def store_upload(self, *, name, data_base64, note=""):
+        self.upload_calls = getattr(self, "upload_calls", []) + [(name, data_base64, note)]
         return {"id": 1, "path": "Personal/2026-10/a.pdf", "name": "a.pdf", "kind": "document", "label": "Personal"}
 
     def relabel_upload(self, *, path, label):
@@ -446,7 +446,9 @@ def _post(server, path, payload):
 def test_upload_and_relabel_route_through_the_operator(running_server):
     server, fake = running_server
     assert _post(server, "/upload", {"name": "a.pdf", "data_base64": "JVBERi0="})[1]["label"] == "Personal"
-    assert fake.upload_calls == [("a.pdf", "JVBERi0=")]
+    assert _post(server, "/upload", {"name": "a.pdf", "data_base64": "JVBERi0=", "note": "begonia"})[0] == 200
+    assert _post(server, "/upload", {"name": "a.pdf", "data_base64": "JVBERi0=", "note": 7})[0] == 200
+    assert fake.upload_calls == [("a.pdf", "JVBERi0=", ""), ("a.pdf", "JVBERi0=", "begonia"), ("a.pdf", "JVBERi0=", "")]
     assert _post(server, "/upload/relabel", {"path": "Personal/2026-10/a.pdf", "label": "Lab"}) == (
         200, {"path": "Lab/2026-10/a.pdf", "label": "Lab"})
     assert _post(server, "/upload/relabel", {"path": "missing", "label": "Lab"})[0] == 400
@@ -455,4 +457,11 @@ def test_upload_and_relabel_route_through_the_operator(running_server):
 
 def test_page_has_the_upload_control():
     page = webui._PAGE.decode("utf-8")
-    assert 'id="doc" type="file"' in page and "'/upload'" in page and "'/upload/relabel'" in page
+    assert 'id="docnote"' in page and 'id="doc" type="file"' in page and "'/upload'" in page and "'/upload/relabel'" in page
+
+
+def test_upload_checks_size_before_sending_and_reports_refusals():
+    page = webui._PAGE.decode("utf-8")
+    assert "const MAX_UPLOAD_BYTES = 14000000;" in page
+    assert "file.size > MAX_UPLOAD_BYTES" in page
+    assert "the server refused it (HTTP " in page

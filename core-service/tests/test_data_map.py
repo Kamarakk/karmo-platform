@@ -248,6 +248,17 @@ def test_upload_is_catalogued_and_an_owner_relabel_survives_a_rescan(store, tmp_
     assert total == 1 and rows[0]["label"] == "Personal" and rows[0]["path"] == moved["path"]
 
 
+def test_upload_note_leads_the_stored_name_and_drives_the_label(tmp_path):
+    from core_service.data_map import store_upload
+    saved = store_upload("IMG_7961.jpg", b"\xff\xd8\xff\xe0", note="Begonia for tomorrow's Palmstreet live!",
+                         upload_root=str(tmp_path))
+    assert saved["name"] == "Begonia for tomorrow s Palmstreet live - IMG_7961.jpg"
+    assert saved["label"] == "BloomBoss" and (tmp_path / saved["path"]).is_file()
+    hostile = store_upload("a.txt", b"hi", note="../../etc/passwd " + "x" * 200, upload_root=str(tmp_path))
+    assert "/" not in hostile["name"] and hostile["name"].startswith("etc passwd x")
+    assert len(hostile["name"]) <= 190
+
+
 def test_operator_upload_never_raises(tmp_path):
     from core_service.operator import KarmoOperator
     operator = KarmoOperator(catalog_reader=FakeCatalog(), upload_root=str(tmp_path))

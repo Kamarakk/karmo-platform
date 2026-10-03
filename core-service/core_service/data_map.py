@@ -193,6 +193,7 @@ _MAGIC = (
 _OOXML = {"word/": "docx", "xl/": "xlsx", "ppt/": "pptx"}
 _TEXT_EXTS = KINDS["document"] | KINDS["spreadsheet"] | KINDS["config"] | {"txt", "md", "csv", "log"}
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._ -]+")
+MAX_NOTE_CHARS = 60
 
 
 def sniff_ext(head: bytes, name: str) -> str:
@@ -221,19 +222,25 @@ def sniff_ext(head: bytes, name: str) -> str:
     return named
 
 
-def safe_upload_name(name: str, ext: str) -> str:
+def safe_upload_name(name: str, ext: str, note: str = "") -> str:
+    """Kamara's note, if any, leads the stored name ("begonia palmstreet
+    live - IMG_7961.jpg"), so the data map's search and the label rules
+    see it with no extra column."""
     base = _SAFE_NAME.sub("_", Path(str(name)).name).strip(" ._") or "upload"
     stem = base.rsplit(".", 1)[0] if "." in base else base
-    return f"{stem[:120]}.{ext}" if ext else stem[:120]
+    note = " ".join(re.findall(r"[A-Za-z0-9]+", str(note or "")))[:MAX_NOTE_CHARS].strip()
+    if note:
+        stem = f"{note} - {stem[:120]}"
+    return f"{stem[:185]}.{ext}" if ext else stem[:185]
 
 
-def classify_upload(name: str, data: bytes) -> tuple[str, str, str]:
+def classify_upload(name: str, data: bytes, note: str = "") -> tuple[str, str, str]:
     """(file name to store, kind, label) for an uploaded file: type from
     its signature, label from its name, and -- for text files -- its
     first few KB, since a CSV named "export.csv" may be a BloomBoss
     order list."""
     ext = sniff_ext(data[:_SNIFF_BYTES], name)
-    stored = safe_upload_name(name, ext)
+    stored = safe_upload_name(name, ext, note)
     _ext, kind, label = classify(stored)
     if label in ("Unsorted", "Photos", "Media", "Archive") and ext in _TEXT_EXTS:
         text = data[:_SNIFF_BYTES].decode("utf-8", errors="ignore")
@@ -256,7 +263,7 @@ def _unique_path(folder: Path, name: str) -> Path:
     return path
 
 
-def store_upload(name: str, data: bytes, *, upload_root: str = DEFAULT_UPLOAD_ROOT,
+def store_upload(name: str, data: bytes, *, note: str = "", upload_root: str = DEFAULT_UPLOAD_ROOT,
                  store: "CatalogStore | None" = None, now: datetime | None = None) -> dict:
     """Saves an uploaded file under <upload_root>/<Label>/<YYYY-MM>/ and
     adds it to the catalog when a writer is available (otherwise the next
@@ -267,7 +274,7 @@ def store_upload(name: str, data: bytes, *, upload_root: str = DEFAULT_UPLOAD_RO
     if len(data) > MAX_UPLOAD_BYTES:
         raise DataMapError(f"files over {MAX_UPLOAD_BYTES // 1_000_000} MB go on the NAS instead")
     now = now or datetime.now(timezone.utc)
-    stored, kind, label = classify_upload(name, bytes(data))
+    stored, kind, label = classify_upload(name, bytes(data), note)
     folder = Path(upload_root) / label / f"{now:%Y-%m}"
     folder.mkdir(parents=True, exist_ok=True)
     path = _unique_path(folder, stored)
