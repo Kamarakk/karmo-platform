@@ -333,6 +333,56 @@ SAFE_CAPABILITIES = {
         idempotent=False,
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
+    # Web search (2026-10-03, Kamara's written go-ahead in the KARMO project
+    # thread): asks the worker's OWN loopback SearXNG (127.0.0.1:8888) and
+    # returns the top results' titles, links and snippets. network_required
+    # stays False for the same reason as model_chat: the handler only talks
+    # to a loopback service; SearXNG's container is what reaches the search
+    # engines. Nothing is fetched from the result pages themselves.
+    "web_search": dict(
+        capability_id="web_search",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {"query": {"type": "string", "maxLength": 300}},
+            "required": ["query"],
+        },
+        output_schema={"type": "object", "properties": {"results": {"type": "array"}}},
+        timeout_seconds=30,
+        resource_requirements={"cpu": "low", "memory_mb": 256},
+        network_required=False,
+        secrets_required=[],
+        idempotent=True,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
+    # Code sandbox (2026-10-03, Kamara's written go-ahead in the KARMO project
+    # thread, item 5): runs one short Python program in a throwaway Docker
+    # container with no network, through the separate karmo-sandbox-runner
+    # service (code_sandbox.py). The worker itself only writes the job into
+    # the spool and reads the result back; it never gets Docker.
+    "code_run": dict(
+        capability_id="code_run",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.LOCAL_WRITE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "maxLength": 20000},
+                "files": {"type": "object"},
+            },
+            "required": ["code"],
+        },
+        output_schema={"type": "object", "properties": {"exit_code": {}, "stdout": {"type": "string"}}},
+        timeout_seconds=120,
+        resource_requirements={"cpu": "medium", "memory_mb": 512},
+        network_required=False,
+        secrets_required=[],
+        idempotent=False,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
     # Repo intake scan (2026-10-03, Kamara's written go-ahead in the KARMO
     # project thread): reads a public GitHub repository -- metadata,
     # Scorecard, a shallow clone into the job's own temp workspace, and

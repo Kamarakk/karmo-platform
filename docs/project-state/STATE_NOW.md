@@ -40,6 +40,25 @@ The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. There's a poss
   - data map (`core_service/data_map.py`, migration 014): a catalog of file names, sizes and dates for the NAS and uploads. "Where are my …" is answered from the map; contents are opened only when needed.
   - web UI upload button: type is detected from the file signature, a label is chosen, and one tap moves the file to another label
   - Deploy steps are in the project files: `deploy/know-karmo-deploy.md` and `deploy/repo-intake-worker02.md`.
+- **Web search** (2026-10-03, Kamara's written approval of items 1–5):
+  - A question with web words ("search", "online", "latest", "news", "price of", …) runs `web_search` on Worker02 first.
+  - Worker02's loopback SearXNG (127.0.0.1:8888) does the search; the answer ends with a "Sources:" line.
+  - Code: `core_service/web_search_capability.py` and the worker `web_search` capability.
+  - Setup files: `worker-runtime/deploy/searxng/`.
+- **Automatic hand-off** (approved item 2, `core_service/handoff.py`):
+  - Heavy writing or reasoning (draft an email, a plan, compare, step by step, long messages) goes to Claude.
+  - So does any question the local model fails to answer.
+  - It uses the existing ask_claude/ask_gpt subscription CLIs; GPT is asked if Claude fails. Only the question is sent, and answers end "(asked Claude)".
+  - On only while `/etc/karmo/core/handoff.enabled` exists. Never used for BloomBoss data or web-search questions.
+- **Code sandbox** (approved item 5):
+  - "write and run…", "use python to…" or a pasted ```python block runs on Worker02 in a throwaway container: no network, 512 MB, 60 s.
+  - The code is written by Claude when hand-off is on, otherwise by the local coder. Failed runs go back for a fix, up to 3 runs.
+  - Worker side: `code_run` plus the `karmo-sandbox-runner` service (`worker-runtime/app/code_sandbox.py`). The worker never gets Docker.
+  - Setup files: `worker-runtime/deploy/sandbox/`.
+- **Price suggestions** (approved item 4, `core_service/pricing.py`):
+  - "What should I price the Ninja Albo at?" combines his own sales (average price, unit cost) with the $ amounts in web results.
+  - It suggests the market middle, kept at ≥1.5x his cost, with no model call.
+  - Next approved item: 3, sales import (waiting on Kamara's Palmstreet export).
 - **Hands-free voice** (speak, auto-send, spoken answer) is waiting on the owner to merge and deploy.
 - **Model Router D2** (sending chat to workers) is merged but switched off. It needs the file `/etc/karmo/core/d2-chat-routing.enabled` to run.
 

@@ -28,6 +28,18 @@ from .ask_gpt_capability import TOOL_VERSION as ASK_GPT_TOOL_VERSION
 from .ask_gpt_capability import handler as ask_gpt_handler
 from .ask_gpt_capability import manifest as ask_gpt_manifest
 from .code_assist_capability import ASK_LOCAL_CODER_TOOL
+from .pricing import format_suggestion, is_pricing_question, market_prices, own_sales, plant_name, suggest
+from .code_sandbox_capability import CODE_RUN_TOOL_ID, CODE_RUN_TOOL_VERSION, FIX_PROMPT, MAX_ATTEMPTS, WRITE_PROMPT
+from .code_sandbox_capability import code_in, format_run, is_run_request, run_failed
+from .code_sandbox_capability import handler as code_run_handler
+from .code_sandbox_capability import manifest as code_run_manifest
+from .handoff import HANDOFF_ENABLED_FILE, handoff_enabled, is_heavy_task, tagged
+from .web_search_capability import SEARCH_WORDS as _WEB_SEARCH_WORDS
+from .web_search_capability import WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION
+from .web_search_capability import handler as web_search_handler
+from .web_search_capability import is_search_question, search_query, sources_line, wants_the_web
+from .web_search_capability import manifest as web_search_manifest
+from .web_search_capability import web_results_digest
 from .code_assist_capability import ASK_LOCAL_CODER_TOOL_VERSION
 from .code_assist_capability import handler as code_assist_handler
 from .code_assist_capability import manifest as code_assist_manifest
@@ -306,6 +318,27 @@ _CHAT_EXPOSED_TOOLS = {
             },
         },
     },
+    "web_search": {
+        "tool_id": WEB_SEARCH_TOOL_ID,
+        "version": WEB_SEARCH_TOOL_VERSION,
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": (
+                    "Search the web for anything current -- prices, news, how-tos. Returns "
+                    "titles, links and snippets."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "What to search for."},
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+    },
     "ask_claude": {
         "tool_id": ASK_CLAUDE_TOOL,
         "version": ASK_CLAUDE_TOOL_VERSION,
@@ -496,6 +529,7 @@ _DATA_MAP_SUMMARY = re.compile(
 # turn, a few seconds at this host's ~22 tokens/second.
 _TOOL_TRIGGER_WORDS = {
     "list_tasks": re.compile(r"\b(task|tasks|to-do|todo|to do)\b", re.IGNORECASE),
+    "web_search": _WEB_SEARCH_WORDS,
     "ask_claude": re.compile(r"\b(claude|anthropic|second opinion)\b", re.IGNORECASE),
     "ask_gpt": re.compile(r"\b(gpt|chatgpt|openai)\b", re.IGNORECASE),
     "ask_local_coder": re.compile(
@@ -682,6 +716,7 @@ class KarmoOperator:
         catalog_reader=None,
         catalog_writer=None,
         upload_root=None,
+        handoff_enabled_file=HANDOFF_ENABLED_FILE,
     ):
         self.model_client = model_client or OllamaChatClient()
         if catalog_reader is not None:
@@ -699,6 +734,7 @@ class KarmoOperator:
             except Exception:
                 self.catalog_writer = None
         self.upload_root = upload_root
+        self.handoff_enabled_file = handoff_enabled_file
         self.router = ModelRouter(resources or default_model_resources())
         self.status_reader = status_reader or read_status
         if memory_backend is not None:
@@ -763,6 +799,8 @@ class KarmoOperator:
         self.registry.register(transcribe_audio_manifest())
         self.registry.register(synthesize_speech_manifest())
         self.registry.register(repo_intake_manifest())
+        self.registry.register(web_search_manifest())
+        self.registry.register(code_run_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
             approval_engine=ApprovalEngine(),
@@ -790,6 +828,14 @@ class KarmoOperator:
         self.dispatcher.bind(
             REPO_INTAKE_TOOL_ID, REPO_INTAKE_TOOL_VERSION,
             repo_intake_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION,
+            web_search_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            CODE_RUN_TOOL_ID, CODE_RUN_TOOL_VERSION,
+            code_run_handler(self.worker_dispatch_client),
         )
 
         if task_store is not None:
@@ -1357,7 +1403,10 @@ class KarmoOperator:
         a short digest of the figures (bloomboss_chat_digest), not the full
         report -- see its docstring for the measured cost."""
         offered = {t["function"]["name"] for t in tools}
-        if "bloomboss_report" not in offered or not _is_bloomboss_question(text):
+        bloomboss = "bloomboss_report" in offered and _is_bloomboss_question(text)
+        if "web_search" in offered and is_search_question(text) and (wants_the_web(text) or not bloomboss):
+            return self._prefetched_web_search(text)
+        if not bloomboss:
             return []
         call = {"function": {"name": "bloomboss_report", "arguments": {}}}
         return [
@@ -1365,6 +1414,25 @@ class KarmoOperator:
             {"role": "tool", "content": self._execute_exposed_tool(
                 call, render=lambda result: bloomboss_chat_digest(result, text))},
             {"role": "system", "content": "Answer from the BloomBoss figures above in a few short sentences."},
+        ]
+
+    def _prefetched_web_search(self, text: str) -> list[dict]:
+        """Same shape as the BloomBoss prefetch: the search runs up front and
+        its results sit in the conversation before the model answers. The
+        sources line is kept for handle() to add under the answer."""
+        call = {"function": {"name": "web_search", "arguments": {"query": search_query(text)}}}
+
+        def render(result):
+            self._turn_sources = sources_line(result)
+            return web_results_digest(result)
+
+        return [
+            {"role": "assistant", "content": "", "tool_calls": [call]},
+            {"role": "tool", "content": self._execute_exposed_tool(call, render=render)},
+            {"role": "system", "content": (
+                "Answer from the web results above in a few short sentences. If they don't answer "
+                "the question, say so. Don't invent figures that aren't in them."
+            )},
         ]
 
     def _run_tool_loop(self, ask_fn, messages: list[dict], tools: list[dict], *, deadline: float) -> str:
@@ -1654,7 +1722,7 @@ class KarmoOperator:
             # Already run above; offering it again only adds its schema to a
             # prompt the CPU model reads at ~19 tokens/second.
             messages.extend(prefetched)
-            tools = [t for t in tools if t["function"]["name"] != "bloomboss_report"]
+            tools = [t for t in tools if t["function"]["name"] not in ("bloomboss_report", "web_search")]
 
         # Model Router Phase D2: try the chosen worker first, if one was
         # picked and there's realistically enough of the total budget
@@ -1815,8 +1883,12 @@ class KarmoOperator:
         piece as it is written (None means: clear what was sent so far). The
         returned dict is still the authoritative final answer."""
         self._on_token, self._streamed_any = on_token, False
+        self._turn_sources = ""
         try:
             result = self._handle(text)
+            if self._turn_sources and isinstance(result, dict) and result.get("kind") == "chat" \
+                    and str(result.get("message") or "").strip():
+                result["message"] = f"{result['message'].rstrip()}\n{self._turn_sources}"
             # A model turn can come back with no text at all (e.g. it spent
             # its whole budget thinking); never show Kamara a blank reply.
             if isinstance(result, dict) and not str(result.get("message") or "").strip():
@@ -1853,7 +1925,143 @@ class KarmoOperator:
             }
         if _is_status_request(text):
             return self._read_status()
-        direct = self._direct_bloomboss_answer(text)
-        if direct is not None:
-            return direct
-        return self._chat(text)
+        if is_run_request(text):
+            return self._code_task(text)
+        if is_pricing_question(text):
+            priced = self._price_suggestion(text)
+            if priced is not None:
+                return priced
+        # "...online" / "search for..." means Kamara wants the web, even
+        # when the question names a plant from his own sales.
+        if not (wants_the_web(text) and is_search_question(text)):
+            direct = self._direct_bloomboss_answer(text)
+            if direct is not None:
+                return direct
+        # Hand-off (approved item 2): heavy writing/reasoning goes straight to
+        # Claude; anything the local model fails to answer gets a second try
+        # there. Never for his own BloomBoss data or a web search question.
+        can_hand_off = (handoff_enabled(self.handoff_enabled_file)
+                        and not _is_bloomboss_question(text) and not is_search_question(text))
+        if can_hand_off and is_heavy_task(text):
+            handed = self._hand_off(text)
+            if handed is not None:
+                return handed
+        result = self._chat(text)
+        if can_hand_off and isinstance(result, dict) and result.get("error"):
+            handed = self._hand_off(text)
+            if handed is not None:
+                return handed
+        return result
+
+    def _run_capability(self, tool_id: str, version: str, arguments: dict) -> dict:
+        """One direct capability call through the dispatcher; raises on any
+        failure or a non-dict result."""
+        decision = self.dispatcher.dispatch(
+            requester="karmo-chat-model", tool_id=tool_id, version=version,
+            arguments=arguments, executor_identity="karmo-chat-model",
+        )
+        if not decision.executed or not isinstance(decision.result, dict):
+            raise DispatchError("capability did not run")
+        return decision.result
+
+    def _write_code(self, prompt: str) -> tuple[str | None, str]:
+        """Claude writes the program when hand-off is on; KARMO's local coder
+        otherwise, or if Claude fails. Returns (code, author) or (None, why)."""
+        writers = [("ask_local_coder", "KARMO's local coder")]
+        if handoff_enabled(self.handoff_enabled_file):
+            writers.insert(0, ("ask_claude", "Claude"))
+        why = "no code came back"
+        for name, author in writers:
+            entry = _CHAT_EXPOSED_TOOLS[name]
+            try:
+                answer = self._run_capability(entry["tool_id"], entry["version"], {"question": prompt}).get("answer")
+            except Exception as exc:  # noqa: BLE001 -- try the next writer
+                why = f"{type(exc).__name__}: {exc}"
+                continue
+            code = code_in(answer or "")
+            if code:
+                return code, author
+        return None, why
+
+    def _price_suggestion(self, text: str) -> dict | None:
+        """Item 4: his own sales of the plant plus current web prices, one
+        suggested price, no model. None (normal chat) if no plant is named."""
+        name = plant_name(text, known_cultivar_names())
+        if not name:
+            return None
+        try:
+            report = self._run_capability(BLOOMBOSS_REPORT_TOOL, BLOOMBOSS_TOOL_VERSION, {})
+        except Exception:  # noqa: BLE001 -- price from the web alone
+            report = None
+        try:
+            search = self._run_capability(WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION, {"query": f"{name} plant price"})
+        except Exception:  # noqa: BLE001 -- price from his own sales alone
+            search = None
+        message = format_suggestion(name, suggest(own_sales(report, name) if report else None,
+                                                  market_prices(search)), sources_line(search))
+        if search is None:
+            message += "\n(I couldn't search the web just now, so this uses your own sales only.)"
+        try:
+            self.memory_backend.remember_exchange(text, message)
+        except Exception:  # noqa: BLE001 -- memory is best effort here
+            pass
+        return {"kind": "chat", "message": message, "model": None}
+
+    def _code_task(self, text: str) -> dict:
+        """Item 5: run a pasted program, or have one written, in the Worker02
+        sandbox; failed runs go back for a fix, at most MAX_ATTEMPTS runs."""
+        code, author = code_in(text), "you"
+        if code is None:
+            code, author = self._write_code(WRITE_PROMPT.format(task=text))
+            if code is None:
+                return {"kind": "chat", "model": None, "error": "code_write_failed",
+                        "message": f"I couldn't get a program written for that: {author}"}
+        attempts, result, error = 0, None, None
+        while True:
+            attempts += 1
+            try:
+                result = self._run_capability(CODE_RUN_TOOL_ID, CODE_RUN_TOOL_VERSION, {"code": code})
+            except Exception as exc:  # noqa: BLE001 -- reported in the answer
+                result, error = None, f"{type(exc).__name__}: {exc}"
+                break
+            failure = run_failed(result)
+            if not failure or author == "you" or attempts >= MAX_ATTEMPTS:
+                break
+            fixed, _ = self._write_code(FIX_PROMPT.format(task=text, code=code, error=failure))
+            if fixed is None:
+                break
+            code = fixed
+        message = format_run(code, result, attempts=attempts, author=author, error=error)
+        try:
+            self.memory_backend.remember_exchange(text, message)
+        except Exception:  # noqa: BLE001 -- memory is best effort here
+            pass
+        return {"kind": "chat", "message": message, "model": None}
+
+    def _hand_off(self, text: str) -> dict | None:
+        """Asks Claude, then GPT, through the existing ask_claude/ask_gpt
+        capabilities (subscription CLIs). Only the question is sent. Returns
+        None when both fail, so the caller keeps the local answer path."""
+        for name, who in (("ask_claude", "Claude"), ("ask_gpt", "GPT")):
+            entry = _CHAT_EXPOSED_TOOLS[name]
+            try:
+                decision = self.dispatcher.dispatch(
+                    requester="karmo-chat-model",
+                    tool_id=entry["tool_id"],
+                    version=entry["version"],
+                    arguments={"question": text},
+                    executor_identity="karmo-chat-model",
+                )
+                answer = decision.result.get("answer") if decision.executed and isinstance(decision.result, dict) else None
+            except Exception as exc:  # noqa: BLE001 -- a failed hand-off falls back, never crashes the turn
+                print(f"KARMO hand-off to {who} failed: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+                continue
+            if not isinstance(answer, str) or not answer.strip():
+                continue
+            message = tagged(answer, who)
+            try:
+                self.memory_backend.remember_exchange(text, message)
+            except Exception:  # noqa: BLE001 -- memory is best effort here, as in _chat
+                pass
+            return {"kind": "chat", "message": message, "model": f"{who.lower()} (subscription)"}
+        return None

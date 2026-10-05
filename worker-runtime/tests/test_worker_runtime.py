@@ -1756,3 +1756,69 @@ def test_synthesize_speech_may_return_more_than_the_default_result_cap(monkeypat
     assert len(output["audio_base64"]) == MAX_RESULT_BYTES * 4
     with pytest.raises(SandboxError, match="oversized result"):
         run_capability("test_oversized_output_probe", {}, timeout_seconds=5)
+
+
+class _FakeSearxngServer:
+    """Loopback double for SearXNG's /search?format=json."""
+
+    def __init__(self, *, body):
+        self.paths = []
+        outer = self
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                outer.paths.append(self.path)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(body).encode("utf-8"))
+
+            def log_message(self, format, *args):  # noqa: A002
+                pass
+
+        self._server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc_info):
+        self._server.shutdown()
+        self._server.server_close()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self._server.server_address[1]}/search"
+
+
+def test_capability_web_search_returns_cleaned_top_results(monkeypatch):
+    body = {"results": [
+        {"title": "  Ninja   Albo care ", "url": "https://example.com/a", "content": "x" * 900},
+        {"title": "bad scheme", "url": "javascript:alert(1)", "content": "no"},
+        "not a dict",
+    ] + [{"title": f"r{i}", "url": f"https://example.com/{i}", "content": ""} for i in range(10)]}
+    with _FakeSearxngServer(body=body) as server:
+        monkeypatch.setenv("KARMO_SEARXNG_URL", server.url)
+        output, summary, duration, evidence = run_capability(
+            "web_search", {"query": "ninja albo price"}, timeout_seconds=30,
+        )
+    results = output["results"]
+    assert len(results) == 5 and summary == "web_search: 5 result(s)"
+    assert results[0] == {"title": "Ninja Albo care", "url": "https://example.com/a", "snippet": "x" * 400}
+    assert all(r["url"].startswith("https://") for r in results)
+    assert server.paths == ["/search?q=ninja+albo+price&format=json"]
+
+
+def test_capability_web_search_refuses_empty_or_long_query_before_any_call(monkeypatch):
+    monkeypatch.setenv("KARMO_SEARXNG_URL", f"http://127.0.0.1:{_unused_loopback_port()}/search")
+    with pytest.raises(SandboxError, match="query must be non-empty"):
+        run_capability("web_search", {"query": "  "}, timeout_seconds=30)
+    with pytest.raises(SandboxError, match="exceeds 300"):
+        run_capability("web_search", {"query": "q" * 301}, timeout_seconds=30)
+
+
+def test_capability_web_search_reports_searxng_down(monkeypatch):
+    monkeypatch.setenv("KARMO_SEARXNG_URL", f"http://127.0.0.1:{_unused_loopback_port()}/search")
+    with pytest.raises(SandboxError, match="local SearXNG failed"):
+        run_capability("web_search", {"query": "hello"}, timeout_seconds=30)

@@ -18,10 +18,12 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 import resource_discovery
+from code_sandbox import CodeSandboxError, submit_and_wait
 from commander_readonly import bounded_text_read, directory_list, listener_snapshot, service_status, system_snapshot
 from repo_intake import RepoIntakeError, scan_repo
 from sandbox import SandboxError, register_handler, resolve_within_sandbox
@@ -623,6 +625,75 @@ def _embedding_benchmark_test(payload, *, sandbox_root, allowed_root, timeout_se
 
 
 register_handler("embedding_benchmark_test", _embedding_benchmark_test)
+
+# --- WEB SEARCH --------------------------------------------------------------
+# Asks this worker's own loopback SearXNG for results and returns at most
+# MAX_WEB_RESULTS of them, each reduced to title, http(s) link and snippet.
+# Same call-time, env-overridable URL pattern as _ollama_generate_url().
+_DEFAULT_SEARXNG_URL = "http://127.0.0.1:8888/search"
+MAX_WEB_QUERY_CHARS = 300
+MAX_WEB_RESULTS = 5
+_MAX_WEB_TITLE_CHARS = 200
+_MAX_WEB_SNIPPET_CHARS = 400
+_MAX_WEB_URL_CHARS = 500
+
+
+def _searxng_url():
+    return os.environ.get("KARMO_SEARXNG_URL", _DEFAULT_SEARXNG_URL)
+
+
+def _clean_text(value, limit):
+    return " ".join(str(value or "").split())[:limit]
+
+
+def _web_search(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    query = payload.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise SandboxError("query must be non-empty text")
+    if len(query) > MAX_WEB_QUERY_CHARS:
+        raise SandboxError(f"query exceeds {MAX_WEB_QUERY_CHARS} characters")
+    url = _searxng_url() + "?" + urllib.parse.urlencode({"q": query.strip(), "format": "json"})
+    req = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=min(timeout_seconds, 25)) as response:
+            data = json.loads(response.read(2_000_000).decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        raise SandboxError(f"web_search call to local SearXNG failed: {type(exc).__name__}: {exc}") from exc
+
+    results = []
+    for item in data.get("results") or []:
+        if not isinstance(item, dict):
+            continue
+        link = _clean_text(item.get("url"), _MAX_WEB_URL_CHARS)
+        if not link.startswith(("https://", "http://")):
+            continue
+        results.append({
+            "title": _clean_text(item.get("title"), _MAX_WEB_TITLE_CHARS),
+            "url": link,
+            "snippet": _clean_text(item.get("content"), _MAX_WEB_SNIPPET_CHARS),
+        })
+        if len(results) >= MAX_WEB_RESULTS:
+            break
+    return {"results": results}, f"web_search: {len(results)} result(s)", []
+
+
+register_handler("web_search", _web_search)
+
+# --- CODE SANDBOX -------------------------------------------------------------
+# Hands one program to karmo-sandbox-runner through the spool (code_sandbox.py)
+# and returns its exit code and output.
+def _code_run(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    try:
+        result = submit_and_wait(payload.get("code"), payload.get("files"),
+                                 wait_seconds=max(10, min(timeout_seconds - 5, 110)))
+    except CodeSandboxError as exc:
+        raise SandboxError(f"code_run: {exc}") from exc
+    except OSError as exc:
+        raise SandboxError(f"code_run: sandbox spool error: {type(exc).__name__}") from exc
+    return result, f"code_run: exit {result.get('exit_code')} in {result.get('seconds')}s", []
+
+
+register_handler("code_run", _code_run)
 
 # --- REPO INTAKE SCAN --------------------------------------------------------
 # Reads a public GitHub repository and returns a verdict; never runs its
