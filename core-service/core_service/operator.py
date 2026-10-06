@@ -570,9 +570,23 @@ _BLOOMBOSS_BUSINESS_WORDS = re.compile(
     re.IGNORECASE,
 )
 _OWNER_WORDS = re.compile(r"\b(i|my|we|our)\b", re.IGNORECASE)
+# Plant-care questions are not sales lookups (2026-10-06: "what humidity does
+# a variegated alocasia need?" was answered from BloomBoss figures). A care
+# word with no business word and no BloomBoss name goes to normal chat.
+_BLOOMBOSS_NAME_WORDS = re.compile(
+    r"\b(bloom\s*b\w*oss|emgarden|palm\s*street|pretty\s+rare|my business|our business)\b", re.IGNORECASE,
+)
+_PLANT_CARE_WORDS = re.compile(
+    r"\b(humidity|humid|water|watering|watered|light|lighting|soil|repot\w*|fertili[sz]\w*|care|caring"
+    r"|pests?|thrips|mites?|temperatures?|root\s*rot|yellow\w*|leaf|leaves|mist\w*|dorman\w*)\b",
+    re.IGNORECASE,
+)
 
 
 def _is_bloomboss_question(text: str) -> bool:
+    if (_PLANT_CARE_WORDS.search(text) and not _BLOOMBOSS_BUSINESS_WORDS.search(text)
+            and not _BLOOMBOSS_NAME_WORDS.search(text)):
+        return False
     if _BLOOMBOSS_ANCHOR_WORDS.search(text):
         return True
     if _BLOOMBOSS_BUSINESS_WORDS.search(text) and _OWNER_WORDS.search(text):

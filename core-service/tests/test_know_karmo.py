@@ -175,3 +175,24 @@ def test_generic_business_words_are_not_bloomboss(text):
 )
 def test_own_business_questions_are_still_bloomboss(text):
     assert _is_bloomboss_question(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "What humidity does a variegated alocasia need?",
+        "How often should I water my Alocasia?",
+        "Why are my monstera leaves turning yellow?",
+        "Best soil for anthuriums",
+    ],
+)
+def test_plant_care_questions_are_not_bloomboss(text):
+    assert not _is_bloomboss_question(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["How much stock of the Alocasia do I have?", "Does bloomboss care about humidity sales?"],
+)
+def test_care_words_with_business_words_are_still_bloomboss(text):
+    assert _is_bloomboss_question(text)
