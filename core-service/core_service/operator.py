@@ -423,6 +423,13 @@ _TRIVIAL_ACK = re.compile(
     r"good night|goodnight|bye|goodbye|see you|later)$",
     re.IGNORECASE,
 )
+# "Answer my last question", "try again", "redo that": re-run the previous
+# question through the normal routing instead of letting the chat model guess.
+_RETRY_LAST = re.compile(
+    r"^\s*(?:please\s+|karmo,?\s+)?(?:(?:answer|redo|retry|repeat)\s+(?:my\s+|the\s+|that\s+)?"
+    r"(?:last|previous)(?:\s+(?:question|one|message))?|try\s+(?:that\s+|it\s+)?again|redo\s+that)\s*[.!?]*\s*$",
+    re.IGNORECASE,
+)
 _SEARCH_FAILED_REPLY = "I couldn't search the web just now, so I can't answer that from the web. Try again in a minute."
 _TRIVIAL_GREETING_REPLY = (
     "Hello! I'm just a local AI interface for Kamara, so I don't have personal feelings, "
@@ -1917,6 +1924,12 @@ class KarmoOperator:
         trivial = _trivial_chat_response(text)
         if trivial is not None:
             return trivial
+        if _RETRY_LAST.match(text):
+            last = self._last_question()
+            if last is None:
+                return {"kind": "chat", "model": None,
+                        "message": "I don't have your last question any more. Please ask it again."}
+            return self._handle(last)
         command = self._owner_memory_command(text)
         if command is not None:
             return command
@@ -2018,6 +2031,19 @@ class KarmoOperator:
             pass
         return {"kind": "chat", "message": message, "model": None}
 
+    def _last_question(self) -> str | None:
+        """The most recent thing Kamara asked that wasn't itself a "try
+        again", from the last two hours of conversation."""
+        try:
+            recent = getattr(self.memory_backend, "recent_turns", None)
+            turns = recent() if callable(recent) else self.memory_backend.build_context("last question").recent
+        except Exception:  # noqa: BLE001 -- no memory means nothing to retry
+            return None
+        for role, content in reversed(list(turns)):
+            if role == "user" and content and content.strip() and not _RETRY_LAST.match(content.strip()):
+                return content.strip()
+        return None
+
     def _code_task(self, text: str) -> dict:
         """Item 5: run a pasted program, or have one written, in the Worker02
         sandbox; failed runs go back for a fix, at most MAX_ATTEMPTS runs."""
@@ -2025,8 +2051,12 @@ class KarmoOperator:
         if code is None:
             code, author = self._write_code(WRITE_PROMPT.format(task=text))
             if code is None:
-                return {"kind": "chat", "model": None, "error": "code_write_failed",
-                        "message": f"I couldn't get a program written for that: {author}"}
+                message = f"I couldn't get a program written for that: {author}"
+                try:
+                    self.memory_backend.remember_exchange(text, message)
+                except Exception:  # noqa: BLE001 -- memory is best effort here
+                    pass
+                return {"kind": "chat", "model": None, "error": "code_write_failed", "message": message}
         attempts, result, error = 0, None, None
         while True:
             attempts += 1
