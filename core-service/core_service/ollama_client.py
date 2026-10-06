@@ -7,6 +7,8 @@ endpoint: only loopback Ollama is permitted.
 from __future__ import annotations
 
 import json
+import os
+import sys
 import time
 from urllib.error import HTTPError
 from urllib.parse import urlparse
@@ -172,3 +174,94 @@ class OllamaChatClient:
         if tool_calls is not None and not isinstance(tool_calls, list):
             raise OllamaClientError("invalid Ollama tool_calls field")
         return {"content": message["content"].strip(), "tool_calls": tool_calls or None}
+
+    def ping(self, timeout: float = 2.0) -> bool:
+        """Cheap liveness check (GET /api/version, no inference)."""
+        try:
+            with self._opener.open(Request(self.base_url + "/api/version", method="GET"), timeout=timeout) as response:
+                return response.status == 200
+        except Exception:
+            return False
+
+
+# iMac brain (2026-10-06): the iMac's Ollama (M1 GPU) is reached through an SSH
+# tunnel that AI01 opens itself, so every model URL stays loopback. Its own
+# Ollama stays bound to the iMac's 127.0.0.1 -- no new network listener.
+IMAC_BRAIN_ENABLED_FILE = "/etc/karmo/core/imac_brain.enabled"
+IMAC_BRAIN_TUNNEL_URL = "http://127.0.0.1:11435"
+
+
+class FailoverOllamaClient:
+    """Same interface as OllamaChatClient. Sends each call to primary (the
+    iMac tunnel) and falls back to local AI01 Ollama when the iMac is asleep,
+    off, or missing the model. A failed ping is remembered for down_seconds
+    so a sleeping iMac costs one 2s check per window, not one per call."""
+
+    def __init__(self, primary: OllamaChatClient, fallback: OllamaChatClient, *,
+                 ping_timeout: float = 2.0, up_seconds: float = 30.0, down_seconds: float = 60.0,
+                 clock=time.monotonic):
+        self.primary = primary
+        self.fallback = fallback
+        self.ping_timeout = ping_timeout
+        self.up_seconds = up_seconds
+        self.down_seconds = down_seconds
+        self._clock = clock
+        self._state = None  # (is_up, checked_at)
+        self.last_host = None
+
+    def _primary_up(self) -> bool:
+        now = self._clock()
+        if self._state is not None:
+            is_up, checked_at = self._state
+            if now - checked_at < (self.up_seconds if is_up else self.down_seconds):
+                return is_up
+        is_up = self.primary.ping(self.ping_timeout)
+        self._state = (is_up, now)
+        return is_up
+
+    def _call(self, method: str, kwargs: dict):
+        if self._primary_up():
+            started = self._clock()
+            on_token = kwargs.get("on_token")
+            streamed = []
+            primary_kwargs = dict(kwargs)
+            if on_token is not None:
+                def emit(piece):
+                    streamed.append(piece)
+                    on_token(piece)
+                primary_kwargs["on_token"] = emit
+            try:
+                result = getattr(self.primary, method)(**primary_kwargs)
+                self.last_host = "imac"
+                return result
+            except OllamaClientError as exc:
+                print(f"KARMO iMac brain failed, using AI01: {exc}", file=sys.stderr)
+                # Re-ping rather than assume down: a model the iMac lacks
+                # (404) must not push every other call to AI01 too.
+                self._state = (self.primary.ping(self.ping_timeout), self._clock())
+                if streamed:
+                    on_token(None)  # clear the partial answer before the retry streams
+                timeout = kwargs.get("timeout")
+                if timeout is not None:
+                    remaining = timeout - (self._clock() - started)
+                    if remaining <= 0:
+                        raise
+                    kwargs = dict(kwargs, timeout=remaining)
+        result = getattr(self.fallback, method)(**kwargs)
+        self.last_host = "ai01"
+        return result
+
+    def chat(self, **kwargs) -> str:
+        return self._call("chat", kwargs)
+
+    def chat_with_tools(self, **kwargs) -> dict:
+        return self._call("chat_with_tools", kwargs)
+
+
+def build_default_model_client(enabled_file: str = IMAC_BRAIN_ENABLED_FILE):
+    """iMac first only while the enabled file exists; deleting it is the
+    rollback (takes effect on the next service restart)."""
+    local = OllamaChatClient()
+    if not os.path.exists(enabled_file):
+        return local
+    return FailoverOllamaClient(OllamaChatClient(IMAC_BRAIN_TUNNEL_URL), local)

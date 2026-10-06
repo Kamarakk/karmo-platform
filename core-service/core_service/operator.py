@@ -79,7 +79,7 @@ from .repo_intake_capability import handler as repo_intake_handler
 from .repo_intake_capability import manifest as repo_intake_manifest
 from .karmolab import read_status
 from .model_router import ModelResource, ModelRouter, ModelRoutingError
-from .ollama_client import OllamaChatClient, OllamaClientError
+from .ollama_client import OllamaChatClient, OllamaClientError, build_default_model_client
 from .orchestration import (
     CLAIM_TASK_TOOL,
     COMPLETE_TASK_TOOL,
@@ -726,7 +726,7 @@ class KarmoOperator:
         upload_root=None,
         handoff_enabled_file=HANDOFF_ENABLED_FILE,
     ):
-        self.model_client = model_client or OllamaChatClient()
+        self.model_client = model_client or build_default_model_client()
         if catalog_reader is not None:
             self.catalog_reader = catalog_reader
         else:

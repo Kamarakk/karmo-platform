@@ -19,7 +19,7 @@ Last updated: 2026-10-03. Keep this page under ~80 lines and edit it in place wh
 | Worker02 | Same worker code, spare | VM on KVE03 |
 | KARMO-DEV (Mac, M3) | Development, Remote Control device | Has SSH to AI01 and the workers |
 
-The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. There's a possible brain upgrade, an 8 GB Mac mini; its chip is unconfirmed as of 2026-10-03.
+The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. Brain upgrade (2026-10-06, built, not live): an iMac 24" M1, 16 GB runs Ollama on its GPU. AI01 reaches it through an SSH tunnel (127.0.0.1:11435) and falls back to local Ollama when it is asleep (`FailoverOllamaClient`, on only while `/etc/karmo/core/imac_brain.enabled` exists). Setup: project file `deploy/imac-brain.md`.
 
 ## Live on AI01 (newest first)
 - Mic timeout and date fix (2026-10-01). Voice clips succeed in 13s or less.
