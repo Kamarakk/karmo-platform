@@ -126,3 +126,16 @@ def test_the_container_is_locked_down():
     for flag in ("--network none", "--read-only", "--cap-drop ALL", "--user 65534:65534", "--pids-limit 64",
                  "--memory 512m", "no-new-privileges", "/var/lib/karmo/sandbox/jobs/x/in:/work:ro"):
         assert flag in command
+
+
+def test_inputs_are_readable_by_the_container_user_despite_a_strict_umask(spool):
+    old = os.umask(0o077)
+    try:
+        with pytest.raises(CodeSandboxError, match="did not answer"):
+            submit_and_wait("print(1)", {"a.csv": "x"}, spool_root=spool, wait_seconds=0.1, poll_seconds=0.05)
+    finally:
+        os.umask(old)
+    (job,) = list((spool / "jobs").iterdir())
+    assert stat.S_IMODE((job / "in").stat().st_mode) == 0o755
+    for name in ("main.py", "a.csv"):
+        assert stat.S_IMODE((job / "in" / name).stat().st_mode) == 0o644

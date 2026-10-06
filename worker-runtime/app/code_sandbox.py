@@ -79,6 +79,11 @@ def submit_and_wait(code, files=None, *, spool_root=None, wait_seconds=RUN_SECON
     (staging / "in" / "main.py").write_text(code, encoding="utf-8")
     for name, text in files.items():
         (staging / "in" / name).write_text(text, encoding="utf-8")
+    # The worker service runs with UMask=0077, but the container runs as
+    # nobody and must read these (seen live 2026-10-06: every run failed).
+    (staging / "in").chmod(0o755)
+    for path in (staging / "in").iterdir():
+        path.chmod(0o644)
     final = jobs / job_id
     staging.rename(final)
     (final / "ready").write_text("", encoding="utf-8")
