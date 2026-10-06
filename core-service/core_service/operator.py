@@ -423,6 +423,14 @@ _TRIVIAL_ACK = re.compile(
     r"good night|goodnight|bye|goodbye|see you|later)$",
     re.IGNORECASE,
 )
+# "Answer my last question", "try again", "redo that": re-run the previous
+# question through the normal routing instead of letting the chat model guess.
+_RETRY_LAST = re.compile(
+    r"^\s*(?:please\s+|karmo,?\s+)?(?:(?:answer|redo|retry|repeat)\s+(?:my\s+|the\s+|that\s+)?"
+    r"(?:last|previous)(?:\s+(?:question|one|message))?|try\s+(?:that\s+|it\s+)?again|redo\s+that)\s*[.!?]*\s*$",
+    re.IGNORECASE,
+)
+_SEARCH_FAILED_REPLY = "I couldn't search the web just now, so I can't answer that from the web. Try again in a minute."
 _TRIVIAL_GREETING_REPLY = (
     "Hello! I'm just a local AI interface for Kamara, so I don't have personal feelings, "
     "but I'm here and ready to help. What can I do for you?"
@@ -1426,9 +1434,14 @@ class KarmoOperator:
             self._turn_sources = sources_line(result)
             return web_results_digest(result)
 
+        content = self._execute_exposed_tool(call, render=render)
+        try:
+            self._search_failed = bool(self.worker_dispatch_client.available) and "error" in json.loads(content)
+        except (ValueError, TypeError):
+            self._search_failed = False
         return [
             {"role": "assistant", "content": "", "tool_calls": [call]},
-            {"role": "tool", "content": self._execute_exposed_tool(call, render=render)},
+            {"role": "tool", "content": content},
             {"role": "system", "content": (
                 "Answer from the web results above in a few short sentences. If they don't answer "
                 "the question, say so. Don't invent figures that aren't in them."
@@ -1717,7 +1730,12 @@ class KarmoOperator:
         messages.append({"role": "system", "content": current_date_line()})
         messages.append({"role": "user", "content": text})
         tools = self._exposed_tool_schemas(text)
+        self._search_failed = False
         prefetched = self._prefetched_tool_messages(text, tools)
+        if self._search_failed:
+            # Without results the local model invents an answer (seen live
+            # 2026-10-06), so say plainly that the search didn't work.
+            return {"kind": "chat", "message": _SEARCH_FAILED_REPLY, "model": None}
         if prefetched:
             # Already run above; offering it again only adds its schema to a
             # prompt the CPU model reads at ~19 tokens/second.
@@ -1906,6 +1924,12 @@ class KarmoOperator:
         trivial = _trivial_chat_response(text)
         if trivial is not None:
             return trivial
+        if _RETRY_LAST.match(text):
+            last = self._last_question()
+            if last is None:
+                return {"kind": "chat", "model": None,
+                        "message": "I don't have your last question any more. Please ask it again."}
+            return self._handle(last)
         command = self._owner_memory_command(text)
         if command is not None:
             return command
@@ -2007,6 +2031,19 @@ class KarmoOperator:
             pass
         return {"kind": "chat", "message": message, "model": None}
 
+    def _last_question(self) -> str | None:
+        """The most recent thing Kamara asked that wasn't itself a "try
+        again", from the last two hours of conversation."""
+        try:
+            recent = getattr(self.memory_backend, "recent_turns", None)
+            turns = recent() if callable(recent) else self.memory_backend.build_context("last question").recent
+        except Exception:  # noqa: BLE001 -- no memory means nothing to retry
+            return None
+        for role, content in reversed(list(turns)):
+            if role == "user" and content and content.strip() and not _RETRY_LAST.match(content.strip()):
+                return content.strip()
+        return None
+
     def _code_task(self, text: str) -> dict:
         """Item 5: run a pasted program, or have one written, in the Worker02
         sandbox; failed runs go back for a fix, at most MAX_ATTEMPTS runs."""
@@ -2014,8 +2051,12 @@ class KarmoOperator:
         if code is None:
             code, author = self._write_code(WRITE_PROMPT.format(task=text))
             if code is None:
-                return {"kind": "chat", "model": None, "error": "code_write_failed",
-                        "message": f"I couldn't get a program written for that: {author}"}
+                message = f"I couldn't get a program written for that: {author}"
+                try:
+                    self.memory_backend.remember_exchange(text, message)
+                except Exception:  # noqa: BLE001 -- memory is best effort here
+                    pass
+                return {"kind": "chat", "model": None, "error": "code_write_failed", "message": message}
         attempts, result, error = 0, None, None
         while True:
             attempts += 1

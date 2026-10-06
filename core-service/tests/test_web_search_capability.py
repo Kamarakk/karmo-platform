@@ -108,11 +108,12 @@ def test_explicit_web_words_beat_bloomboss_but_own_sales_stay_local():
     assert [c["tool_id"] for c in dispatch.calls] == ["web_search"]
 
 
-def test_search_failure_is_told_to_the_model_and_adds_no_sources():
-    dispatch = FakeWorkerDispatchClient(available=False)
-    client = RecordingClient("I couldn't search the web just now.")
+def test_search_failure_is_said_plainly_without_asking_the_model():
+    dispatch = FakeWorkerDispatchClient(outcome=DispatchOutcome(
+        outcome="TIMED_OUT", job_id="j", elapsed_seconds=45, poll_count=9, error="last observed: 'QUEUED'"))
+    client = RecordingClient("I'll call the BegoniaCare tool.")
     response = KarmoOperator(model_client=client, worker_dispatch_client=dispatch).handle("latest news")
 
-    tool_messages = [m for m in client.requests[0]["messages"] if m["role"] == "tool"]
-    assert "worker dispatch is not activated" in tool_messages[0]["content"]
-    assert response["message"] == "I couldn't search the web just now."
+    assert client.requests == []
+    assert response["message"].startswith("I couldn't search the web just now")
+    assert "Sources:" not in response["message"]

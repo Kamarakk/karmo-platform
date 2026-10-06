@@ -121,6 +121,27 @@ def test_chat_stream_sends_words_then_the_final_answer(running_server):
     assert fake.calls == ["hello"]
 
 
+def test_chat_stream_pings_while_a_slow_turn_runs(running_server, monkeypatch):
+    server, fake = running_server
+    monkeypatch.setattr(webui, "KEEPALIVE_SECONDS", 0.05)
+    slow = fake.handle
+
+    def handle(text, on_token=None):
+        import time
+        time.sleep(0.3)
+        return slow(text, on_token=on_token)
+
+    monkeypatch.setattr(fake, "handle", handle)
+    request = urllib.request.Request(
+        _url(server, "/chat/stream"), data=json.dumps({"text": "hello"}).encode(), method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        events = [json.loads(line) for line in response.read().decode().splitlines() if line.strip()]
+
+    assert {"ping": True} in events[:3]
+    assert events[-1]["done"] is True and events[-1]["message"] == "echo: hello"
+
+
 def test_chat_stream_rejects_malformed_body(running_server):
     server, _ = running_server
     request = urllib.request.Request(_url(server, "/chat/stream"), data=b"not json", method="POST")

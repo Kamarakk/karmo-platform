@@ -126,6 +126,7 @@ async function streamChat(text, div, speaker) {
       buf = buf.slice(i + 1);
       if (!raw.trim()) continue;
       const ev = JSON.parse(raw);
+      if (ev.ping) continue;
       if (ev.reset) shown = '';
       else if (ev.t) shown += ev.t;
       else if (ev.done) final = ev;
@@ -374,6 +375,7 @@ document.getElementById('doc').addEventListener('change', async (event) => {
 # concurrent turns), while the server itself answers other requests -- the
 # page, a second tab -- instead of queueing them behind a minute-long reply.
 _OPERATOR_LOCK = threading.Lock()
+KEEPALIVE_SECONDS = 10
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -431,23 +433,43 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = True
         client_gone = False
+        write_lock = threading.Lock()
 
         def send(event: dict):
             nonlocal client_gone
-            if client_gone:
-                return
-            try:
-                self.wfile.write(json.dumps(event).encode("utf-8") + b"\n")
-                self.wfile.flush()
-            except OSError:
-                client_gone = True  # the turn still finishes and is remembered
+            with write_lock:
+                if client_gone:
+                    return
+                try:
+                    self.wfile.write(json.dumps(event).encode("utf-8") + b"\n")
+                    self.wfile.flush()
+                except OSError:
+                    client_gone = True  # the turn still finishes and is remembered
 
         def on_token(piece):
             send({"reset": True} if piece is None else {"t": piece})
 
-        with _OPERATOR_LOCK:
-            result = self.operator.handle(text, on_token=on_token)
-        send({**result, "done": True})
+        # A code run or hand-off can take minutes with no words to send, and a
+        # silent connection gets dropped on the way to the phone (seen live
+        # 2026-10-06: the page stuck at "KARMO> ..."), so ping while waiting.
+        outcome = {}
+        finished = threading.Event()
+
+        def run():
+            try:
+                with _OPERATOR_LOCK:
+                    outcome["result"] = self.operator.handle(text, on_token=on_token)
+            except BaseException as exc:  # noqa: BLE001 -- re-raised below, on the request thread
+                outcome["error"] = exc
+            finally:
+                finished.set()
+
+        threading.Thread(target=run, daemon=True).start()
+        while not finished.wait(KEEPALIVE_SECONDS):
+            send({"ping": True})
+        if "error" in outcome:
+            raise outcome["error"]
+        send({**outcome["result"], "done": True})
 
     def do_POST(self):  # noqa: N802 - stdlib method name
         if self.path == "/chat":
