@@ -52,6 +52,7 @@ def sent(monkeypatch):
 @pytest.mark.parametrize("text", [
     "write me a short email to my landlord about the leak",
     "draft a caption for my begonia post",
+    "write a short thank-you email to a customer",
     "make a marketing plan for the plant shop",
     "compare a Mac mini and a used GPU for running local models",
     "explain how DNS works step by step",

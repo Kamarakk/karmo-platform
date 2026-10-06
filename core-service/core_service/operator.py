@@ -423,6 +423,7 @@ _TRIVIAL_ACK = re.compile(
     r"good night|goodnight|bye|goodbye|see you|later)$",
     re.IGNORECASE,
 )
+_SEARCH_FAILED_REPLY = "I couldn't search the web just now, so I can't answer that from the web. Try again in a minute."
 _TRIVIAL_GREETING_REPLY = (
     "Hello! I'm just a local AI interface for Kamara, so I don't have personal feelings, "
     "but I'm here and ready to help. What can I do for you?"
@@ -1426,9 +1427,14 @@ class KarmoOperator:
             self._turn_sources = sources_line(result)
             return web_results_digest(result)
 
+        content = self._execute_exposed_tool(call, render=render)
+        try:
+            self._search_failed = bool(self.worker_dispatch_client.available) and "error" in json.loads(content)
+        except (ValueError, TypeError):
+            self._search_failed = False
         return [
             {"role": "assistant", "content": "", "tool_calls": [call]},
-            {"role": "tool", "content": self._execute_exposed_tool(call, render=render)},
+            {"role": "tool", "content": content},
             {"role": "system", "content": (
                 "Answer from the web results above in a few short sentences. If they don't answer "
                 "the question, say so. Don't invent figures that aren't in them."
@@ -1717,7 +1723,12 @@ class KarmoOperator:
         messages.append({"role": "system", "content": current_date_line()})
         messages.append({"role": "user", "content": text})
         tools = self._exposed_tool_schemas(text)
+        self._search_failed = False
         prefetched = self._prefetched_tool_messages(text, tools)
+        if self._search_failed:
+            # Without results the local model invents an answer (seen live
+            # 2026-10-06), so say plainly that the search didn't work.
+            return {"kind": "chat", "message": _SEARCH_FAILED_REPLY, "model": None}
         if prefetched:
             # Already run above; offering it again only adds its schema to a
             # prompt the CPU model reads at ~19 tokens/second.

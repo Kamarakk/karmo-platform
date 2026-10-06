@@ -28,7 +28,7 @@ LONG_MESSAGE_CHARS = 400
 
 _HEAVY_TASK = re.compile(
     r"\b(?:write|draft|compose|create|make)\s+(?:me\s+)?(?:a|an|the|my|some)?\s*"
-    r"(?:\w+\s+){0,3}(?:email|letter|message|post|caption|captions|essay|plan|proposal|story|poem|speech"
+    r"(?:[\w'-]+\s+){0,3}(?:email|letter|message|post|caption|captions|essay|plan|proposal|story|poem|speech"
     r"|report|summary|description|listing|bio|ad|outline|cover\s+letter|resume)\b"
     r"|\b(?:business|marketing|study|budget|training|content)\s+plan\b"
     r"|\b(?:compare|pros\s+and\s+cons|step[\s-]+by[\s-]+step|in\s+detail|explain\s+(?:how|why)"
