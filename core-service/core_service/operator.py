@@ -1987,7 +1987,7 @@ class KarmoOperator:
         client = fast_client(self.model_client)
         if client is None:
             return None
-        route = classify(client, text, self._last_question())
+        route = classify(client, text, self._last_question(), plant_names=known_cultivar_names())
         print(f"KARMO route: {route or 'keywords'}", file=sys.stderr, flush=True)
         return route
 

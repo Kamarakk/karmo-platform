@@ -75,11 +75,16 @@ def main() -> int:
     except Exception:  # noqa: BLE001 -- comparison is optional
         compare = False
 
+    try:
+        from core_service.bloomboss_capability import known_cultivar_names
+        plant_names = known_cultivar_names()
+    except Exception:  # noqa: BLE001 -- score without the plant list
+        plant_names = ()
     passed, keyword_passed, times = 0, 0, []
     for item in items:
         allowed = {item["route"], *item.get("also", [])}
         started = time.monotonic()
-        got = classify(client, item["q"], model=args.model, timeout=60.0)
+        got = classify(client, item["q"], plant_names=plant_names, model=args.model, timeout=60.0)
         times.append(time.monotonic() - started)
         ok = got in allowed
         passed += ok

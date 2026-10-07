@@ -123,3 +123,15 @@ def test_imac_down_uses_keyword_rules_and_never_asks_the_router():
     KarmoOperator(model_client=client).handle("how many plants did we sell?")
     assert client.primary.calls == []
     assert _tool_calls(client.requests[0]["messages"]) == ["bloomboss_report"]
+
+
+def test_plants_he_sells_are_listed_for_the_router():
+    model = RouterModel("bloomboss")
+    classify(model, "tell me about the Ninja Albos", plant_names={"ninja albo"})
+    assert "ninja albo" in model.calls[0][0]["content"]
+
+
+def test_operator_gives_the_router_his_imported_plant_names():
+    client = BrainClient(route="chat")
+    KarmoOperator(model_client=client).handle("tell me about the Ninja Albos")
+    assert "ninja albo" in client.primary.calls[0][0]["content"]

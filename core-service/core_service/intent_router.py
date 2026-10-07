@@ -35,7 +35,7 @@ tasks: his KARMO task list or to-dos.
 run_code: asks KARMO to run or execute code, or to use Python to calculate or process something.
 code_help: write, explain, review or fix code or a script, without running it.
 heavy: long writing or deep reasoning: draft an email, letter, post, listing, plan or report; compare options \
-in depth; a detailed step-by-step guide; summarize, translate or rewrite a long text.
+or anything asked for "in detail"; a detailed step-by-step guide; summarize, translate or rewrite a long text.
 chat: everything else: general knowledge, plant care and growing advice, how-to questions, IT and networking \
 concepts, advice, small talk, and questions about Kamara, his family or what KARMO remembers.
 
@@ -68,21 +68,27 @@ def parse_route(reply: str) -> str | None:
     return None
 
 
-def router_messages(text: str, previous_question: str | None = None) -> list[dict]:
+def router_messages(text: str, previous_question: str | None = None, plant_names=()) -> list[dict]:
+    prompt = ROUTER_PROMPT
+    if plant_names:
+        # A plant he sells, named on its own ("tell me about the Ninja Albos"),
+        # is a question about his business.
+        prompt += "\n\nPlants BloomBoss sells (a message about one of these, with no care question, is bloomboss): " \
+            + ", ".join(sorted(plant_names)[:60])
     content = text.strip()
     if previous_question:
         content = f"(His previous message was: {previous_question.strip()[:300]})\n{content}"
     return [
-        {"role": "system", "content": ROUTER_PROMPT},
+        {"role": "system", "content": prompt},
         {"role": "user", "content": content[:2000]},
     ]
 
 
-def classify(model_client, text: str, previous_question: str | None = None, *,
+def classify(model_client, text: str, previous_question: str | None = None, *, plant_names=(),
              model: str = ROUTER_MODEL, timeout: float = ROUTER_TIMEOUT_SECONDS) -> str | None:
     """One short model call. None on any failure or an unusable reply."""
     try:
-        reply = model_client.chat(model=model, messages=router_messages(text, previous_question),
+        reply = model_client.chat(model=model, messages=router_messages(text, previous_question, plant_names),
                                   temperature=0.0, timeout=timeout)
     except Exception:  # noqa: BLE001 -- the keyword rules take over
         return None
