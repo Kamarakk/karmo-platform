@@ -19,7 +19,7 @@ Last updated: 2026-10-03. Keep this page under ~80 lines and edit it in place wh
 | Worker02 | Same worker code, spare | VM on KVE03 |
 | KARMO-DEV (Mac, M3) | Development, Remote Control device | Has SSH to AI01 and the workers |
 
-The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. Brain upgrade (2026-10-06, built, not live): an iMac 24" M1, 16 GB runs Ollama on its GPU. AI01 reaches it through an SSH tunnel (127.0.0.1:11435) and falls back to local Ollama when it is asleep (`FailoverOllamaClient`, on only while `/etc/karmo/core/imac_brain.enabled` exists). Setup: project file `deploy/imac-brain.md`.
+The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. Brain upgrade (LIVE 2026-10-06, measured 12.1 tokens/s vs AI01's ~3): an iMac 24" M1, 16 GB runs Ollama on its GPU. AI01 reaches it through an SSH tunnel (127.0.0.1:11435) and falls back to local Ollama when it is asleep (`FailoverOllamaClient`, on only while `/etc/karmo/core/imac_brain.enabled` exists). Setup: project file `deploy/imac-brain.md`.
 
 ## Live on AI01 (newest first)
 - Mic timeout and date fix (2026-10-01). Voice clips succeed in 13s or less.
@@ -30,6 +30,7 @@ The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. Brain upgrade 
 - Media chunking on AI01 and Worker01. The heartbeat fix is on both workers.
 
 ## Built but not live
+- **Model-chosen routing** (2026-10-07, Kamara's "rebuild" decision): while the iMac answers, qwen3:8b picks one route per message (`core_service/intent_router.py`: bloomboss, price, web, status, change, tasks, run_code, code_help, heavy, chat) and the operator runs that route's existing handler; the llama3.2:3b phrasing step is skipped. iMac down or an unusable reply: the keyword rules decide, unchanged. Scorer: `core-service/evals/route_eval.py` with 105 questions in `route_questions.jsonl` (keyword rules: 88/105).
 - **Know Karmo** (draft PR on branch `claude/project-thread-1bjgsr`):
   - owner profile file and "remember / list / forget" facts
   - last 2 hours of conversation passed as real chat turns
