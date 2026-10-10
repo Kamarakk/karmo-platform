@@ -165,3 +165,38 @@ def test_missing_memory_config_uses_explicit_degraded_backend():
 
     assert backend.status == "DEGRADED_CONFIG_MISSING"
     assert context.render() == ""
+
+
+def _write_secret(path, text):
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
+
+
+def test_qdrant_api_key_is_optional_and_read_from_private_file(tmp_path):
+    from core_service.durable_memory import build_default_memory_backend
+
+    dsn = tmp_path / "postgres.dsn"
+    _write_secret(dsn, "postgresql://karmo@127.0.0.1:5433/karmo")
+
+    backend = build_default_memory_backend(str(dsn), str(tmp_path / "missing.key"))
+    assert backend._qdrant_api_key is None
+
+    key = tmp_path / "qdrant.api_key"
+    _write_secret(key, "s3cret\n")
+    backend = build_default_memory_backend(str(dsn), str(key))
+    assert backend._qdrant_api_key == "s3cret"
+
+
+def test_qdrant_api_key_file_readable_by_others_is_refused(tmp_path):
+    import pytest
+
+    from core_service.durable_memory import MemoryConfigurationError, build_default_memory_backend
+
+    dsn = tmp_path / "postgres.dsn"
+    _write_secret(dsn, "postgresql://karmo@127.0.0.1:5433/karmo")
+    key = tmp_path / "qdrant.api_key"
+    _write_secret(key, "s3cret")
+    key.chmod(0o644)
+
+    with pytest.raises(MemoryConfigurationError):
+        build_default_memory_backend(str(dsn), str(key))
