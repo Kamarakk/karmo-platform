@@ -109,6 +109,12 @@ class NullMemoryBackend:
     def forget_fact(self, _fact_id: int) -> bool:
         raise MemoryConfigurationError("durable memory is not configured")
 
+    def record_turn(self, _trace: dict) -> int | None:
+        return None
+
+    def rate_turn(self, _trace_id: int, _rating: int) -> bool:
+        return False
+
 
 class DurableMemoryBackend:
     status = "ACTIVE"
@@ -362,6 +368,48 @@ class DurableMemoryBackend:
         with self._connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM public.karmo_owner_facts WHERE id = %s", (fact_id,))
+                return cur.rowcount == 1
+
+    def record_turn(self, trace: dict) -> int | None:
+        """Stores one karmo_turn_trace row (see migration 015); returns its id."""
+        with self._connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO public.karmo_turn_trace
+                        (question, answer, route, tools, model, host, model_calls,
+                         prompt_tokens, output_tokens, model_ms, latency_ms, error)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        str(trace.get("question") or "")[:4000],
+                        str(trace.get("answer") or "")[:8000],
+                        trace.get("route"),
+                        list(trace.get("tools") or ()),
+                        trace.get("model"),
+                        trace.get("host"),
+                        int(trace.get("model_calls") or 0),
+                        trace.get("prompt_tokens"),
+                        trace.get("output_tokens"),
+                        trace.get("model_ms"),
+                        int(trace.get("latency_ms") or 0),
+                        (str(trace["error"])[:200] if trace.get("error") else None),
+                    ),
+                )
+                return int(cur.fetchone()[0])
+
+    def rate_turn(self, trace_id: int, rating: int) -> bool:
+        if not isinstance(trace_id, int) or isinstance(trace_id, bool) or trace_id <= 0:
+            raise ValueError("trace id must be a positive integer")
+        if rating not in (-1, 1):
+            raise ValueError("rating must be -1 or 1")
+        with self._connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE public.karmo_turn_trace SET rating = %s, rated_at = NOW() WHERE id = %s",
+                    (rating, trace_id),
+                )
                 return cur.rowcount == 1
 
 

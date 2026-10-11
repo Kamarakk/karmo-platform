@@ -66,6 +66,9 @@ class OllamaChatClient:
         self.timeout = timeout
         self.num_predict = num_predict
         self._opener = build_opener(_RefuseRedirect)
+        # Token counts and model time of each call, read by the operator's
+        # per-turn trace (karmo_turn_trace) and cleared at the start of a turn.
+        self.usage = []
 
     def _request_message(self, *, model: str, messages: list[dict], temperature: float,
                          tools: list[dict] | None, timeout: float | None = None,
@@ -98,7 +101,7 @@ class OllamaChatClient:
         # today's exact behavior unchanged.
         effective_timeout = timeout if timeout is not None else self.timeout
         if on_token is not None:
-            return self._stream_message(request, effective_timeout, on_token)
+            return self._stream_message(request, effective_timeout, on_token, model)
         try:
             with self._opener.open(request, timeout=effective_timeout) as response:
                 raw = response.read(1024 * 1024 + 1)
@@ -111,11 +114,12 @@ class OllamaChatClient:
             message = decoded["message"]
         except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
             raise OllamaClientError("invalid Ollama response") from exc
+        self._record_usage(model, decoded)
         if not isinstance(message, dict) or not isinstance(message.get("content"), str):
             raise OllamaClientError("invalid Ollama message content")
         return message
 
-    def _stream_message(self, request: Request, timeout: float, on_token) -> dict:
+    def _stream_message(self, request: Request, timeout: float, on_token, model: str = "") -> dict:
         """Streamed variant of the read above (2026-09-27): each content piece
         goes to on_token as it arrives, so the web UI can show words while the
         CPU model is still writing (~3.3 tokens/second on karmo-ai01). Same
@@ -142,12 +146,26 @@ class OllamaChatClient:
                     if message.get("tool_calls"):
                         tool_calls.extend(message["tool_calls"])
                     if chunk.get("done"):
+                        self._record_usage(model, chunk)
                         break
         except OllamaClientError:
             raise
         except Exception as exc:
             raise OllamaClientError(f"local model request failed: {type(exc).__name__}") from exc
         return {"content": "".join(content), "tool_calls": tool_calls or None}
+
+    def _record_usage(self, model: str, response: dict) -> None:
+        def count(key):
+            value = response.get(key)
+            return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+        prompt_ns, eval_ns = count("prompt_eval_duration"), count("eval_duration")
+        self.usage.append({
+            "model": model,
+            "prompt_tokens": count("prompt_eval_count"),
+            "output_tokens": count("eval_count"),
+            "model_ms": ((prompt_ns or 0) + (eval_ns or 0)) // 1_000_000 if prompt_ns or eval_ns else None,
+        })
+        del self.usage[:-20]
 
     def chat(self, *, model: str, messages: list[dict], temperature: float = 0.2,
              timeout: float | None = None) -> str:
