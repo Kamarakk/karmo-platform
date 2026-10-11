@@ -17,7 +17,7 @@
 {"q": "How do I enable dark mode on Windows 11?", "route": "chat"}
 {"q": "What are my kids' names?", "route": "chat"}
 {"q": "Who am I?", "route": "chat"}
-{"q": "What did I ask you to remember about the tent light?", "route": "chat"}
+{"q": "What did I ask you to remember about the tent light?", "route": "memory", "also": ["chat"]}
 {"q": "Tell me a joke about clouds.", "route": "chat"}
 {"q": "What's a good name for a cat?", "route": "chat"}
 {"q": "How many ounces are in a cup?", "route": "chat"}
@@ -104,3 +104,8 @@
 {"q": "Help me plan a budget justification for replacing our core switches.", "route": "heavy"}
 {"q": "Write an incident report for a phishing attack that compromised two accounts.", "route": "heavy"}
 {"q": "Brainstorm ten names for my plant business Instagram posts.", "route": "heavy", "also": ["chat"]}
+{"q": "What do you know about Arisa's Aug 30 shipment?", "route": "memory"}
+{"q": "Did I tell you when my dog's vet visit is?", "route": "memory"}
+{"q": "What was the cargo cost I mentioned for the Thai shipment?", "route": "memory", "also": ["bloomboss"]}
+{"q": "When did I say I would repot the Thai Constellation?", "route": "memory"}
+{"q": "What did I ask you to remember about my balance with Arisa?", "route": "memory"}

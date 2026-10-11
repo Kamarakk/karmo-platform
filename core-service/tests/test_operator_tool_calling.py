@@ -302,7 +302,7 @@ def test_system_prompt_tells_the_model_to_call_ask_local_coder_for_coding_questi
 
     system_content = client.requests[0]["messages"][0]["content"]
     assert "ask_local_coder" in system_content
-    assert "even though you could write the code yourself" in system_content
+    assert "call ask_local_coder" in system_content
 
 
 def test_oversized_tool_result_is_truncated_before_reaching_the_model():

@@ -51,7 +51,8 @@ def test_pure_greetings_short_circuit_without_calling_the_model():
         response = operator.handle(message)
         assert response["kind"] == "chat"
         assert response["model"] is None
-        assert "help" in response["message"].lower()
+        assert "what do you need" in response["message"].lower()
+        assert "local ai interface" not in response["message"].lower()
 
     assert client.calls == []
 

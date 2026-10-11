@@ -280,10 +280,15 @@ class FailoverOllamaClient:
         return self._call("chat_with_tools", kwargs)
 
 
+IMAC_NUM_PREDICT = 800
+
+
 def build_default_model_client(enabled_file: str = IMAC_BRAIN_ENABLED_FILE):
     """iMac first only while the enabled file exists; deleting it is the
     rollback (takes effect on the next service restart)."""
     local = OllamaChatClient()
     if not os.path.exists(enabled_file):
         return local
-    return FailoverOllamaClient(OllamaChatClient(IMAC_BRAIN_TUNNEL_URL), local)
+    # The iMac's GPU writes ~12 tokens/s, so a longer cap costs seconds, not
+    # minutes; 300 cut real answers off mid-list (Fable review, 2026-10-11).
+    return FailoverOllamaClient(OllamaChatClient(IMAC_BRAIN_TUNNEL_URL, num_predict=IMAC_NUM_PREDICT), local)
