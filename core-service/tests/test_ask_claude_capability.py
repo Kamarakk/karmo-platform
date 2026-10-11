@@ -296,3 +296,102 @@ def test_runs_in_a_fresh_temp_directory_and_cleans_up(monkeypatch):
     import os
     assert len(seen_workdirs) == 1
     assert not os.path.exists(seen_workdirs[0]), "temp workdir must be cleaned up after the call"
+
+
+# --- binary path + dedicated user (core_service.delegation_runner) ---------
+
+
+class _FakePasswd:
+    pw_name = "karmo-ask"
+    pw_uid = 999
+    pw_gid = 998
+    pw_dir = "/var/lib/karmo-ask"
+
+
+def _capture_run(monkeypatch, module):
+    """Record the argv and kwargs subprocess.run is called with and
+    return a valid-looking claude JSON result so the handler succeeds."""
+    seen = {}
+
+    class _Result:
+        returncode = 0
+        stdout = '{"result": "ok"}'
+        stderr = ""
+
+    def _run(argv, **kwargs):
+        seen["argv"] = argv
+        seen["kwargs"] = kwargs
+        return _Result()
+
+    monkeypatch.setattr(module.subprocess, "run", _run)
+    monkeypatch.setattr(module.shutil, "rmtree", lambda *a, **k: None)
+    return seen
+
+
+def test_without_a_dedicated_user_the_call_is_unchanged(monkeypatch):
+    monkeypatch.delenv("KARMO_DELEGATE_CLI_USER", raising=False)
+    monkeypatch.delenv("KARMO_CLAUDE_BIN", raising=False)
+    seen = _capture_run(monkeypatch, ask_claude_capability)
+
+    assert handler({"question": "anything"})["answer"] == "ok"
+    assert seen["argv"][0] == "claude"
+    assert "user" not in seen["kwargs"] and "env" not in seen["kwargs"]
+
+
+def test_dedicated_user_drops_privileges_and_uses_its_own_home(monkeypatch):
+    from core_service import delegation_runner
+
+    monkeypatch.setenv("KARMO_DELEGATE_CLI_USER", "karmo-ask")
+    monkeypatch.setenv("KARMO_CLAUDE_BIN", "/var/lib/karmo-ask/.local/bin/claude")
+    monkeypatch.setattr(delegation_runner.pwd, "getpwnam", lambda name: _FakePasswd())
+    monkeypatch.setattr(delegation_runner.os, "geteuid", lambda: 0)
+    chowned = []
+    monkeypatch.setattr(delegation_runner.os, "chown", lambda path, uid, gid: chowned.append((path, uid, gid)))
+    seen = _capture_run(monkeypatch, ask_claude_capability)
+
+    assert handler({"question": "anything"})["answer"] == "ok"
+    assert seen["argv"][0] == "/var/lib/karmo-ask/.local/bin/claude"
+    kwargs = seen["kwargs"]
+    assert kwargs["user"] == 999 and kwargs["group"] == 998 and kwargs["extra_groups"] == []
+    assert kwargs["env"]["HOME"] == "/var/lib/karmo-ask"
+    assert kwargs["env"]["PATH"].startswith("/var/lib/karmo-ask/.local/bin:")
+    assert chowned == [(kwargs["cwd"], 999, 998)]
+
+
+def test_unknown_dedicated_user_is_refused_cleanly(monkeypatch):
+    from core_service import delegation_runner
+
+    monkeypatch.setenv("KARMO_DELEGATE_CLI_USER", "nobody-like-this")
+    monkeypatch.setattr(delegation_runner.pwd, "getpwnam", lambda name: (_ for _ in ()).throw(KeyError(name)))
+    seen = _capture_run(monkeypatch, ask_claude_capability)
+
+    with pytest.raises(AskClaudeCapabilityError, match="not an existing user"):
+        handler({"question": "anything"})
+    assert "argv" not in seen
+
+
+def test_root_as_dedicated_user_is_refused(monkeypatch):
+    from core_service import delegation_runner
+
+    class _Root(_FakePasswd):
+        pw_name = "root"
+        pw_uid = 0
+
+    monkeypatch.setenv("KARMO_DELEGATE_CLI_USER", "root")
+    monkeypatch.setattr(delegation_runner.pwd, "getpwnam", lambda name: _Root())
+    _capture_run(monkeypatch, ask_claude_capability)
+
+    with pytest.raises(AskClaudeCapabilityError, match="must not be root"):
+        handler({"question": "anything"})
+
+
+def test_dedicated_user_requires_a_root_parent(monkeypatch):
+    from core_service import delegation_runner
+
+    monkeypatch.setenv("KARMO_DELEGATE_CLI_USER", "karmo-ask")
+    monkeypatch.setattr(delegation_runner.pwd, "getpwnam", lambda name: _FakePasswd())
+    monkeypatch.setattr(delegation_runner.os, "geteuid", lambda: 1000)
+    _capture_run(monkeypatch, ask_claude_capability)
+
+    with pytest.raises(AskClaudeCapabilityError, match="not root"):
+        handler({"question": "anything"})

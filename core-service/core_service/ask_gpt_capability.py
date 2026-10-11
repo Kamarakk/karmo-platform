@@ -36,6 +36,7 @@ import tempfile
 
 from .control import CapabilityClass
 from .delegation_cache import get_default_cache
+from .delegation_runner import DelegationRunnerError, codex_binary, run_kwargs
 
 ASK_GPT_TOOL = "karmo.delegate.ask_gpt"
 TOOL_VERSION = "1.0.0"
@@ -130,16 +131,17 @@ def _invoke_codex_cli(question: str) -> str:
     workdir = tempfile.mkdtemp(prefix="karmo-ask-gpt-")
     try:
         result = subprocess.run(
-            ["codex", "exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", question],
+            [codex_binary(), "exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", question],
             cwd=workdir,
             capture_output=True,
             text=True,
             timeout=TIMEOUT_SECONDS,
             stdin=subprocess.DEVNULL,
+            **run_kwargs(workdir),
         )
     except subprocess.TimeoutExpired as exc:
         raise AskGptCapabilityError(f"codex CLI timed out after {TIMEOUT_SECONDS}s") from exc
-    except OSError as exc:
+    except (OSError, DelegationRunnerError) as exc:
         raise AskGptCapabilityError(f"codex CLI could not be started: {exc}") from exc
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
