@@ -118,10 +118,14 @@ import time
 
 KARMOLAB_STATUS_TOOL = "karmolab.read_status"
 KARMOLAB_STATUS_VERSION = "1.0.0"
-MAX_MEMORY_CONTEXT_CHARS = 12_000
+# Everything after the fixed system prompt is re-read by the model on every
+# turn (it can't be cached): measured 2026-10-11 on the iMac, qwen3:8b reads
+# ~115 prompt tokens/second, so 12k chars of retrieved memory cost ~25 s.
+# Trimmed 12,000 -> 4,000 and 1,500 -> 800 (Fable review item 6).
+MAX_MEMORY_CONTEXT_CHARS = 4_000
 # Each replayed recent turn is clipped so one long answer can't crowd out the
-# rest of the prompt on this CPU-only host.
-MAX_RECENT_TURN_CHARS = 1_500
+# rest of the prompt.
+MAX_RECENT_TURN_CHARS = 800
 
 # Model Router Phase D2 (docs/architecture/KARMO_MODEL_ROUTER_DESIGN_PLAN.md
 # Section 3.5) -- one total deadline for the whole chat turn (health check
