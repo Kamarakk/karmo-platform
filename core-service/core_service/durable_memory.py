@@ -29,6 +29,7 @@ DESTINATION = "qdrant:karmo_semantic_memory"
 PAYLOAD_SCHEMA_VERSION = 1
 
 DEFAULT_DSN_FILE = "/etc/karmo/core/postgres.dsn"
+DEFAULT_QDRANT_API_KEY_FILE = "/etc/karmo/core/qdrant.api_key"
 DEFAULT_QDRANT_URL = "http://127.0.0.1:6333"
 DEFAULT_OLLAMA_EMBED_URL = "http://127.0.0.1:11434/api/embed"
 DEFAULT_EMBED_MODEL = "embeddinggemma"
@@ -120,6 +121,7 @@ class DurableMemoryBackend:
         qdrant_client: Any | None = None,
         embedding_function: Callable[[str], list[float]] | None = None,
         qdrant_url: str = DEFAULT_QDRANT_URL,
+        qdrant_api_key: str | None = None,
         semantic_collection: str = "karmo_semantic_memory",
         document_collection: str = "karmo_documents",
         vector_size: int = DEFAULT_VECTOR_SIZE,
@@ -131,6 +133,7 @@ class DurableMemoryBackend:
         self._qdrant_client = qdrant_client
         self._embedding_function = embedding_function
         self.qdrant_url = qdrant_url
+        self._qdrant_api_key = qdrant_api_key
         self.semantic_collection = semantic_collection
         self.document_collection = document_collection
         self.vector_size = vector_size
@@ -156,7 +159,7 @@ class DurableMemoryBackend:
             return self._qdrant_client
         from qdrant_client import QdrantClient
 
-        self._qdrant_client = QdrantClient(url=self.qdrant_url)
+        self._qdrant_client = QdrantClient(url=self.qdrant_url, api_key=self._qdrant_api_key)
         return self._qdrant_client
 
     def _embedding(self, text: str) -> list[float]:
@@ -362,7 +365,22 @@ class DurableMemoryBackend:
                 return cur.rowcount == 1
 
 
-def build_default_memory_backend(dsn_file: str = DEFAULT_DSN_FILE):
+def _read_qdrant_api_key(key_file: str) -> str | None:
+    path = Path(key_file)
+    if not path.is_file():
+        return None
+    if path.stat().st_mode & 0o007:
+        raise MemoryConfigurationError("Qdrant API key file must not be accessible to other users")
+    key = path.read_text(encoding="utf-8").strip()
+    if not key:
+        raise MemoryConfigurationError("Qdrant API key file is empty")
+    return key
+
+
+def build_default_memory_backend(
+    dsn_file: str = DEFAULT_DSN_FILE,
+    qdrant_api_key_file: str = DEFAULT_QDRANT_API_KEY_FILE,
+):
     path = Path(dsn_file)
     if not path.is_file():
         return NullMemoryBackend()
@@ -372,4 +390,4 @@ def build_default_memory_backend(dsn_file: str = DEFAULT_DSN_FILE):
     dsn = path.read_text(encoding="utf-8").strip()
     if not dsn:
         raise MemoryConfigurationError("memory DSN file is empty")
-    return DurableMemoryBackend(dsn=dsn)
+    return DurableMemoryBackend(dsn=dsn, qdrant_api_key=_read_qdrant_api_key(qdrant_api_key_file))
