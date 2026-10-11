@@ -17,7 +17,7 @@ import json
 import os
 import re
 import sys
-import time
+from pathlib import Path
 from dataclasses import dataclass
 
 from .ask_claude_capability import ASK_CLAUDE_TOOL
@@ -2045,6 +2045,21 @@ class KarmoOperator:
         except Exception as exc:  # noqa: BLE001
             print(f"KARMO turn trace not saved: {type(exc).__name__}", file=sys.stderr, flush=True)
             return None
+
+    def health(self) -> dict:
+        """What /health reports: the deployed commit (written by
+        scripts/deploy_core.sh), whether the iMac brain answers, and memory."""
+        sha_file = Path(__file__).resolve().parent.parent / "DEPLOY_SHA"
+        try:
+            deployed = sha_file.read_text(encoding="utf-8").strip()[:40] or None
+        except OSError:
+            deployed = None
+        check = getattr(self.model_client, "primary_available", None)
+        try:
+            brain = ("imac" if check() else "ai01") if callable(check) else "ai01"
+        except Exception:  # noqa: BLE001
+            brain = "ai01"
+        return {"ok": True, "deployed_sha": deployed, "brain": brain, "memory_status": self.memory_status}
 
     def rate_turn(self, trace_id: int, rating: int) -> bool:
         """Kamara's thumbs up (1) or down (-1) on one answer."""

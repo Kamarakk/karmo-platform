@@ -401,6 +401,9 @@ class _Handler(BaseHTTPRequestHandler):
         return  # keep terminal output quiet; nothing here is a security log
 
     def do_GET(self):  # noqa: N802 - stdlib method name
+        if self.path == "/health":
+            self._send_json(200, self.operator.health())
+            return
         if self.path != "/":
             self.send_response(404)
             self.end_headers()

@@ -119,3 +119,11 @@ def test_ollama_client_records_usage_on_a_plain_call(monkeypatch):
     monkeypatch.setattr(client._opener, "open", lambda request, timeout: Response())
     assert client.chat(model="qwen3:8b", messages=[{"role": "user", "content": "hi"}]) == "hi"
     assert client.usage[-1]["prompt_tokens"] == 10
+
+
+def test_health_reports_brain_and_memory():
+    health = KarmoOperator(model_client=BrainClient(), memory_backend=TraceMemory()).health()
+    assert health["ok"] is True
+    assert health["brain"] == "imac"
+    assert health["memory_status"] == "ACTIVE"
+    assert "deployed_sha" in health
