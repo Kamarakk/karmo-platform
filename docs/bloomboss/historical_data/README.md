@@ -32,3 +32,24 @@ prices Kamara provided, cross-matched to this invoice by cultivar name and
 exact unit cost. The remaining 70 units are marked `growing` — their
 actual outcome (sold/lost/retained) is genuinely unknown as of this
 import, not assumed.
+
+## `thailand_order_0023.csv`
+
+Source: order summary ORD-0023 from Thai supplier Arisa, dated 2026-09-10,
+shipping batch "USA-Sep 20", ship date 2026-09-14. 12 units across 10 order
+lines, $3,039.00 in item cost, $0 shipping on the order (cargo and UPS are
+billed separately per shipment and were not given for this order). Payment
+status on the summary: unpaid, $3,039.00 remaining (฿98,768 at 32.50 THB/USD).
+The buyer name on the summary is personal data and is not recorded.
+
+One Longiloba Lava is a free replacement and is recorded as its own batch at
+$0 cost. Each unit's `allocated_landed_cost` is its item price only, because
+the freight for this order is unknown. All 12 units are marked `growing`;
+their outcome is unknown as of this import. Cultivar spellings were
+normalized ("Reginea" to "Reginae", title case).
+
+Not in the CSV (no line items): Arisa's 2026-08-30 shipment, 5 boxes; box
+WBOX#2, 60 x 32 x 26, cargo $228.00 plus UPS options (2nd Day Air $100,
+Next Day Air Saver $149, Next Day Air Early $187). Kamara asked Arisa to keep
+a remaining balance as credit toward the next order; the credit amount was
+not stated.
