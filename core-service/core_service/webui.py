@@ -40,6 +40,7 @@ import os
 import ssl
 import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .data_map import MAX_UPLOAD_BYTES as _MAX_UPLOAD_BYTES
@@ -394,6 +395,32 @@ _OPERATOR_LOCK = threading.Lock()
 KEEPALIVE_SECONDS = 10
 
 
+
+_ACTOR_CACHE: dict[str, tuple[float, str | None]] = {}
+_ACTOR_TTL_SECONDS = 600.0
+
+
+def tailnet_actor(ip: str, *, runner=subprocess.run, clock=time.monotonic) -> str | None:
+    """"device (login)" for a tailnet address via `tailscale whois`, cached
+    for ten minutes; None for loopback, non-tailnet addresses or any error."""
+    if not ip or ip.startswith("127.") or ip == "::1":
+        return None
+    cached = _ACTOR_CACHE.get(ip)
+    if cached is not None and clock() - cached[0] < _ACTOR_TTL_SECONDS:
+        return cached[1]
+    actor = None
+    try:
+        done = runner(["tailscale", "whois", "--json", ip], capture_output=True, text=True, timeout=3)
+        if done.returncode == 0:
+            info = json.loads(done.stdout)
+            device = (info.get("Node") or {}).get("ComputedName") or "unknown-device"
+            login = (info.get("UserProfile") or {}).get("LoginName") or "unknown-user"
+            actor = f"{device} ({login})"
+    except (OSError, ValueError, subprocess.SubprocessError):
+        actor = None
+    _ACTOR_CACHE[ip] = (clock(), actor)
+    return actor
+
 class _Handler(BaseHTTPRequestHandler):
     operator: KarmoOperator
 
@@ -413,6 +440,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(_PAGE)))
         self.end_headers()
         self.wfile.write(_PAGE)
+
+    def _actor_kwargs(self) -> dict:
+        """The tailnet device and login behind this request, for the turn
+        trace. Never used for authorization, only to record who asked."""
+        actor = tailnet_actor(self.client_address[0])
+        return {"actor": actor} if actor else {}
 
     def _read_json_body(self, max_bytes: int, required_keys: dict):
         """Reads and parses the request body, checking each key in
@@ -477,7 +510,7 @@ class _Handler(BaseHTTPRequestHandler):
         def run():
             try:
                 with _OPERATOR_LOCK:
-                    outcome["result"] = self.operator.handle(text, on_token=on_token)
+                    outcome["result"] = self.operator.handle(text, on_token=on_token, **self._actor_kwargs())
             except BaseException as exc:  # noqa: BLE001 -- re-raised below, on the request thread
                 outcome["error"] = exc
             finally:
@@ -496,7 +529,7 @@ class _Handler(BaseHTTPRequestHandler):
             if payload is None:
                 return
             with _OPERATOR_LOCK:
-                result = self.operator.handle(payload["text"])
+                result = self.operator.handle(payload["text"], **self._actor_kwargs())
             self._send_json(200, result)
             return
 

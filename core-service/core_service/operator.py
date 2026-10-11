@@ -1979,7 +1979,7 @@ class KarmoOperator:
             return write_failure
         return self.memory_status
 
-    def handle(self, text: str, on_token=None) -> dict:
+    def handle(self, text: str, on_token=None, actor: str | None = None) -> dict:
         """on_token, when given, receives the model's answer text piece by
         piece as it is written (None means: clear what was sent so far). The
         returned dict is still the authoritative final answer."""
@@ -1987,6 +1987,7 @@ class KarmoOperator:
         self._turn_sources = ""
         started = time.monotonic()
         self._start_trace()
+        self._turn_actor = actor
         try:
             result = self._handle(text)
             if self._turn_sources and isinstance(result, dict) and result.get("kind") == "chat" \
@@ -2043,6 +2044,7 @@ class KarmoOperator:
             "model_ms": total("model_ms"),
             "latency_ms": int((time.monotonic() - started) * 1000),
             "error": result.get("error"),
+            "actor": getattr(self, "_turn_actor", None),
         }
         try:
             return self.memory_backend.record_turn(trace)

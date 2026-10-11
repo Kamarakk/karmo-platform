@@ -378,8 +378,8 @@ class DurableMemoryBackend:
                     """
                     INSERT INTO public.karmo_turn_trace
                         (question, answer, route, tools, model, host, model_calls,
-                         prompt_tokens, output_tokens, model_ms, latency_ms, error)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         prompt_tokens, output_tokens, model_ms, latency_ms, error, actor)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
@@ -395,6 +395,7 @@ class DurableMemoryBackend:
                         trace.get("model_ms"),
                         int(trace.get("latency_ms") or 0),
                         (str(trace["error"])[:200] if trace.get("error") else None),
+                        (str(trace["actor"])[:200] if trace.get("actor") else None),
                     ),
                 )
                 return int(cur.fetchone()[0])

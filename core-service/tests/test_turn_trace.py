@@ -127,3 +127,27 @@ def test_health_reports_brain_and_memory():
     assert health["brain"] == "imac"
     assert health["memory_status"] == "ACTIVE"
     assert "deployed_sha" in health
+
+
+def test_tailnet_actor_names_the_device_and_login():
+    from types import SimpleNamespace
+
+    from core_service.webui import _ACTOR_CACHE, tailnet_actor
+    _ACTOR_CACHE.clear()
+    calls = []
+
+    def runner(cmd, **kwargs):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout=json.dumps(
+            {"Node": {"ComputedName": "iphone-15"}, "UserProfile": {"LoginName": "kamarakk@gmail.com"}}))
+
+    assert tailnet_actor("100.64.0.9", runner=runner) == "iphone-15 (kamarakk@gmail.com)"
+    assert tailnet_actor("100.64.0.9", runner=runner) == "iphone-15 (kamarakk@gmail.com)"
+    assert len(calls) == 1  # cached
+    assert tailnet_actor("127.0.0.1", runner=runner) is None
+
+
+def test_actor_is_recorded_on_the_trace():
+    memory = TraceMemory()
+    KarmoOperator(model_client=BrainClient(), memory_backend=memory).handle("hello", actor="iphone-15 (k)")
+    assert memory.traces[0]["actor"] == "iphone-15 (k)"
