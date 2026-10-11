@@ -43,6 +43,7 @@ import tempfile
 
 from .control import CapabilityClass
 from .delegation_cache import get_default_cache
+from .delegation_runner import DelegationRunnerError, claude_binary, run_kwargs
 
 ASK_CLAUDE_TOOL = "karmo.delegate.ask_claude"
 TOOL_VERSION = "1.0.0"
@@ -147,15 +148,16 @@ def _invoke_claude_cli(question: str, *, image_bytes: bytes | None = None, image
                 image_file.write(image_bytes)
             prompt = f"{question}\n\n(The relevant image is at ./{image_filename} in your current directory.)"
         result = subprocess.run(
-            ["claude", "-p", prompt, "--permission-prompts", "none", "--output-format", "json"],
+            [claude_binary(), "-p", prompt, "--permission-prompts", "none", "--output-format", "json"],
             cwd=workdir,
             capture_output=True,
             text=True,
             timeout=TIMEOUT_SECONDS,
+            **run_kwargs(workdir),
         )
     except subprocess.TimeoutExpired as exc:
         raise AskClaudeCapabilityError(f"claude CLI timed out after {TIMEOUT_SECONDS}s") from exc
-    except OSError as exc:
+    except (OSError, DelegationRunnerError) as exc:
         raise AskClaudeCapabilityError(f"claude CLI could not be started: {exc}") from exc
     finally:
         shutil.rmtree(workdir, ignore_errors=True)

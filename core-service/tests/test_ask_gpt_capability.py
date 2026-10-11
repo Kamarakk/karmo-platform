@@ -226,3 +226,60 @@ def test_runs_in_a_fresh_temp_directory_and_cleans_up(monkeypatch):
     import os
     assert len(seen_workdirs) == 1
     assert not os.path.exists(seen_workdirs[0]), "temp workdir must be cleaned up after the call"
+
+
+# --- binary path + dedicated user (core_service.delegation_runner) ---------
+
+
+def _capture_run(monkeypatch):
+    seen = {}
+
+    class _Result:
+        returncode = 0
+        stdout = '{"type": "item.completed", "item": {"type": "agent_message", "text": "ok"}}\n'
+        stderr = ""
+
+    def _run(argv, **kwargs):
+        seen["argv"] = argv
+        seen["kwargs"] = kwargs
+        return _Result()
+
+    monkeypatch.setattr(ask_gpt_capability.subprocess, "run", _run)
+    monkeypatch.setattr(ask_gpt_capability.shutil, "rmtree", lambda *a, **k: None)
+    return seen
+
+
+def test_without_a_dedicated_user_the_call_is_unchanged(monkeypatch):
+    monkeypatch.delenv("KARMO_DELEGATE_CLI_USER", raising=False)
+    monkeypatch.delenv("KARMO_CODEX_BIN", raising=False)
+    seen = _capture_run(monkeypatch)
+
+    assert handler({"question": "anything"})["answer"] == "ok"
+    assert seen["argv"][0] == "codex"
+    assert "user" not in seen["kwargs"] and "env" not in seen["kwargs"]
+
+
+def test_dedicated_user_drops_privileges_and_uses_its_own_home(monkeypatch):
+    from core_service import delegation_runner
+
+    class _FakePasswd:
+        pw_name = "karmo-ask"
+        pw_uid = 999
+        pw_gid = 998
+        pw_dir = "/var/lib/karmo-ask"
+
+    monkeypatch.setenv("KARMO_DELEGATE_CLI_USER", "karmo-ask")
+    monkeypatch.setenv("KARMO_CODEX_BIN", "/usr/local/bin/codex")
+    monkeypatch.setattr(delegation_runner.pwd, "getpwnam", lambda name: _FakePasswd())
+    monkeypatch.setattr(delegation_runner.os, "geteuid", lambda: 0)
+    chowned = []
+    monkeypatch.setattr(delegation_runner.os, "chown", lambda path, uid, gid: chowned.append((path, uid, gid)))
+    seen = _capture_run(monkeypatch)
+
+    assert handler({"question": "anything"})["answer"] == "ok"
+    assert seen["argv"][0] == "/usr/local/bin/codex"
+    kwargs = seen["kwargs"]
+    assert kwargs["user"] == 999 and kwargs["group"] == 998 and kwargs["extra_groups"] == []
+    assert kwargs["env"]["HOME"] == "/var/lib/karmo-ask"
+    assert kwargs["stdin"] is subprocess.DEVNULL
+    assert chowned == [(kwargs["cwd"], 999, 998)]

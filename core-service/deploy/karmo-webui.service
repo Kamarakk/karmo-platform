@@ -10,6 +10,10 @@ ExecStart=/usr/bin/python3 -m core_service webui tailscale-https
 Restart=on-failure
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
+# ask_claude/ask_gpt spawn their CLIs as this non-root account (see
+# core_service/delegation_runner.py). It must exist and be logged in to
+# both CLIs; /etc/karmo/core is 700 root, so it cannot read secrets.
+Environment=KARMO_DELEGATE_CLI_USER=karmo-ask
 NoNewPrivileges=true
 PrivateTmp=true
 
