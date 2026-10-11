@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass
 
 from .ask_claude_capability import ASK_CLAUDE_TOOL
@@ -837,6 +838,17 @@ class KarmoOperator:
             registry=self.registry,
             approval_engine=ApprovalEngine(),
         )
+        self._turn_tools: list[str] = []
+        self._turn_route: str | None = None
+        _dispatch = self.dispatcher.dispatch
+
+        def _traced_dispatch(*args, **kwargs):
+            tool_id = kwargs.get("tool_id")
+            if tool_id and tool_id not in self._turn_tools:
+                self._turn_tools.append(str(tool_id))
+            return _dispatch(*args, **kwargs)
+
+        self.dispatcher.dispatch = _traced_dispatch
         self.dispatcher.bind(KARMOLAB_STATUS_TOOL, KARMOLAB_STATUS_VERSION, self.status_reader)
         self.dispatcher.bind(BLOOMBOSS_REPORT_TOOL, BLOOMBOSS_TOOL_VERSION, bloomboss_report_handler)
         self.dispatcher.bind(ASK_CLAUDE_TOOL, ASK_CLAUDE_TOOL_VERSION, ask_claude_handler)
@@ -1938,6 +1950,8 @@ class KarmoOperator:
         returned dict is still the authoritative final answer."""
         self._on_token, self._streamed_any = on_token, False
         self._turn_sources = ""
+        started = time.monotonic()
+        self._start_trace()
         try:
             result = self._handle(text)
             if self._turn_sources and isinstance(result, dict) and result.get("kind") == "chat" \
@@ -1947,9 +1961,63 @@ class KarmoOperator:
             # its whole budget thinking); never show Kamara a blank reply.
             if isinstance(result, dict) and not str(result.get("message") or "").strip():
                 result["message"] = "I didn't come up with an answer to that. Please try asking it another way."
+            if isinstance(result, dict):
+                trace_id = self._record_trace(text, result, started)
+                if trace_id is not None:
+                    result["trace_id"] = trace_id
             return result
         finally:
             self._on_token = None
+
+    def _usage_clients(self) -> list:
+        """The underlying Ollama clients whose per-call usage feeds the trace."""
+        clients = [self.model_client]
+        for name in ("primary", "fallback"):
+            inner = getattr(self.model_client, name, None)
+            if inner is not None:
+                clients.append(inner)
+        return [c for c in clients if isinstance(getattr(c, "usage", None), list)]
+
+    def _start_trace(self) -> None:
+        self._turn_tools = []
+        self._turn_route = None
+        if hasattr(self.model_client, "last_host"):
+            self.model_client.last_host = None
+        for client in self._usage_clients():
+            client.usage.clear()
+
+    def _record_trace(self, text: str, result: dict, started: float) -> int | None:
+        """One karmo_turn_trace row per turn (route, tools, model, host,
+        tokens, time). Never lets a logging failure cost Kamara his answer."""
+        calls = [u for c in self._usage_clients() for u in c.usage]
+
+        def total(key):
+            values = [u[key] for u in calls if u.get(key) is not None]
+            return sum(values) if values else None
+
+        trace = {
+            "question": text,
+            "answer": str(result.get("message") or ""),
+            "route": self._turn_route or ("shortcut" if result.get("model") is None else None),
+            "tools": [tool.rsplit(".", 1)[-1] for tool in self._turn_tools],
+            "model": result.get("model") or (calls[-1]["model"] if calls else None),
+            "host": getattr(self.model_client, "last_host", None),
+            "model_calls": len(calls),
+            "prompt_tokens": total("prompt_tokens"),
+            "output_tokens": total("output_tokens"),
+            "model_ms": total("model_ms"),
+            "latency_ms": int((time.monotonic() - started) * 1000),
+            "error": result.get("error"),
+        }
+        try:
+            return self.memory_backend.record_turn(trace)
+        except Exception as exc:  # noqa: BLE001
+            print(f"KARMO turn trace not saved: {type(exc).__name__}", file=sys.stderr, flush=True)
+            return None
+
+    def rate_turn(self, trace_id: int, rating: int) -> bool:
+        """Kamara's thumbs up (1) or down (-1) on one answer."""
+        return self.memory_backend.rate_turn(trace_id, rating)
 
     def _handle(self, text: str) -> dict:
         text = text.strip()
@@ -1978,6 +2046,7 @@ class KarmoOperator:
         route = self._model_route(text)
         if route is not None:
             return self._handle_route(text, route)
+        self._turn_route = "keywords"
         return self._handle_by_keywords(text)
 
     def _model_route(self, text: str) -> str | None:
@@ -1989,6 +2058,7 @@ class KarmoOperator:
             return None
         route = classify(client, text, self._last_question(), plant_names=known_cultivar_names())
         print(f"KARMO route: {route or 'keywords'}", file=sys.stderr, flush=True)
+        self._turn_route = route or "keywords"
         return route
 
     def _refusal(self) -> dict:

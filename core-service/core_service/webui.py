@@ -74,6 +74,7 @@ _PAGE = """<!doctype html>
 body{font-family:monospace;max-width:720px;margin:2rem auto;padding:0 1rem;background:#111;color:#ddd}
 #log{white-space:pre-wrap;line-height:1.4;margin-bottom:1rem}
 .you{color:#8ab4f8}.karmo{color:#8fdc8f}.status{color:#888;font-size:0.85em}
+.rate button{min-height:auto;padding:0.1rem 0.5rem;margin-right:0.3rem}
 input[type=text],input:not([type]){width:100%;padding:0.5rem;font-family:monospace;background:#222;color:#ddd;border:1px solid #444}
 .row{display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;flex-wrap:wrap}
 .row input[type=text]{flex:1}
@@ -228,12 +229,27 @@ function makeSpeaker() {
     },
   };
 }
+// Thumbs up/down on an answer: saved on that turn's trace row, so bad
+// answers can be found and fixed later (karmo_turn_trace).
+function rateButtons(traceId) {
+  const d = line('status rate', '');
+  for (const [label, rating] of [['👍', 1], ['👎', -1]]) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = async () => {
+      const res = await fetch('/feedback', {method: 'POST', body: JSON.stringify({trace_id: traceId, rating})});
+      d.textContent = res.ok ? (rating > 0 ? 'thanks' : 'noted, this one will be looked at') : 'could not save rating';
+    };
+    d.appendChild(b);
+  }
+}
 async function send(text) {
   line('you', 'you> ' + text);
   const div = line('karmo', 'KARMO> ...');
   const speaker = document.getElementById('speak').checked ? makeSpeaker() : null;
   const data = await streamChat(text, div, speaker);
   if (data.memory_status) line('status', 'memory=' + data.memory_status);
+  if (data.trace_id) rateButtons(data.trace_id);
   if (speaker) speaker.finish(data.message || '');
 }
 box.addEventListener('keydown', async (e) => {
@@ -486,6 +502,19 @@ class _Handler(BaseHTTPRequestHandler):
             if payload is None:
                 return
             self._stream_chat(payload["text"])
+            return
+
+        if self.path == "/feedback":
+            payload = self._read_json_body(MAX_BODY_BYTES, {"trace_id": int, "rating": int})
+            if payload is None:
+                return
+            try:
+                with _OPERATOR_LOCK:
+                    saved = self.operator.rate_turn(payload["trace_id"], payload["rating"])
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+                return
+            self._send_json(200, {"saved": bool(saved)})
             return
 
         if self.path == "/vision":
