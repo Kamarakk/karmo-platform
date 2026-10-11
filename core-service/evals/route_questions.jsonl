@@ -1,0 +1,106 @@
+# Each line: a question and the route KARMO should pick (core_service/intent_router.ROUTES). "also" lists other acceptable routes.
+{"q": "What humidity does a variegated Alocasia need?", "route": "chat"}
+{"q": "Why are the leaves on my Anthurium turning yellow?", "route": "chat"}
+{"q": "How often should I water a Philodendron in winter?", "route": "chat"}
+{"q": "What's the best soil mix for Monstera?", "route": "chat"}
+{"q": "How do I get rid of thrips on my plants?", "route": "chat"}
+{"q": "What temperature is too cold for Alocasia?", "route": "chat"}
+{"q": "How do I propagate a Pothos?", "route": "chat"}
+{"q": "Is my tent light schedule of 6pm to 6am okay for seedlings?", "route": "chat"}
+{"q": "How does a VLAN work?", "route": "chat"}
+{"q": "What's the difference between OSPF and BGP?", "route": "chat"}
+{"q": "Explain what a SIEM does in one paragraph.", "route": "chat", "also": ["heavy"]}
+{"q": "What is conditional access in Entra ID?", "route": "chat"}
+{"q": "How do I kill weeds in my yard without hurting my dog?", "route": "chat"}
+{"q": "Should I upgrade my iPhone this year?", "route": "chat"}
+{"q": "Can you merge these two lists: apples, pears and pears, plums?", "route": "chat"}
+{"q": "How do I enable dark mode on Windows 11?", "route": "chat"}
+{"q": "What are my kids' names?", "route": "chat"}
+{"q": "Who am I?", "route": "chat"}
+{"q": "What did I ask you to remember about the tent light?", "route": "chat"}
+{"q": "Tell me a joke about clouds.", "route": "chat"}
+{"q": "What's a good name for a cat?", "route": "chat"}
+{"q": "How many ounces are in a cup?", "route": "chat"}
+{"q": "What does EDR stand for?", "route": "chat"}
+{"q": "Give me three tips for running a better team meeting.", "route": "chat", "also": ["heavy"]}
+{"q": "How do I handle an employee who keeps missing deadlines?", "route": "chat", "also": ["heavy"]}
+{"q": "What is the capital of Australia?", "route": "chat"}
+{"q": "How long should I boil an egg for a soft yolk?", "route": "chat"}
+{"q": "Is it bad to repot a plant while it's flowering?", "route": "chat"}
+{"q": "What causes root rot?", "route": "chat"}
+{"q": "Why do Alocasias go dormant?", "route": "chat"}
+{"q": "How do health checks work in a load balancer?", "route": "chat"}
+{"q": "What's the difference between RAM and storage?", "route": "chat"}
+{"q": "How do I restart my home router?", "route": "chat"}
+{"q": "What is a good morning routine?", "route": "chat"}
+{"q": "Do plants grow better under LED or fluorescent light?", "route": "chat"}
+{"q": "How are my Ninja Albos selling?", "route": "bloomboss"}
+{"q": "How many plants did we sell?", "route": "bloomboss"}
+{"q": "What's my profit so far?", "route": "bloomboss"}
+{"q": "What does BloomBoss say about suppliers?", "route": "bloomboss"}
+{"q": "What did I buy from Emgarden last time?", "route": "bloomboss"}
+{"q": "Which plant is my best seller?", "route": "bloomboss"}
+{"q": "How much inventory do I have left?", "route": "bloomboss"}
+{"q": "Tell me about the Ninja Albos.", "route": "bloomboss"}
+{"q": "What's my total revenue this month?", "route": "bloomboss"}
+{"q": "Which of my plants sold out?", "route": "bloomboss"}
+{"q": "How much did I spend on my last invoice?", "route": "bloomboss"}
+{"q": "Should I restock the Ninja Albo?", "route": "bloomboss", "also": ["price"]}
+{"q": "What's my margin on Anthuriums?", "route": "bloomboss"}
+{"q": "How many orders came in on Palmstreet?", "route": "bloomboss"}
+{"q": "Which cultivars am I losing money on?", "route": "bloomboss"}
+{"q": "How is the stock market doing today?", "route": "web"}
+{"q": "What's the weather in San Diego tomorrow?", "route": "web"}
+{"q": "Search online for the latest Ollama release.", "route": "web"}
+{"q": "What's the latest news on Microsoft 365 outages?", "route": "web"}
+{"q": "Who won the Padres game last night?", "route": "web"}
+{"q": "What's the current price of Bitcoin?", "route": "web"}
+{"q": "Is Palmstreet down right now?", "route": "web"}
+{"q": "Google the opening hours for Home Depot in Mission Valley.", "route": "web"}
+{"q": "What sold out at Costco this week?", "route": "web"}
+{"q": "How much profit does Apple make a year?", "route": "web"}
+{"q": "What's new in macOS Tahoe 26.6?", "route": "web", "also": ["chat"]}
+{"q": "Look up the current mortgage rates.", "route": "web"}
+{"q": "What should I price the Ninja Albo at?", "route": "price"}
+{"q": "What should I list my Thai Constellation at?", "route": "price"}
+{"q": "How much should I charge for a Philodendron Pink Princess?", "route": "price"}
+{"q": "What's a good price for my Anthurium Warocqueanum?", "route": "price"}
+{"q": "What price should I ask for a variegated Monstera cutting?", "route": "price"}
+{"q": "What's the KarmoLab status?", "route": "status"}
+{"q": "Is Worker02 online?", "route": "status"}
+{"q": "How much CPU is AI01 using?", "route": "status"}
+{"q": "Are all the docker containers running?", "route": "status"}
+{"q": "Is everything healthy on the KARMO servers?", "route": "status"}
+{"q": "How much disk space is left on the workers?", "route": "status"}
+{"q": "Are your services up?", "route": "status"}
+{"q": "Restart the ollama service on AI01.", "route": "change"}
+{"q": "Upgrade the qwen model on Worker01.", "route": "change"}
+{"q": "Disable the web search feature.", "route": "change"}
+{"q": "Delete the old backups on AI01.", "route": "change"}
+{"q": "Reboot Worker02.", "route": "change"}
+{"q": "Deploy the latest KARMO code.", "route": "change"}
+{"q": "Kill the stuck docker container.", "route": "change"}
+{"q": "What tasks are open?", "route": "tasks"}
+{"q": "Show me my to-do list.", "route": "tasks"}
+{"q": "What's left on my KARMO task list?", "route": "tasks"}
+{"q": "Do I have any tasks due?", "route": "tasks"}
+{"q": "List my open to-dos.", "route": "tasks"}
+{"q": "Use python to add up 17.5, 22 and 9.99.", "route": "run_code"}
+{"q": "Run a script that lists the first 20 prime numbers.", "route": "run_code"}
+{"q": "Write and run code that converts 72 Fahrenheit to Celsius.", "route": "run_code"}
+{"q": "Calculate 15% of 2,340 with python.", "route": "run_code"}
+{"q": "Execute this: print(sum(range(100)))", "route": "run_code"}
+{"q": "Write a bash script that pings every host in a list.", "route": "code_help"}
+{"q": "Explain what this regex does: ^\\d{3}-\\d{4}$", "route": "code_help", "also": ["chat"]}
+{"q": "Write a Python function that checks if a string is a palindrome.", "route": "code_help"}
+{"q": "Why does my PowerShell script say access denied when it reads the registry?", "route": "code_help", "also": ["chat"]}
+{"q": "Write a PowerShell command to list disabled users in Active Directory.", "route": "code_help"}
+{"q": "Fix this Python: for i in range(10) print(i)", "route": "code_help"}
+{"q": "Draft an email to my vendor about a late shipment.", "route": "heavy"}
+{"q": "Write a performance review summary for a network specialist who exceeded goals.", "route": "heavy"}
+{"q": "Compare Palo Alto and Fortinet firewalls for a college district in detail.", "route": "heavy"}
+{"q": "Write a step-by-step guide for onboarding a new PC support tech.", "route": "heavy"}
+{"q": "Write a product listing for a variegated Monstera for Palmstreet.", "route": "heavy"}
+{"q": "Help me plan a budget justification for replacing our core switches.", "route": "heavy"}
+{"q": "Write an incident report for a phishing attack that compromised two accounts.", "route": "heavy"}
+{"q": "Brainstorm ten names for my plant business Instagram posts.", "route": "heavy", "also": ["chat"]}

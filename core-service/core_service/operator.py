@@ -33,6 +33,7 @@ from .code_sandbox_capability import CODE_RUN_TOOL_ID, CODE_RUN_TOOL_VERSION, FI
 from .code_sandbox_capability import code_in, format_run, is_run_request, run_failed
 from .code_sandbox_capability import handler as code_run_handler
 from .code_sandbox_capability import manifest as code_run_manifest
+from .intent_router import classify, fast_client
 from .handoff import HANDOFF_ENABLED_FILE, handoff_enabled, is_heavy_task, tagged
 from .web_search_capability import SEARCH_WORDS as _WEB_SEARCH_WORDS
 from .web_search_capability import WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION
@@ -535,6 +536,15 @@ _DATA_MAP_SUMMARY = re.compile(
 # offered on every chat turn so a BloomBoss question is never missed because
 # of its wording. Accepted cost: its schema (~100 prompt tokens) on every
 # turn, a few seconds at this host's ~22 tokens/second.
+# With a model-chosen route (intent_router), these tools are offered only on
+# their own route; ask_claude/ask_gpt keep their by-name triggers.
+_ROUTE_TOOLS = {
+    "list_tasks": "tasks",
+    "bloomboss_report": "bloomboss",
+    "web_search": "web",
+    "ask_local_coder": "code_help",
+}
+
 _TOOL_TRIGGER_WORDS = {
     "list_tasks": re.compile(r"\b(task|tasks|to-do|todo|to do)\b", re.IGNORECASE),
     "web_search": _WEB_SEARCH_WORDS,
@@ -570,9 +580,23 @@ _BLOOMBOSS_BUSINESS_WORDS = re.compile(
     re.IGNORECASE,
 )
 _OWNER_WORDS = re.compile(r"\b(i|my|we|our)\b", re.IGNORECASE)
+# Plant-care questions are not sales lookups (2026-10-06: "what humidity does
+# a variegated alocasia need?" was answered from BloomBoss figures). A care
+# word with no business word and no BloomBoss name goes to normal chat.
+_BLOOMBOSS_NAME_WORDS = re.compile(
+    r"\b(bloom\s*b\w*oss|emgarden|palm\s*street|pretty\s+rare|my business|our business)\b", re.IGNORECASE,
+)
+_PLANT_CARE_WORDS = re.compile(
+    r"\b(humidity|humid|water|watering|watered|light|lighting|soil|repot\w*|fertili[sz]\w*|care|caring"
+    r"|pests?|thrips|mites?|temperatures?|root\s*rot|yellow\w*|leaf|leaves|mist\w*|dorman\w*)\b",
+    re.IGNORECASE,
+)
 
 
 def _is_bloomboss_question(text: str) -> bool:
+    if (_PLANT_CARE_WORDS.search(text) and not _BLOOMBOSS_BUSINESS_WORDS.search(text)
+            and not _BLOOMBOSS_NAME_WORDS.search(text)):
+        return False
     if _BLOOMBOSS_ANCHOR_WORDS.search(text):
         return True
     if _BLOOMBOSS_BUSINESS_WORDS.search(text) and _OWNER_WORDS.search(text):
@@ -1247,7 +1271,7 @@ class KarmoOperator:
             response["memory_status"] = memory_status
         return response
 
-    def _exposed_tool_schemas(self, text: str) -> list[dict]:
+    def _exposed_tool_schemas(self, text: str, route: str | None = None) -> list[dict]:
         """The tool list actually offered to the model this call -- filtered by
         what's currently configured (e.g. list_tasks needs a live task_store),
         and by a cheap keyword trigger per tool (see _TOOL_TRIGGER_WORDS) --
@@ -1257,9 +1281,14 @@ class KarmoOperator:
         for name, entry in _CHAT_EXPOSED_TOOLS.items():
             if entry.get("requires") == "task_store" and self.task_store is None:
                 continue
-            trigger = _TOOL_TRIGGER_WORDS.get(name)
-            if trigger is not None and not trigger.search(text):
-                continue
+            if route is not None and name in _ROUTE_TOOLS:
+                # Model-chosen route: the route decides, not keywords.
+                if _ROUTE_TOOLS[name] != route:
+                    continue
+            else:
+                trigger = _TOOL_TRIGGER_WORDS.get(name)
+                if trigger is not None and not trigger.search(text):
+                    continue
             schemas.append(entry["schema"])
         return schemas
 
@@ -1402,7 +1431,7 @@ class KarmoOperator:
             return outcome.result
         return ask
 
-    def _prefetched_tool_messages(self, text: str, tools: list[dict]) -> list[dict]:
+    def _prefetched_tool_messages(self, text: str, tools: list[dict], route: str | None = None) -> list[dict]:
         """For a BloomBoss question (see _BLOOMBOSS_QUESTION_WORDS), runs
         bloomboss_report before the model is asked and returns it as an
         assistant tool call plus its tool result -- the same message shape
@@ -1411,8 +1440,13 @@ class KarmoOperator:
         a short digest of the figures (bloomboss_chat_digest), not the full
         report -- see its docstring for the measured cost."""
         offered = {t["function"]["name"] for t in tools}
-        bloomboss = "bloomboss_report" in offered and _is_bloomboss_question(text)
-        if "web_search" in offered and is_search_question(text) and (wants_the_web(text) or not bloomboss):
+        if route is not None:
+            web = route == "web" and "web_search" in offered
+            bloomboss = route == "bloomboss" and "bloomboss_report" in offered
+        else:
+            bloomboss = "bloomboss_report" in offered and _is_bloomboss_question(text)
+            web = "web_search" in offered and is_search_question(text) and (wants_the_web(text) or not bloomboss)
+        if web:
             return self._prefetched_web_search(text)
         if not bloomboss:
             return []
@@ -1580,7 +1614,7 @@ class KarmoOperator:
         except Exception as exc:
             log_decision_recording_failure(exc)
 
-    def _chat(self, text: str) -> dict:
+    def _chat(self, text: str, route: str | None = None) -> dict:
         # Model Router Phase E (Section 4) -- one correlation ID for this
         # whole chat turn, carried into the shadow/decision audit record.
         # Never derived from or containing request content.
@@ -1729,9 +1763,9 @@ class KarmoOperator:
             )
         messages.append({"role": "system", "content": current_date_line()})
         messages.append({"role": "user", "content": text})
-        tools = self._exposed_tool_schemas(text)
+        tools = self._exposed_tool_schemas(text, route)
         self._search_failed = False
-        prefetched = self._prefetched_tool_messages(text, tools)
+        prefetched = self._prefetched_tool_messages(text, tools, route)
         if self._search_failed:
             # Without results the local model invents an answer (seen live
             # 2026-10-06), so say plainly that the search didn't work.
@@ -1802,7 +1836,9 @@ class KarmoOperator:
                         self._combine_memory_status(read_failure, write_failure),
                     )
 
-        if prefetched and not tools:
+        # The small phrasing model only earns its keep on AI01's CPU; with the
+        # iMac answering (a model-chosen route), qwen3:8b words it directly.
+        if prefetched and not tools and route is None:
             phrased = self._phrase_answer(messages, deadline)
             if phrased is not None:
                 answer, model_id = phrased
@@ -1939,14 +1975,64 @@ class KarmoOperator:
         repo_url = repo_scan_url(text)
         if repo_url is not None:
             return self._repo_scan(repo_url)
+        route = self._model_route(text)
+        if route is not None:
+            return self._handle_route(text, route)
+        return self._handle_by_keywords(text)
+
+    def _model_route(self, text: str) -> str | None:
+        """The route qwen3:8b on the iMac picks (see intent_router), or None
+        when the iMac is down or its reply is unusable -- the keyword rules
+        below then decide, exactly as before."""
+        client = fast_client(self.model_client)
+        if client is None:
+            return None
+        route = classify(client, text, self._last_question(), plant_names=known_cultivar_names())
+        print(f"KARMO route: {route or 'keywords'}", file=sys.stderr, flush=True)
+        return route
+
+    def _refusal(self) -> dict:
+        return {
+            "kind": "refusal",
+            "message": (
+                "KARMO is in READ-only activation mode. I can inspect and explain, but I will not "
+                "change services, files, software, network state, or infrastructure."
+            ),
+        }
+
+    def _handle_route(self, text: str, route: str) -> dict:
+        """Runs the existing handler for the route the model chose."""
+        if route == "change":
+            return self._refusal()
+        if route == "status":
+            return self._read_status()
+        if route == "run_code":
+            return self._code_task(text)
+        if route == "price":
+            priced = self._price_suggestion(text)
+            if priced is not None:
+                return priced
+        if route == "bloomboss":
+            direct = self._direct_bloomboss_answer(text)
+            if direct is not None:
+                return direct
+        can_hand_off = (handoff_enabled(self.handoff_enabled_file)
+                        and route not in ("bloomboss", "price", "web"))
+        if can_hand_off and route == "heavy":
+            handed = self._hand_off(text)
+            if handed is not None:
+                return handed
+        result = self._chat(text, route=route)
+        if can_hand_off and isinstance(result, dict) and result.get("error"):
+            handed = self._hand_off(text)
+            if handed is not None:
+                return handed
+        return result
+
+    def _handle_by_keywords(self, text: str) -> dict:
+        """Routing while the iMac is down: the keyword rules, unchanged."""
         if _is_write_request(text):
-            return {
-                "kind": "refusal",
-                "message": (
-                    "KARMO is in READ-only activation mode. I can inspect and explain, but I will not "
-                    "change services, files, software, network state, or infrastructure."
-                ),
-            }
+            return self._refusal()
         if _is_status_request(text):
             return self._read_status()
         if is_run_request(text):

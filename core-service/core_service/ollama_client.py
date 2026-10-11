@@ -219,6 +219,10 @@ class FailoverOllamaClient:
         self._state = (is_up, now)
         return is_up
 
+    def primary_available(self) -> bool:
+        """True while the iMac answered its last ping (cached, see above)."""
+        return self._primary_up()
+
     def _call(self, method: str, kwargs: dict):
         if self._primary_up():
             started = self._clock()
