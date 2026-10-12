@@ -15,7 +15,7 @@ import re
 ROUTER_MODEL = "qwen3:8b"
 ROUTER_TIMEOUT_SECONDS = 10.0
 
-ROUTES = ("bloomboss", "price", "web", "status", "change", "tasks", "run_code", "code_help", "heavy", "chat")
+ROUTES = ("memory", "bloomboss", "price", "web", "status", "change", "tasks", "run_code", "code_help", "heavy", "chat")
 
 ROUTER_PROMPT = """You decide where Kamara's message to KARMO goes. Kamara is a network supervisor who also runs \
 BloomBoss, a small rare-plant business (Alocasia, Anthurium, Philodendron, Monstera) that buys from suppliers \
@@ -23,6 +23,7 @@ like Emgarden and sells on Palmstreet. KARMO is his private assistant running on
 
 Reply with exactly one route name and nothing else.
 
+memory: what Kamara told KARMO before or asked it to remember: "what do you know about...", "did I tell you...", "when did I say...", a shipment, order or date he mentioned, or anything about his own past conversations with KARMO.
 bloomboss: his own BloomBoss business records: his sales, orders, inventory, stock, suppliers, invoices, \
 profit, best sellers, or how a plant he sells is doing in sales.
 price: what price he should charge or list one of his plants at.
@@ -53,6 +54,8 @@ Use python to add up 17.5, 22 and 9.99 -> run_code
 Write a bash script that pings every host in a list -> code_help
 Draft an email to my vendor about a late shipment -> heavy
 What are my kids' names? -> chat
+What do you know about Arisa's Aug 30 shipment? -> memory
+Did I tell you when my dog's vet visit is? -> memory
 How does a VLAN work? -> chat"""
 
 _ROUTE_WORD = re.compile(r"[a-z_]+")
