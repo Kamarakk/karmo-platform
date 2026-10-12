@@ -33,7 +33,7 @@ echo "== tests"
 tail -1 "$WORK/tests.log"
 
 echo "$SHA" >"$WORK/core-service/DEPLOY_SHA"
-tar -czf "$WORK/core.tar.gz" -C "$WORK/core-service" .
+COPYFILE_DISABLE=1 tar -czf "$WORK/core.tar.gz" -C "$WORK/core-service" .   # no macOS ._ files on AI01
 
 echo "== migrations"
 LIVE_MIGRATIONS="$(ssh -n -o BatchMode=yes "$HOST" 'ls /opt/karmo/core-service/core_service/migrations 2>/dev/null' || true)"
