@@ -16,6 +16,20 @@ Environment=PYTHONUNBUFFERED=1
 Environment=KARMO_DELEGATE_CLI_USER=karmo-ask
 NoNewPrivileges=true
 PrivateTmp=true
+# Sandbox (Fable review item 7, 2026-10-11): the whole filesystem is
+# read-only to this service except the paths it really writes -- the
+# Tailscale cert it renews, the upload library, and the karmo-ask home
+# the Claude/GPT CLIs run in ("-" = skip if it doesn't exist yet).
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=-/etc/karmo/core/tailscale-tls -/var/lib/karmo/uploads -/var/lib/karmo-ask
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
 
 [Install]
 WantedBy=multi-user.target
