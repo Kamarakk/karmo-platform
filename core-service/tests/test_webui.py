@@ -443,7 +443,10 @@ def test_mic_sends_the_transcript_to_karmo_without_waiting_for_enter():
 
 def test_spoken_reply_reuses_a_player_unlocked_during_the_tap():
     page = webui._PAGE.decode()
-    assert page.count("unlockAudio();") == 2  # Enter and mic tap
+    # Every tap that can lead to a spoken reply unlocks the player first.
+    for tap in ("function sendFromBox() {\n  unlockAudio();", "$('mic').addEventListener('click', async () => {\n  unlockAudio();",
+                "async function startTalk() {\n  unlockAudio();"):
+        assert tap in page
     assert "player.play().catch(" in page
     assert "new Audio('data:audio/wav" not in page
 
@@ -486,3 +489,53 @@ def test_upload_checks_size_before_sending_and_reports_refusals():
     assert "const MAX_UPLOAD_BYTES = 14000000;" in page
     assert "file.size > MAX_UPLOAD_BYTES" in page
     assert "the server refused it (HTTP " in page
+
+
+def test_page_script_parses(tmp_path):
+    # A JS syntax error kills the whole page (text box and mic stop working).
+    import re
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not installed")
+    script = re.search(r"<script>(.*)</script>", webui._PAGE.decode("utf-8"), re.S).group(1)
+    path = tmp_path / "page.js"
+    path.write_text(script, encoding="utf-8")
+    assert subprocess.run([node, "--check", str(path)], capture_output=True).returncode == 0
+
+
+def test_page_has_chat_talk_and_save_files():
+    page = webui._PAGE.decode("utf-8")
+    assert 'id="tabchat"' in page and 'id="tabtalk"' in page and 'id="orb"' in page
+    assert 'id="doc" type="file" multiple' in page and "saveFiles(files)" in page
+    assert "window.addEventListener('drop'" in page
+    assert "Any file type, up to 14 MB each" in page
+
+
+def test_replies_are_escaped_before_formatting():
+    page = webui._PAGE.decode("utf-8")
+    assert "const lines = esc(src || '').split('\\n');" in page
+
+
+def test_home_screen_manifest_and_icons(running_server):
+    server, _ = running_server
+    with urllib.request.urlopen(_url(server, "/manifest.webmanifest")) as resp:
+        manifest = json.loads(resp.read())
+    assert manifest["display"] == "standalone" and manifest["start_url"] == "/"
+    for icon in manifest["icons"]:
+        with urllib.request.urlopen(_url(server, icon["src"])) as resp:
+            assert resp.headers["Content-Type"] == "image/png"
+            body = resp.read()
+        size = int(icon["sizes"].split("x")[0])
+        assert body[:8] == b"\x89PNG\r\n\x1a\n"
+        assert int.from_bytes(body[16:20], "big") == size
+
+
+def test_page_is_not_cached(running_server):
+    server, _ = running_server
+    with urllib.request.urlopen(_url(server, "/")) as resp:
+        assert resp.headers["Cache-Control"] == "no-cache"
+        page = resp.read()
+    assert b'rel="manifest"' in page and b'rel="apple-touch-icon"' in page

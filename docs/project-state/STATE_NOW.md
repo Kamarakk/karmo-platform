@@ -30,6 +30,7 @@ The KVE01–03 boxes are identical: i7-10700, 15 GiB RAM, no GPU. Brain upgrade 
 - Media chunking on AI01 and Worker01. The heartbeat fix is on both workers.
 
 ## Built but not live
+- **New web app** (2026-10-17, Kamara picked "A with B as its Talk tab", plus saving files): `core_service/webui.py` page rebuilt as a chat app (formatted replies, Hear/Copy/thumbs, history kept on the device, + sheet for photo, camera and multi-file save with drag-and-drop, quick asks) and a hands-free Talk tab (listens until you stop, speaks the answer, listens again; tap to cut in; 10 s of silence ends it). Installs to the iPhone home screen (manifest + icons, no service worker). Same endpoints; deploy = core code + restart `karmo-webui`. Live check needed: Talk on iPhone (speaker volume with the mic open).
 - **Model-chosen routing** (2026-10-07, Kamara's "rebuild" decision): while the iMac answers, qwen3:8b picks one route per message (`core_service/intent_router.py`: bloomboss, price, web, status, change, tasks, run_code, code_help, heavy, chat) and the operator runs that route's existing handler; the llama3.2:3b phrasing step is skipped. iMac down or an unusable reply: the keyword rules decide, unchanged. Scorer: `core-service/evals/route_eval.py` with 105 questions in `route_questions.jsonl` (keyword rules: 88/105).
 - **Know Karmo** (draft PR on branch `claude/project-thread-1bjgsr`):
   - owner profile file and "remember / list / forget" facts
