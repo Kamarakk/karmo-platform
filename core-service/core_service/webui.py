@@ -962,7 +962,8 @@ function showPlace(p) {
   const q = encodeURIComponent(p.name || (p.lat + ',' + p.lon));
   return '<b>' + esc(p.name || 'Place') + '</b><small>' + p.lat + ', ' + p.lon + '</small>' +
     '<iframe title="Map" loading="lazy" referrerpolicy="no-referrer" src="' + esc(embed) + '"></iframe>' +
-    '<div class="links">' + link('https://maps.apple.com/?ll=' + p.lat + ',' + p.lon + '&q=' + q + '&t=k', 'Satellite view') +
+    '<div class="links">' + link('http://karmo-ai01.tail2d74d7.ts.net:4173/#lat=' + p.lat + '&lon=' + p.lon + '&alt=1500&pitch=-35', 'God’s Eye 3D') +
+    link('https://maps.apple.com/?ll=' + p.lat + ',' + p.lon + '&q=' + q + '&t=k', 'Satellite view') +
     link('https://www.google.com/maps/search/?api=1&query=' + p.lat + ',' + p.lon, 'Google Maps') +
     link('https://www.openstreetmap.org/?mlat=' + p.lat + '&mlon=' + p.lon + '#map=16/' + p.lat + '/' + p.lon, 'OpenStreetMap') + '</div>';
 }

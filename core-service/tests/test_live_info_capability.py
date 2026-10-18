@@ -155,6 +155,7 @@ def test_page_has_the_tools_panel_and_its_script_parses(tmp_path):
     assert 'id="opentools"' in page and 'id="tools"' in page
     for tool in ("place", "weather", "market", "cyber"):
         assert f'data-tool="{tool}"' in page
+    assert "karmo-ai01.tail2d74d7.ts.net:4173/#lat=" in page  # God's Eye 3D link on map results
     if shutil.which("node") is None:
         pytest.skip("node not installed")
     script = tmp_path / "page.js"
