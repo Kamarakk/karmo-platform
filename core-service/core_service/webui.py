@@ -196,6 +196,25 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
 .tctl{display:flex;gap:14px;align-items:center}
 .tctl .ib{width:52px;height:52px}
 #tend{background:var(--bad);border-color:var(--bad);color:#fff}
+#tools .card{max-height:88dvh;overflow-y:auto}
+.ttabs{display:flex;background:var(--raise);border-radius:999px;padding:3px;gap:2px}
+.ttabs button{flex:1;border:0;background:transparent;color:var(--muted);padding:6px 4px;border-radius:999px;font-weight:600;font-size:.8rem}
+.ttabs button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.tform{display:flex;gap:8px}
+.tform input{flex:1;min-width:0;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:16px var(--font)}
+.tform button{flex:none;border:0;border-radius:12px;background:var(--accent);color:var(--on-accent);font-weight:700;padding:0 16px}
+#tout{display:grid;gap:8px;font-size:.9rem;min-height:3em}
+#tout .muted,#tout small{color:var(--muted)}
+#tout iframe{width:100%;height:260px;border:1px solid var(--line);border-radius:14px;background:var(--raise)}
+#tout .links{display:flex;gap:6px;flex-wrap:wrap}
+#tout .links a{font:500 .78rem var(--font);background:var(--raise);color:var(--fg);border-radius:8px;padding:6px 10px;text-decoration:none}
+#tout .big{font-size:2.2rem;font-weight:700;line-height:1.1}
+#tout .row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+#tout .row:last-child{border-bottom:0}
+#tout .up{color:var(--ok)}#tout .down{color:var(--bad)}
+#tout .cve{padding:8px 0;border-bottom:1px solid var(--line)}#tout .cve:last-child{border-bottom:0}
+#tout .cve a{color:var(--cool);font-weight:600}
+#tout .tag{font-size:.7rem;background:var(--bad);color:#fff;border-radius:6px;padding:1px 6px;margin-left:6px}
 @media (prefers-reduced-motion: reduce){.ring,.orb,.dots i{animation:none!important}.orb{transition:none}}
 </style></head>
 <body>
@@ -205,6 +224,7 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
     <div class="health" id="health" data-s=""><span class="dot"></span><span id="healthtext">Checking…</span></div>
   </div>
   <div class="tools">
+    <button class="ib" id="opentools" title="Tools: map, weather, markets, cyber" aria-label="Open tools: map, weather, markets, cyber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg></button>
     <button class="ib" id="speak" aria-pressed="false" title="Speak replies aloud" aria-label="Speak replies aloud"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></button>
     <div class="seg" role="group" aria-label="Mode">
       <button id="tabchat" aria-pressed="true">Chat</button>
@@ -250,6 +270,20 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
     <button class="opt" id="optfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M12 11v6M9 14l3-3 3 3"/></svg><span>Save files to KARMO<small>Any file type, up to __MAX_UPLOAD_MB__ MB each; KARMO files it under a label</small></span></button>
     <input id="docnote" type="text" placeholder="Note for saved files (optional), e.g. begonia for Palmstreet live">
     <button class="cancel" id="sheetx">Cancel</button>
+  </div>
+</div>
+<div class="sheet" id="tools" hidden>
+  <div class="card" role="dialog" aria-label="Tools">
+    <h3>Tools</h3>
+    <div class="ttabs" role="group" aria-label="Tool">
+      <button data-tool="place" aria-pressed="true">Map</button>
+      <button data-tool="weather" aria-pressed="false">Weather</button>
+      <button data-tool="market" aria-pressed="false">Markets</button>
+      <button data-tool="cyber" aria-pressed="false">Cyber</button>
+    </div>
+    <form class="tform" id="tform"><input id="tq" type="text" enterkeyhint="search" autocomplete="off" aria-label="Look up"><button type="submit">Go</button></form>
+    <div id="tout" aria-live="polite"></div>
+    <button class="cancel" id="toolsx">Close</button>
   </div>
 </div>
 <div class="drop" id="drop" hidden>Drop files to save them to KARMO</div>
@@ -907,6 +941,95 @@ $('tend').onclick = () => stopTalk();
 $('tchat').onclick = () => mode('chat');
 $('tphoto').onclick = () => $('cam').click();
 
+// ---- Tools: map, weather, markets, cyber. Each look-up runs on a worker
+// (POST /tools); the map picture itself comes from OpenStreetMap.
+const TOOL_HINT = {
+  place: 'A place or address, e.g. Balboa Park',
+  weather: 'A place (blank for San Diego)',
+  market: 'Tickers, e.g. AAPL MSFT (blank for the big picture)',
+  cyber: '',
+};
+let tool = local.get('karmo.tool', 'place');
+if (!(tool in TOOL_HINT)) tool = 'place';
+function deg(v) { return typeof v === 'number' ? Math.round(v) + '°' : '?'; }
+function signed(v, suffix) { return typeof v === 'number' ? (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + (suffix || '') : 'n/a'; }
+function link(href, label) { return '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(label) + '</a>'; }
+function showPlace(p) {
+  const pad = 0.01;
+  const b = p.bbox && p.bbox.length === 4 ? p.bbox : [p.lat - pad, p.lat + pad, p.lon - pad, p.lon + pad];
+  const box = [b[2], b[0], b[3], b[1]].map((n) => Number(n).toFixed(5)).join(',');
+  const embed = 'https://www.openstreetmap.org/export/embed.html?bbox=' + box + '&layer=mapnik&marker=' + p.lat + ',' + p.lon;
+  const q = encodeURIComponent(p.name || (p.lat + ',' + p.lon));
+  return '<b>' + esc(p.name || 'Place') + '</b><small>' + p.lat + ', ' + p.lon + '</small>' +
+    '<iframe title="Map" loading="lazy" referrerpolicy="no-referrer" src="' + esc(embed) + '"></iframe>' +
+    '<div class="links">' + link('https://maps.apple.com/?ll=' + p.lat + ',' + p.lon + '&q=' + q + '&t=k', 'Satellite view') +
+    link('https://www.google.com/maps/search/?api=1&query=' + p.lat + ',' + p.lon, 'Google Maps') +
+    link('https://www.openstreetmap.org/?mlat=' + p.lat + '&mlon=' + p.lon + '#map=16/' + p.lat + '/' + p.lon, 'OpenStreetMap') + '</div>';
+}
+function showWeather(w) {
+  const n = w.now || {};
+  let h = '<b>' + esc((w.place || '').split(',').slice(0, 2).join(',')) + '</b>' +
+    '<div><span class="big">' + deg(n.temp_f) + '</span> ' + esc(n.sky || '') + '</div>' +
+    '<small>Feels like ' + deg(n.feels_f) + ' · wind ' + Math.round(n.wind_mph || 0) + ' mph · humidity ' + (n.humidity ?? '?') + '%</small><div>';
+  (w.days || []).forEach((d, i) => {
+    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Date(d.date + 'T12:00').toLocaleDateString(undefined, {weekday: 'long'});
+    h += '<div class="row"><span>' + esc(label) + ' · ' + esc(d.sky || '') + (typeof d.rain_chance === 'number' ? ' · ' + d.rain_chance + '% rain' : '') +
+      '</span><span>' + deg(d.high_f) + ' / ' + deg(d.low_f) + '</span></div>';
+  });
+  return h + '</div><small>Open-Meteo</small>';
+}
+function showMarket(m) {
+  let h = '<div>';
+  for (const q of m.quotes || []) {
+    const cls = typeof q.change === 'number' ? (q.change >= 0 ? 'up' : 'down') : '';
+    h += '<div class="row"><span>' + esc(q.name || q.symbol) + '</span><span>' +
+      (typeof q.price === 'number' ? q.price.toLocaleString(undefined, {maximumFractionDigits: 2}) : '?') +
+      ' <span class="' + cls + '">' + signed(q.change_pct, '%') + '</span></span></div>';
+  }
+  h += '</div>';
+  if ((m.missing || []).length) h += '<small>No quote for ' + esc(m.missing.join(', ')) + '</small>';
+  return h + '<small>Yahoo Finance, delayed. Not financial advice.</small>';
+}
+function showCyber(c) {
+  let h = '<small>Newest actively exploited vulnerabilities</small><div>';
+  for (const v of c.items || []) {
+    h += '<div class="cve">' + link('https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(v.cve), v.cve) +
+      (v.ransomware ? '<span class="tag">ransomware</span>' : '') +
+      '<div>' + esc(v.vendor + ' ' + v.product) + '</div><small>Added ' + esc(v.added) + ' · fix by ' + esc(v.due) + '</small></div>';
+  }
+  return h + '</div><small>CISA KEV catalog</small>';
+}
+async function runTool() {
+  const q = $('tq').value.trim();
+  if (tool === 'place' && !q) { $('tout').innerHTML = '<span class="muted">Type a place or address.</span>'; return; }
+  if (tool === 'place' || tool === 'weather') local.set('karmo.tool.' + tool, q);
+  $('tout').innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+  try {
+    const res = await fetch('/tools', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kind: tool, query: q})});
+    const r = await res.json();
+    if (r.error) throw new Error(r.error);
+    $('tout').innerHTML = r.kind === 'place' ? showPlace(r.place) : r.kind === 'weather' ? showWeather(r.weather)
+      : r.kind === 'market' ? showMarket(r.market) : showCyber(r.cyber);
+  } catch (err) {
+    $('tout').innerHTML = '<span class="muted">Couldn’t get that right now. ' + esc(String(err.message || err)).slice(0, 160) + '</span>';
+  }
+}
+function pickTool(t) {
+  tool = t;
+  local.set('karmo.tool', t);
+  for (const b of document.querySelectorAll('.ttabs button')) b.setAttribute('aria-pressed', String(b.dataset.tool === t));
+  $('tform').hidden = t === 'cyber';
+  $('tq').placeholder = TOOL_HINT[t];
+  $('tq').value = local.get('karmo.tool.' + t, '');
+  $('tout').innerHTML = '';
+  if (t !== 'place') runTool();
+}
+for (const b of document.querySelectorAll('.ttabs button')) b.onclick = () => pickTool(b.dataset.tool);
+$('tform').onsubmit = (e) => { e.preventDefault(); $('tq').blur(); runTool(); };
+$('opentools').onclick = () => { $('tools').hidden = false; pickTool(tool); };
+$('toolsx').onclick = () => { $('tools').hidden = true; };
+$('tools').onclick = (e) => { if (e.target === $('tools')) $('tools').hidden = true; };
+
 // ---- Modes
 function mode(m) {
   const isTalk = m === 'talk';
@@ -1197,6 +1320,18 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             with _OPERATOR_LOCK:
                 result = self.operator.dispatch_speak(text=payload["text"])
+            self._send_json(400 if "error" in result else 200, result)
+            return
+
+        if self.path == "/tools":
+            payload = self._read_json_body(MAX_BODY_BYTES, {"kind": str})
+            if payload is None:
+                return
+            arguments = {"kind": payload["kind"]}
+            if isinstance(payload.get("query"), str):
+                arguments["query"] = payload["query"]
+            with _OPERATOR_LOCK:
+                result = self.operator.dispatch_live_info(arguments=arguments)
             self._send_json(400 if "error" in result else 200, result)
             return
 

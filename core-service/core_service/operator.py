@@ -36,6 +36,11 @@ from .code_sandbox_capability import handler as code_run_handler
 from .code_sandbox_capability import manifest as code_run_manifest
 from .intent_router import classify, fast_client
 from .handoff import HANDOFF_ENABLED_FILE, handoff_enabled, is_heavy_task, tagged
+from .live_info_capability import LIVE_INFO_TOOL_ID, LIVE_INFO_TOOL_VERSION
+from .live_info_capability import chat_ask as live_info_chat_ask
+from .live_info_capability import format_answer as live_info_answer
+from .live_info_capability import handler as live_info_handler
+from .live_info_capability import manifest as live_info_manifest
 from .web_search_capability import SEARCH_WORDS as _WEB_SEARCH_WORDS
 from .web_search_capability import WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION
 from .web_search_capability import handler as web_search_handler
@@ -868,6 +873,7 @@ class KarmoOperator:
         self.registry.register(synthesize_speech_manifest())
         self.registry.register(repo_intake_manifest())
         self.registry.register(web_search_manifest())
+        self.registry.register(live_info_manifest())
         self.registry.register(code_run_manifest())
         self.dispatcher = CapabilityDispatcher(
             registry=self.registry,
@@ -911,6 +917,10 @@ class KarmoOperator:
         self.dispatcher.bind(
             WEB_SEARCH_TOOL_ID, WEB_SEARCH_TOOL_VERSION,
             web_search_handler(self.worker_dispatch_client),
+        )
+        self.dispatcher.bind(
+            LIVE_INFO_TOOL_ID, LIVE_INFO_TOOL_VERSION,
+            live_info_handler(self.worker_dispatch_client),
         )
         self.dispatcher.bind(
             CODE_RUN_TOOL_ID, CODE_RUN_TOOL_VERSION,
@@ -1004,6 +1014,25 @@ class KarmoOperator:
             tool_id=SYNTHESIZE_SPEECH_TOOL_ID, version=SYNTHESIZE_SPEECH_TOOL_VERSION,
             arguments={"text": text},
         )
+
+    def dispatch_live_info(self, *, arguments: dict) -> dict:
+        """The Tools panel's place, weather, market and cyber lookups."""
+        return self._dispatch_local_media(
+            tool_id=LIVE_INFO_TOOL_ID, version=LIVE_INFO_TOOL_VERSION, arguments=arguments,
+        )
+
+    def _live_info_chat(self, text: str) -> dict | None:
+        """"weather in Chula Vista", "market update", "cyber update", "map of
+        X" -- answered from the lookup without a model, so no figure is made
+        up. None (normal chat takes over) when it isn't such an ask or the
+        lookup fails."""
+        ask = live_info_chat_ask(text)
+        if ask is None:
+            return None
+        result = self.dispatch_live_info(arguments=ask[1])
+        if not isinstance(result, dict) or "error" in result:
+            return None
+        return {"kind": "chat", "message": live_info_answer(result), "model": None}
 
     def _repo_scan(self, url: str) -> dict:
         """"check github.com/owner/repo" -- a worker-side read-only scan,
@@ -2095,6 +2124,9 @@ class KarmoOperator:
         repo_url = repo_scan_url(text)
         if repo_url is not None:
             return self._repo_scan(repo_url)
+        live = self._live_info_chat(text)
+        if live is not None:
+            return live
         route = self._model_route(text)
         if self._matching_facts(text) and route in (None, "web", "heavy", "chat"):
             # Something Kamara told KARMO answers this: answer from memory,

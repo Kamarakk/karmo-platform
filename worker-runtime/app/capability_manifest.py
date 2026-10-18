@@ -408,6 +408,32 @@ SAFE_CAPABILITIES = {
         idempotent=True,
         retry_policy={"max_attempts": 1, "backoff": "none"},
     ),
+    # Live info (2026-10-18, Kamara's ask in the KARMO project thread for
+    # map, weather, market and cyber options in the web interface): reads
+    # keyless public sources, pinned to live_info.ALLOWED_HOSTS (see
+    # NETWORK_CAPABILITY_HOSTS below). Sends only the place or ticker asked.
+    "live_info": dict(
+        capability_id="live_info",
+        version="1.0.0",
+        authority_class=CapabilityClass.READ,
+        side_effect_class=SideEffectClass.NONE,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["place", "weather", "market", "cyber"]},
+                "query": {"type": "string", "maxLength": 120},
+                "symbols": {"type": "array", "maxItems": 6},
+            },
+            "required": ["kind"],
+        },
+        output_schema={"type": "object", "properties": {"kind": {"type": "string"}}},
+        timeout_seconds=40,
+        resource_requirements={"cpu": "low", "memory_mb": 256},
+        network_required=True,
+        secrets_required=[],
+        idempotent=True,
+        retry_policy={"max_attempts": 1, "backoff": "none"},
+    ),
 }
 SAFE_CAPABILITIES.update(COMMANDER_READONLY_CAPABILITIES)
 
@@ -416,6 +442,7 @@ SAFE_CAPABILITIES.update(COMMANDER_READONLY_CAPABILITIES)
 # stays network-free (remote_worker_runtime refuses it otherwise).
 NETWORK_CAPABILITY_HOSTS = {
     "repo_intake_scan": ("api.github.com", "github.com", "api.securityscorecards.dev"),
+    "live_info": ("nominatim.openstreetmap.org", "api.open-meteo.com", "query1.finance.yahoo.com", "www.cisa.gov"),
 }
 
 # Explicitly, permanently excluded from this workload's capability set --

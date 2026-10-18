@@ -25,6 +25,7 @@ from pathlib import Path
 import resource_discovery
 from code_sandbox import CodeSandboxError, submit_and_wait
 from commander_readonly import bounded_text_read, directory_list, listener_snapshot, service_status, system_snapshot
+from live_info import LiveInfoError, live_info
 from repo_intake import RepoIntakeError, scan_repo
 from sandbox import SandboxError, register_handler, resolve_within_sandbox
 
@@ -707,6 +708,19 @@ def _repo_intake_scan(payload, *, sandbox_root, allowed_root, timeout_seconds):
 
 
 register_handler("repo_intake_scan", _repo_intake_scan)
+
+# --- LIVE INFO -----------------------------------------------------------------
+# Place, weather, market and cyber lookups from fixed keyless public sources
+# (live_info.ALLOWED_HOSTS). Read-only.
+def _live_info(payload, *, sandbox_root, allowed_root, timeout_seconds):
+    try:
+        result = live_info(payload)
+    except LiveInfoError as exc:
+        raise SandboxError(f"live_info: {exc}") from exc
+    return result, f"live_info: {result['kind']}", []
+
+
+register_handler("live_info", _live_info)
 
 # Commander READ Pack v1 -- fixed handlers only; no arbitrary command dispatch.
 register_handler("commander.system_snapshot", system_snapshot)
