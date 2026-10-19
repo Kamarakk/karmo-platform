@@ -63,6 +63,11 @@ def _dedicated_user() -> pwd.struct_passwd | None:
     return entry
 
 
+def cli_user() -> pwd.struct_passwd | None:
+    """The dedicated CLI account, or None when none is configured."""
+    return _dedicated_user()
+
+
 def run_kwargs(workdir: str) -> dict[str, Any]:
     """Extra keyword arguments for ``subprocess.run`` of a delegation CLI.
 

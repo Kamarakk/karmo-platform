@@ -45,6 +45,7 @@ import zlib
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import claude_chat
 from .data_map import MAX_UPLOAD_BYTES as _MAX_UPLOAD_BYTES
 from .operator import KarmoOperator
 from .speech_synthesize_capability import MAX_TEXT_CHARS as _SPEAK_MAX_TEXT_CHARS
@@ -215,6 +216,13 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
 #tout .cve{padding:8px 0;border-bottom:1px solid var(--line)}#tout .cve:last-child{border-bottom:0}
 #tout .cve a{color:var(--cool);font-weight:600}
 #tout .tag{font-size:.7rem;background:var(--bad);color:#fff;border-radius:6px;padding:1px 6px;margin-left:6px}
+#claudeview{flex:1;min-height:0;display:flex;flex-direction:column}
+#cfeed{flex:1;overflow-y:auto;padding:16px max(14px,env(safe-area-inset-right,0px)) 10px max(14px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
+#cfeed>*{width:100%;max-width:760px;margin-left:auto;margin-right:auto}
+#cfiles{display:flex;gap:6px;flex-wrap:wrap;padding:0 max(14px,env(safe-area-inset-right,0px)) 8px max(14px,env(safe-area-inset-left,0px))}
+#csend{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.cbar{display:flex;gap:6px;padding:0 max(14px,env(safe-area-inset-right,0px)) 8px max(14px,env(safe-area-inset-left,0px))}
+.cbar button{background:transparent;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:.8rem}
 @media (prefers-reduced-motion: reduce){.ring,.orb,.dots i{animation:none!important}.orb{transition:none}}
 </style></head>
 <body>
@@ -229,6 +237,7 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
     <div class="seg" role="group" aria-label="Mode">
       <button id="tabchat" aria-pressed="true">Chat</button>
       <button id="tabtalk" aria-pressed="false">Talk</button>
+      <button id="tabclaude" aria-pressed="false">Claude</button>
     </div>
   </div>
 </header>
@@ -249,6 +258,16 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
       <button class="ib" id="mic" title="Record a question; it sends when you stop" aria-label="Record a voice question"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
       <button class="ib" id="send" aria-label="Send" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
       <button class="talkbtn" id="gotalk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9"/></svg>Talk</button>
+    </div>
+  </section>
+  <section id="claudeview" hidden>
+    <div id="cfeed" aria-live="polite"></div>
+    <div class="cbar"><button id="cnew">New chat</button></div>
+    <div id="cfiles" hidden></div>
+    <div class="composer">
+      <button class="ib" id="cplus" aria-label="Attach a photo or file for Claude"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+      <textarea id="cin" rows="1" placeholder="Message Claude" aria-label="Message Claude"></textarea>
+      <button class="ib" id="csend" aria-label="Send to Claude"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     </div>
   </section>
   <section id="talkview" data-state="idle" hidden>
@@ -290,6 +309,7 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
 <input id="img" type="file" accept="image/*" hidden>
 <input id="cam" type="file" accept="image/*" capture="environment" hidden>
 <input id="doc" type="file" multiple hidden>
+<input id="cfile" type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" hidden>
 <script>
 const $ = (id) => document.getElementById(id);
 const feed = $('feed');
@@ -1033,15 +1053,151 @@ $('tools').onclick = (e) => { if (e.target === $('tools')) $('tools').hidden = t
 
 // ---- Modes
 function mode(m) {
-  const isTalk = m === 'talk';
-  $('chatview').style.display = isTalk ? 'none' : 'flex';
-  $('talkview').hidden = !isTalk;
-  $('tabchat').setAttribute('aria-pressed', String(!isTalk));
-  $('tabtalk').setAttribute('aria-pressed', String(isTalk));
-  if (!isTalk) { if (talk.on) stopTalk(); scrollDown(); }
+  $('chatview').style.display = m === 'chat' ? 'flex' : 'none';
+  $('talkview').hidden = m !== 'talk';
+  $('claudeview').hidden = m !== 'claude';
+  $('tabchat').setAttribute('aria-pressed', String(m === 'chat'));
+  $('tabtalk').setAttribute('aria-pressed', String(m === 'talk'));
+  $('tabclaude').setAttribute('aria-pressed', String(m === 'claude'));
+  if (m !== 'talk' && talk.on) stopTalk();
+  if (m === 'chat') scrollDown();
+  if (m === 'claude') { $('cfeed').scrollTop = $('cfeed').scrollHeight; }
+  local.set('karmo.mode', m === 'talk' ? 'chat' : m);
 }
 $('tabchat').onclick = () => mode('chat');
 $('tabtalk').onclick = () => mode('talk');
+$('tabclaude').onclick = () => mode('claude');
+
+// ---- Claude tab: talks to Claude directly (claude CLI on AI01, Kamara's
+// subscription, locked-down karmo-ask account). Separate from KARMO's chat
+// and memory: only what is typed or attached here is sent. The conversation
+// continues on the server by session id; this device keeps the transcript.
+const cfeed = $('cfeed');
+const cbox = $('cin');
+let claude = local.get('karmo.claude', {session: null, msgs: []});
+let cfiles = [];
+let cbusy = false;
+function saveClaude() { claude.msgs = claude.msgs.slice(-200); local.set('karmo.claude', claude); }
+function cbubble(who) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + (who === 'you' ? 'you' : 'karmo');
+  const body = document.createElement('div');
+  body.className = 'body';
+  wrap.appendChild(body);
+  cfeed.appendChild(wrap);
+  const w = $('cwelcome'); if (w) w.remove();
+  cfeed.scrollTop = cfeed.scrollHeight;
+  return {wrap, body};
+}
+function cyou(text, names) {
+  const m = cbubble('you');
+  m.body.textContent = text + (names && names.length ? '\n📎 ' + names.join(', ') : '');
+}
+function cclaude(text) {
+  const m = cbubble('claude');
+  m.body.innerHTML = md(text);
+  karmoActions(m, text, null);
+  return m;
+}
+function cwelcome() {
+  const w = document.createElement('div');
+  w.className = 'welcome';
+  w.id = 'cwelcome';
+  w.innerHTML = '<h2>Claude</h2><p>Talk to Claude directly. It can search the web and read photos, PDFs and text files you attach. It doesn’t see KARMO’s memory or your files unless you attach them.</p>';
+  cfeed.appendChild(w);
+}
+function renderClaude() {
+  cfeed.textContent = '';
+  if (!claude.msgs.length) cwelcome();
+  for (const m of claude.msgs) { if (m.who === 'you') cyou(m.text, m.files); else cclaude(m.text); }
+}
+function showCfiles() {
+  const box = $('cfiles');
+  box.textContent = '';
+  box.hidden = !cfiles.length;
+  cfiles.forEach((f, i) => {
+    const chip = button('📎 ' + f.name + ' ✕', () => { cfiles.splice(i, 1); showCfiles(); });
+    chip.className = 'chip';
+    box.appendChild(chip);
+  });
+}
+async function readCfile(file) {
+  if (file.type.startsWith('image/') && file.type !== 'image/gif') {
+    const blob = await shrinkImage(file, 1600);
+    return {name: file.name.replace(/\.[^.]+$/, '') + '.jpg', data_base64: await blobToBase64(blob)};
+  }
+  return {name: file.name, data_base64: await blobToBase64(file)};
+}
+$('cplus').onclick = () => $('cfile').click();
+$('cfile').onchange = async (e) => {
+  for (const f of Array.from(e.target.files || [])) {
+    if (cfiles.length >= 4) { break; }
+    if (f.size > 10000000 && !f.type.startsWith('image/')) { alert(f.name + ' is larger than 10 MB'); continue; }
+    try { cfiles.push(await readCfile(f)); } catch (err) { alert('Could not read ' + f.name); }
+  }
+  e.target.value = '';
+  showCfiles();
+};
+async function sendClaude() {
+  const text = cbox.value.trim();
+  if (cbusy || (!text && !cfiles.length)) return;
+  cbusy = true;
+  $('csend').disabled = true;
+  const files = cfiles;
+  const names = files.map((f) => f.name);
+  cfiles = [];
+  showCfiles();
+  cbox.value = '';
+  cyou(text, names);
+  claude.msgs.push({who: 'you', text, files: names});
+  saveClaude();
+  const m = cbubble('claude');
+  m.body.innerHTML = '<span class="dots" aria-label="Claude is thinking"><i></i><i></i><i></i></span>';
+  let final = null;
+  try {
+    const res = await fetch('/claude', {method: 'POST', body: JSON.stringify({text, session_id: claude.session, files})});
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, {stream: true});
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const raw = buf.slice(0, i);
+        buf = buf.slice(i + 1);
+        if (raw.trim()) { const ev = JSON.parse(raw); if (ev.done) final = ev; }
+      }
+    }
+  } catch (err) {
+    final = {error: 'Could not reach KARMO (' + err.message + ')'};
+  }
+  m.wrap.remove();
+  if (!final) final = {error: 'No answer came back'};
+  if (final.error) {
+    const d = cbubble('claude');
+    d.body.textContent = 'Claude could not answer: ' + final.error;
+  } else {
+    if (final.session_id) claude.session = final.session_id;
+    claude.msgs.push({who: 'claude', text: final.answer});
+    saveClaude();
+    cclaude(final.answer);
+  }
+  cbusy = false;
+  $('csend').disabled = false;
+}
+$('csend').onclick = sendClaude;
+cbox.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); sendClaude(); } });
+cbox.addEventListener('input', () => { cbox.style.height = 'auto'; cbox.style.height = Math.min(cbox.scrollHeight, 140) + 'px'; });
+$('cnew').onclick = () => {
+  if (cbusy) return;
+  claude = {session: null, msgs: []};
+  saveClaude();
+  renderClaude();
+};
+renderClaude();
 $('gotalk').onclick = () => { mode('talk'); startTalk(); };
 
 // ---- Header health: which brain answers, and whether memory is on.
@@ -1072,6 +1228,7 @@ for (const entry of history) {
 if (!history.length) showWelcome();
 scrollDown();
 autosize();
+if (local.get('karmo.mode', 'chat') === 'claude') mode('claude');
 </script>
 </body></html>
 """.replace("__MAX_UPLOAD_BYTES__", str(_MAX_UPLOAD_BYTES)).replace(
@@ -1125,6 +1282,9 @@ _STATIC = {
 # concurrent turns), while the server itself answers other requests -- the
 # page, a second tab -- instead of queueing them behind a minute-long reply.
 _OPERATOR_LOCK = threading.Lock()
+# The Claude tab runs one Claude CLI at a time (each is a ~200 MB process on
+# an 11 GB box), separately from KARMO's own turns.
+_CLAUDE_LOCK = threading.Lock()
 KEEPALIVE_SECONDS = 10
 
 
@@ -1263,6 +1423,47 @@ class _Handler(BaseHTTPRequestHandler):
             raise outcome["error"]
         send({**outcome["result"], "done": True})
 
+    def _stream_claude(self, payload: dict):
+        """Claude tab turn: pings while Claude works (it can take minutes with
+        web search), then one final line {answer, session_id, done} or
+        {error, done}."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.close_connection = True
+        outcome = {}
+        finished = threading.Event()
+
+        def run():
+            try:
+                with _CLAUDE_LOCK:
+                    outcome["result"] = claude_chat.ask(
+                        payload["text"], session_id=payload.get("session_id") or None,
+                        files=payload.get("files") or None)
+            except claude_chat.ClaudeChatError as exc:
+                outcome["result"] = {"error": str(exc)}
+            except Exception as exc:  # noqa: BLE001 -- reported to the page, never kills the server
+                outcome["result"] = {"error": f"unexpected error: {exc.__class__.__name__}"}
+            finally:
+                finished.set()
+
+        def send(event: dict) -> bool:
+            try:
+                self.wfile.write(json.dumps(event).encode("utf-8") + b"\n")
+                self.wfile.flush()
+                return True
+            except OSError:
+                return False  # page closed; the turn still finishes
+
+        threading.Thread(target=run, daemon=True).start()
+        alive = True
+        while not finished.wait(KEEPALIVE_SECONDS):
+            if alive:
+                alive = send({"ping": True})
+        if alive:
+            send({**outcome["result"], "done": True})
+
     def do_POST(self):  # noqa: N802 - stdlib method name
         if self.path == "/chat":
             payload = self._read_json_body(MAX_BODY_BYTES, {"text": str})
@@ -1278,6 +1479,13 @@ class _Handler(BaseHTTPRequestHandler):
             if payload is None:
                 return
             self._stream_chat(payload["text"])
+            return
+
+        if self.path == "/claude":
+            payload = self._read_json_body(MAX_MEDIA_BODY_BYTES, {"text": str})
+            if payload is None:
+                return
+            self._stream_claude(payload)
             return
 
         if self.path == "/feedback":
