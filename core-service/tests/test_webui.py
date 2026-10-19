@@ -539,3 +539,50 @@ def test_page_is_not_cached(running_server):
         assert resp.headers["Cache-Control"] == "no-cache"
         page = resp.read()
     assert b'rel="manifest"' in page and b'rel="apple-touch-icon"' in page
+
+
+def test_claude_tab_streams_pings_then_the_answer(running_server, monkeypatch):
+    server, fake = running_server
+    seen = {}
+
+    def fake_ask(text, *, session_id=None, files=None):
+        seen.update(text=text, session_id=session_id, files=files)
+        import time as _t
+        _t.sleep(0.25)
+        return {"answer": "Monrovia.", "session_id": "0b6f7d1e-2c3a-4b5c-8d9e-0f1a2b3c4d5e"}
+
+    monkeypatch.setattr(webui.claude_chat, "ask", fake_ask)
+    monkeypatch.setattr(webui, "KEEPALIVE_SECONDS", 0.05)
+    request = urllib.request.Request(
+        _url(server, "/claude"), data=json.dumps({"text": "Capital of Liberia?"}).encode(), method="POST")
+    with urllib.request.urlopen(request, timeout=10) as resp:
+        lines = [json.loads(line) for line in resp.read().decode().splitlines() if line.strip()]
+    assert {"ping": True} in lines
+    assert lines[-1] == {"answer": "Monrovia.", "session_id": "0b6f7d1e-2c3a-4b5c-8d9e-0f1a2b3c4d5e", "done": True}
+    assert seen == {"text": "Capital of Liberia?", "session_id": None, "files": None}
+    assert fake.calls == []  # never touches KARMO's own chat or memory
+
+
+def test_claude_tab_reports_errors_as_a_final_line(running_server, monkeypatch):
+    server, _ = running_server
+
+    def failing(text, **kwargs):
+        raise webui.claude_chat.ClaudeChatError("Claude is not logged in on AI01 yet")
+
+    monkeypatch.setattr(webui.claude_chat, "ask", failing)
+    request = urllib.request.Request(_url(server, "/claude"), data=json.dumps({"text": "hi"}).encode(), method="POST")
+    with urllib.request.urlopen(request, timeout=10) as resp:
+        lines = [json.loads(line) for line in resp.read().decode().splitlines() if line.strip()]
+    assert lines[-1] == {"error": "Claude is not logged in on AI01 yet", "done": True}
+
+
+def test_claude_tab_rejects_malformed_body(running_server):
+    server, _ = running_server
+    request = urllib.request.Request(_url(server, "/claude"), data=b"nope", method="POST")
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(request)
+    assert exc.value.code == 400
+
+
+def test_page_has_a_claude_tab():
+    assert b'id="tabclaude"' in webui._PAGE and b"fetch('/claude'" in webui._PAGE
